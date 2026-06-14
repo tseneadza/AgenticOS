@@ -1,0 +1,31 @@
+# ── Python ─────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+
+# ── Runtime data / logs ────────────────────────────────
+data/state.db
+data/logs/
+
+# ── Secrets / env ──────────────────────────────────────
+.env
+*.env
+env.yaml
+
+# ── Node / frontend (gui/desktop) ──────────────────────
+node_modules/
+gui/desktop/dist/
+
+# ── Rust / Tauri build output ──────────────────────────
+gui/desktop/src-tauri/target/
+
+# ── Claude agent-farm scratch / state ──────────────────
+.autoclaude/
+.claude_agent_farm_backups/
+.claude_agent_farm_state.json
+.heartbeats/
+agent_farm_reports/
+
+# ── macOS ──────────────────────────────────────────────
+.DS_Store

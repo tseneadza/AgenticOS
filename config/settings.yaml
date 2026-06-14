@@ -1,0 +1,28 @@
+# Agentic OS — global settings
+settings:
+  vault_path: "/Users/tonyseneadza/Brain2"
+  hub_url: "http://localhost:8085"
+  data_dir: "data"
+
+  # Filesystem tool backend (TR-03): "mcp" = real MCP stdio client to
+  # @modelcontextprotocol/server-filesystem; "direct" = Phase 1 direct
+  # file ops (fallback for npx-hostile environments like launchd).
+  filesystem_backend: "mcp"
+
+  # AgenticOS FastAPI sidecar (Phase 2) — registered in
+  # ~/Codehome/hub/docs/PORT_ASSIGNMENTS.md (TR-10).
+  sidecar_port: 5130
+
+  models:
+    default: "claude-sonnet-4-6"
+    fast: "claude-haiku-4-5-20251001"
+
+  # If ANTHROPIC_API_KEY is not set, briefing falls back to a
+  # deterministic template (useful for dry runs / testing).
+  allow_template_fallback: true
+
+  # USD per million tokens — verify against https://www.anthropic.com/pricing
+  # Unknown models fall back to the most expensive entry here (conservative).
+  pricing:
+    claude-sonnet-4-6: {input: 3.00, output: 15.00}
+    claude-haiku-4-5-20251001: {input: 1.00, output: 5.00}

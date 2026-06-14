@@ -1,0 +1,143 @@
+# Agentic OS — workflow definitions.
+# Adding a workflow here makes it runnable immediately: agentic-os run <name>
+workflows:
+  morning-briefing:
+    description: "Daily brief from Brain2, calendar, and Codehome status"
+    trigger:
+      schedule: "0 7 * * 1-5"   # weekdays 7am (wired up in Phase 4 via launchd)
+      manual: true
+    steps:
+      - id: read_vault
+        agent: brain2_agent
+        action: read_focus_and_queue
+        tools: [filesystem]
+        requires_approval: false
+
+      - id: check_hub
+        agent: hub_agent
+        action: list_running_apps
+        tools: [hub]
+        requires_approval: false
+
+      - id: generate_brief
+        agent: briefing_agent
+        action: compose_brief
+        model: default
+        inputs: [read_vault, check_hub]
+        requires_approval: false
+
+      - id: write_brief
+        agent: brain2_agent
+        action: write_to_reflections
+        tools: [filesystem]
+        inputs: [generate_brief]
+        requires_approval: false
+
+  # ---------------------------------------------------------------- Phase 5
+
+  process-raw-notes:
+    description: "Classify and file all notes in Brain2/00 - Raw/"
+    trigger:
+      schedule: "0 21 * * *"    # 9pm daily
+      manual: true
+    steps:
+      - id: scan_raw
+        agent: brain2_agent
+        action: scan_raw_notes
+        tools: [filesystem]
+        requires_approval: false
+
+      - id: process_notes
+        agent: brain2_agent
+        action: process_each_raw_note
+        tools: [filesystem]
+        inputs: [scan_raw]
+        requires_approval: false
+
+  research-learning-notes:
+    description: "Research and complete Brain2/02 - Learning/ notes with status: processing"
+    trigger:
+      schedule: "0 22 * * *"    # 10pm daily
+      manual: true
+    steps:
+      - id: scan_learning
+        agent: brain2_agent
+        action: scan_learning_notes
+        tools: [filesystem]
+        requires_approval: false
+
+      - id: research_notes
+        agent: brain2_agent
+        action: research_each_learning_note
+        tools: [filesystem]
+        inputs: [scan_learning]
+        requires_approval: false
+
+  save-session:
+    description: "Write session log and Next Day Focus report to Brain2/04 - Reflections/"
+    trigger:
+      manual: true
+    steps:
+      - id: collect_session
+        agent: brain2_agent
+        action: collect_session_summary
+        tools: [filesystem]
+        requires_approval: false
+
+      - id: write_session
+        agent: brain2_agent
+        action: write_session_report
+        tools: [filesystem]
+        inputs: [collect_session]
+        requires_approval: false
+
+  # ---------------------------------------------------------------- Phase 6
+
+  hub-status:
+    description: "Report all Codehome apps and their current running status via Hub MCP"
+    trigger:
+      manual: true
+    steps:
+      - id: list_apps
+        agent: hub_agent
+        action: list_hub_apps
+        requires_approval: false
+
+  hub-scripts:
+    description: "List all Hub-registered scripts available to run"
+    trigger:
+      manual: true
+    steps:
+      - id: list_scripts
+        agent: hub_agent
+        action: list_hub_scripts
+        requires_approval: false
+
+  hub-app-manifest:
+    description: "Show the agent capability manifest for a specific Codehome app"
+    trigger:
+      manual: true
+    steps:
+      - id: get_manifest
+        agent: hub_agent
+        action: get_app_manifest
+        requires_approval: false
+
+  # Demo workflow proving HITL interrupts work (Phase 1 acceptance criterion)
+  approval-demo:
+    description: "Demonstrates a requires_approval pause before writing a file"
+    trigger:
+      manual: true
+    steps:
+      - id: read_vault
+        agent: brain2_agent
+        action: read_focus_and_queue
+        tools: [filesystem]
+        requires_approval: false
+
+      - id: write_test_note
+        agent: brain2_agent
+        action: write_test_note
+        tools: [filesystem]
+        inputs: [read_vault]
+        requires_approval: true

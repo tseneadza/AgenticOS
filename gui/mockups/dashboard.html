@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic OS — Dashboard Mockup</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f4;
+    --bg-tertiary: #eeede9;
+    --text-primary: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --text-tertiary: #888780;
+    --border: rgba(0,0,0,0.1);
+    --success-bg: #eaf3de; --success-text: #3b6d11;
+    --info-bg: #e6f1fb; --info-text: #185fa5;
+    --warn-bg: #faeeda; --warn-text: #854f0b;
+    --danger-bg: #fcebeb; --danger-text: #a32d2d;
+    --radius-md: 8px; --radius-lg: 12px;
+    --green: #1D9E75; --amber: #BA7517; --red: #E24B4A; --gray: #888780;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1e1e1c; --bg-secondary: #282825; --bg-tertiary: #1a1a18;
+      --text-primary: #f0ede6; --text-secondary: #a8a5a0; --text-tertiary: #666360;
+      --border: rgba(255,255,255,0.1);
+      --success-bg: #173404; --success-text: #97c459;
+      --info-bg: #042c53; --info-text: #85b7eb;
+      --warn-bg: #412402; --warn-text: #ef9f27;
+      --danger-bg: #501313; --danger-text: #f09595;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-tertiary); color: var(--text-primary); font-size: 13px; }
+  .shell { padding: 12px; max-width: 1100px; margin: 0 auto; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; }
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+  .logo { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+  .pill-green { background: var(--success-bg); color: var(--success-text); }
+  .pill-blue { background: var(--info-bg); color: var(--info-text); }
+  .pill-warn { background: var(--warn-bg); color: var(--warn-text); }
+  .pill-danger { background: var(--danger-bg); color: var(--danger-text); }
+  .pill-muted { background: var(--bg-secondary); color: var(--text-secondary); }
+  .topbar-right { display: flex; align-items: center; gap: 14px; color: var(--text-secondary); font-size: 12px; }
+  .topbar-right span { display: flex; align-items: center; gap: 4px; }
+  .grid-main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .grid-bottom { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; }
+  .panel { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 12px 14px; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .panel-title { font-size: 11px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 5px; }
+  .metric-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+  .metric-row:last-child { border-bottom: none; }
+  .metric-label { color: var(--text-secondary); }
+  .metric-value { font-weight: 500; }
+  .metric-value.good { color: var(--success-text); }
+  .metric-value.warn { color: var(--warn-text); }
+  .bar-wrap { width: 80px; height: 5px; background: var(--bg-secondary); border-radius: 99px; overflow: hidden; margin-left: 8px; }
+  .bar-fill { height: 100%; border-radius: 99px; }
+  .metric-row-bar { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+  .metric-row-bar:last-child { border-bottom: none; }
+  .bar-side { display: flex; align-items: center; gap: 6px; }
+  .cost-big { font-size: 28px; font-weight: 500; line-height: 1; margin: 4px 0 2px; }
+  .cost-sub { font-size: 11px; color: var(--text-secondary); }
+  .mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+  .mini-card { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 8px 10px; }
+  .mini-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; }
+  .mini-val { font-size: 16px; font-weight: 500; }
+  .mini-val.good { color: var(--success-text); }
+  .wf-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+  .wf-row:last-child { border-bottom: none; }
+  .wf-icon { width: 24px; height: 24px; border-radius: var(--radius-md); background: var(--info-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .wf-icon.done { background: var(--bg-secondary); }
+  .wf-meta { flex: 1; min-width: 0; }
+  .wf-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wf-time { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
+  .keno-big { font-size: 26px; font-weight: 500; line-height: 1; margin: 2px 0; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .dot-green { background: var(--green); }
+  .dot-red { background: var(--red); }
+  .dot-gray { background: var(--gray); }
+  .app-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+  .app-row:last-child { border-bottom: none; }
+  .app-left { display: flex; align-items: center; gap: 7px; }
+  .app-name { font-weight: 500; }
+  .app-port { font-family: monospace; font-size: 10px; color: var(--text-tertiary); }
+  .app-controls { display: flex; align-items: center; gap: 6px; }
+  .btn-ctrl { font-size: 10px; padding: 2px 8px; border-radius: var(--radius-md); border: 0.5px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; }
+  .btn-ctrl:hover { background: var(--bg-secondary); }
+  .approval-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 0.5px solid var(--border); }
+  .approval-row:last-child { border-bottom: none; }
+  .approve-btns { display: flex; gap: 5px; flex-shrink: 0; }
+  .btn-approve { font-size: 10px; padding: 2px 9px; border-radius: var(--radius-md); border: 0.5px solid var(--success-text); color: var(--success-text); background: transparent; cursor: pointer; }
+  .btn-reject { font-size: 10px; padding: 2px 9px; border-radius: var(--radius-md); border: 0.5px solid var(--danger-text); color: var(--danger-text); background: transparent; cursor: pointer; }
+  .terminal-strip { background: #1a1a1a; border-radius: var(--radius-md); padding: 8px 10px; font-family: monospace; font-size: 11px; color: #a8b8a8; line-height: 1.7; margin-top: 10px; }
+  /* Design note banner */
+  .design-note { background: var(--info-bg); color: var(--info-text); border-radius: var(--radius-md); padding: 8px 12px; font-size: 11px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="design-note">
+    <i class="ti ti-info-circle"></i>
+    <strong>Design mockup</strong> — Agentic OS Dashboard v1 · Created 2026-06-11 · Reference for Tauri v2 + React build
+  </div>
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo"><i class="ti ti-cpu"></i> Agentic OS</div>
+      <span class="pill pill-green"><span class="dot dot-green"></span> Orchestrator running</span>
+      <span class="pill pill-blue"><i class="ti ti-clock"></i> 3 scheduled tasks active</span>
+      <span class="pill pill-warn"><i class="ti ti-bell"></i> 1 approval pending</span>
+    </div>
+    <div class="topbar-right">
+      <span><i class="ti ti-coin"></i> $0.82 today</span>
+      <span><i class="ti ti-clock"></i> uptime 6h 14m</span>
+      <span><i class="ti ti-settings"></i></span>
+    </div>
+  </div>
+
+  <div class="grid-main">
+
+    <!-- System Health -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><i class="ti ti-device-desktop"></i> System health</div>
+        <span class="pill pill-green" style="font-size:10px">macOS 15.4</span>
+      </div>
+      <div class="metric-row-bar">
+        <span class="metric-label">CPU</span>
+        <div class="bar-side">
+          <span class="metric-value">23%</span>
+          <div class="bar-wrap"><div class="bar-fill" style="width:23%; background:var(--green)"></div></div>
+        </div>
+      </div>
+      <div class="metric-row-bar">
+        <span class="metric-label">RAM</span>
+        <div class="bar-side">
+          <span class="metric-value">11.2 / 16 GB</span>
+          <div class="bar-wrap"><div class="bar-fill" style="width:70%; background:var(--amber)"></div></div>
+        </div>
+      </div>
+      <div class="metric-row-bar">
+        <span class="metric-label">Disk</span>
+        <div class="bar-side">
+          <span class="metric-value">312 / 500 GB</span>
+          <div class="bar-wrap"><div class="bar-fill" style="width:62%; background:var(--amber)"></div></div>
+        </div>
+      </div>
+      <div class="metric-row"><span class="metric-label">Net in / out</span><span class="metric-value">1.2 MB/s · 340 KB/s</span></div>
+      <div class="metric-row"><span class="metric-label">Load avg</span><span class="metric-value">1.42 · 1.18 · 0.97</span></div>
+      <div class="metric-row"><span class="metric-label">Top process</span><span class="metric-value" style="font-family:monospace; font-size:11px">python3  8.4%</span></div>
+    </div>
+
+    <!-- Agent Activity -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><i class="ti ti-robot"></i> Agent activity</div>
+      </div>
+      <div class="cost-big">$0.82</div>
+      <div class="cost-sub">spent today · $18.40 this month</div>
+      <div class="mini-grid">
+        <div class="mini-card"><div class="mini-label">Workflows run</div><div class="mini-val">14</div></div>
+        <div class="mini-card"><div class="mini-label">Tokens used</div><div class="mini-val">847k</div></div>
+        <div class="mini-card"><div class="mini-label">Success rate</div><div class="mini-val good">96%</div></div>
+        <div class="mini-card"><div class="mini-label">Avg duration</div><div class="mini-val">38s</div></div>
+      </div>
+      <div class="wf-row">
+        <div class="wf-icon"><i class="ti ti-player-play" style="font-size:12px; color:var(--info-text)"></i></div>
+        <div class="wf-meta"><div class="wf-name">keno-sync-hourly</div><div class="wf-time">running · 2m ago · 20 draws imported</div></div>
+        <span class="pill pill-green" style="font-size:10px">live</span>
+      </div>
+      <div class="wf-row">
+        <div class="wf-icon done"><i class="ti ti-check" style="font-size:12px; color:var(--success-text)"></i></div>
+        <div class="wf-meta"><div class="wf-name">process-raw-notes</div><div class="wf-time">completed · 9:10pm · 6 notes filed</div></div>
+      </div>
+      <div class="wf-row">
+        <div class="wf-icon done"><i class="ti ti-check" style="font-size:12px; color:var(--success-text)"></i></div>
+        <div class="wf-meta"><div class="wf-name">research-learning-notes</div><div class="wf-time">completed · 8:55pm · 2 notes researched</div></div>
+      </div>
+    </div>
+
+    <!-- Keno Telemetry -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><i class="ti ti-database"></i> Keno Georgia</div>
+        <span class="pill pill-green" style="font-size:10px">syncing</span>
+      </div>
+      <div class="keno-big">85,976</div>
+      <div class="cost-sub">draws in database</div>
+      <div style="margin-top:10px">
+        <div class="metric-row"><span class="metric-label">Latest draw</span><span class="metric-value" style="font-family:monospace; font-size:11px">#3478719</span></div>
+        <div class="metric-row"><span class="metric-label">Last sync</span><span class="metric-value good">2m ago</span></div>
+        <div class="metric-row"><span class="metric-label">Next sync</span><span class="metric-value">in 1h 58m</span></div>
+        <div class="metric-row"><span class="metric-label">This run</span><span class="metric-value">+20 draws</span></div>
+        <div class="metric-row"><span class="metric-label">Gaps remaining</span><span class="metric-value warn">24</span></div>
+        <div class="metric-row"><span class="metric-label">Coverage</span><span class="metric-value good">99.97%</span></div>
+        <div class="metric-row"><span class="metric-label">Span</span><span class="metric-value" style="font-size:11px">Nov 2025 → now</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="grid-bottom">
+
+    <!-- Hub Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><i class="ti ti-layout-grid"></i> Codehome Hub <span style="font-family:monospace; font-size:10px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-tertiary)">:8085</span></div>
+        <span class="pill pill-green" style="font-size:10px">hub healthy · 12ms</span>
+      </div>
+      <div class="app-row">
+        <div class="app-left"><span class="dot dot-green"></span><span class="app-name">Weather</span><span class="app-port">:3001</span></div>
+        <div class="app-controls"><span class="pill pill-green" style="font-size:10px">running</span><button class="btn-ctrl">stop</button></div>
+      </div>
+      <div class="app-row">
+        <div class="app-left"><span class="dot dot-green"></span><span class="app-name">Keno Dashboard</span><span class="app-port">:3002</span></div>
+        <div class="app-controls"><span class="pill pill-green" style="font-size:10px">running</span><button class="btn-ctrl">stop</button></div>
+      </div>
+      <div class="app-row">
+        <div class="app-left"><span class="dot dot-green"></span><span class="app-name">Hub API</span><span class="app-port">:8085</span></div>
+        <div class="app-controls"><span class="pill pill-green" style="font-size:10px">running</span><button class="btn-ctrl">—</button></div>
+      </div>
+      <div class="app-row">
+        <div class="app-left"><span class="dot dot-red"></span><span class="app-name">Notes Processor</span><span class="app-port">:3004</span></div>
+        <div class="app-controls"><span class="pill pill-danger" style="font-size:10px">stopped</span><button class="btn-ctrl">start</button></div>
+      </div>
+      <div class="app-row">
+        <div class="app-left"><span class="dot dot-gray"></span><span class="app-name">Agentic OS API</span><span class="app-port">:8090</span></div>
+        <div class="app-controls"><span class="pill pill-muted" style="font-size:10px">idle</span><button class="btn-ctrl">start</button></div>
+      </div>
+      <div class="app-row">
+        <div class="app-left"><span class="dot dot-green"></span><span class="app-name">Brain2 Sync</span><span class="app-port">:3006</span></div>
+        <div class="app-controls"><span class="pill pill-green" style="font-size:10px">running</span><button class="btn-ctrl">stop</button></div>
+      </div>
+    </div>
+
+    <!-- Approval Queue + Terminal Strip -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><i class="ti ti-hand-stop"></i> Approval queue</div>
+        <span class="pill pill-warn" style="font-size:10px">1 pending</span>
+      </div>
+      <div class="approval-row">
+        <div>
+          <div style="font-weight:500; font-size:12px">archive_raw_notes</div>
+          <div style="font-size:11px; color:var(--text-tertiary)">process-raw-notes · delete 6 originals from 00 - Raw</div>
+        </div>
+        <div class="approve-btns">
+          <button class="btn-approve">allow</button>
+          <button class="btn-reject">deny</button>
+        </div>
+      </div>
+      <div style="margin-top:12px; padding-top:12px; border-top: 0.5px solid var(--border);">
+        <div class="panel-title" style="margin-bottom:8px"><i class="ti ti-terminal"></i> iTerm2 pane</div>
+        <div class="terminal-strip">
+          <span style="color:#5DCAA5">✓</span> keno-sync: 20 draws imported<br>
+          <span style="color:#5DCAA5">✓</span> sp_insert_draw: 0 errors<br>
+          <span style="color:#EF9F27">⚠</span> draw #3478704: no results (skipped)<br>
+          <span style="color:#888">→</span> next run in 1h 58m_
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</body>
+</html>

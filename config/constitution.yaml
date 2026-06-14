@@ -1,0 +1,39 @@
+# Agent Constitution — hard constraints evaluated before every tool call.
+# This file is enforcement, not advisory. Violations halt execution.
+constitution:
+  version: "1.0"
+
+  # Action types that always require explicit user approval (CLI prompt)
+  approval_required:
+    - action: file_delete
+      description: "Any permanent file deletion"
+    - action: email_send
+      description: "Sending any email"
+    - action: api_call_external
+      description: "Any outbound call to an external API (non-localhost)"
+    - action: git_push
+      description: "Pushing code to a remote"
+    - action: hub_stop_all
+      description: "Stopping all Codehome apps"
+
+  # Hard limits
+  limits:
+    max_tokens_per_workflow: 100000
+    max_cost_per_day_usd: 5.00
+    max_files_written_per_run: 50
+
+  # Blocked operations — never execute regardless of context.
+  # Matched as substrings against any shell command or file operation payload.
+  blocked:
+    - "rm -rf"
+    - "DROP TABLE"
+    - "mkfs"
+    - "> /dev/"
+
+  # Filesystem boundary — agents may only write inside these roots
+  write_allowlist:
+    - "/Users/tonyseneadza/Brain2"
+    - "/Users/tonyseneadza/Codehome/AgenticOS/data"
+    - "/Users/tonyseneadza/Codehome/"
+
+

@@ -1,0 +1,11 @@
+langgraph>=0.4
+mcp>=1.0
+langgraph-checkpoint-sqlite>=2.0
+anthropic>=0.40
+pyyaml>=6.0
+requests>=2.31
+fastapi>=0.110
+uvicorn[standard]>=0.29
+psutil>=5.9
+mysql-connector-python>=8.0
+iterm2>=2.6              # Phase 4 FR-08: iTerm2 Python API (macOS only)
