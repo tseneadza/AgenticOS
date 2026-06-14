@@ -1,3 +1,44 @@
+## 2026-06-14 — Phase 10 (NF-3) sub-phase 10c — Agent dashboard + authoring 🟡 IN PROGRESS
+
+Put a GUI on the 10a/10b governing agent and added self-authoring tools. Code
+complete + sandbox-verified; live model run is Mac-pending (needs LangChain +
+Ollama/cloud).
+
+- **FR-56 Agent dashboard (`gui/desktop/src/App.jsx`):** new `AgentView`
+  registered as the seventh entry in the Phase 8 `VIEWS` registry — a **nav link,
+  not an always-on panel** (GUI principle #7). It renders a chat transcript +
+  input, a streamed assistant reply, a per-step tool-call trace
+  (`TOOL_CALL_START`/`END` chips with running/done/error state), inline approval
+  prompts (Allow/Deny → `POST /api/approvals/{id}` via `ctx.decide`), and a
+  model-selector dropdown (`GET /api/agent/models` + `POST /api/agent/model`)
+  with a clear local/cloud badge. The transcript is reconstructed from the shared
+  AG-UI feed by filtering `run_id`s that start with `agt-`; messages are sent via
+  `POST /api/agent/chat`, whose output streams back over that same feed (no
+  second socket). Native View-menu entry **⌘7** added in `src-tauri/src/lib.rs`
+  via the existing generic `view-<id>` pattern; styles in `App.css`.
+- **FR-58 Escalate to cloud:** a per-conversation toggle in the agent bar that
+  switches the active model between the first available local and cloud model
+  mid-session (same model endpoints). The ReAct loop guard
+  (`MAX_TOOL_ITERATIONS`) already lives in `agent_runner.py`.
+- **FR-59 Authoring (`agents/governor.py`):** two new guarded tools —
+  `write_config(filename, content)` (writes a YAML file into the OS config dir)
+  and `edit_workflow(name, definition_json)` (adds/replaces one workflow in
+  `config/workflows.yaml`, preserving the rest). Both go through
+  `_authoring_write`: (1) `constitution.guard_write_path()` allowlist check →
+  `BLOCKED`; (2) blocked-substring guard; (3) **always require human approval,
+  regardless of the active model or the `approval_required` config**; (4) YAML is
+  validated *before* approval is requested; (5) a timestamped `.bak` backup of any
+  existing file is written before saving. Registered in `build_tools` (now 9
+  tools) and described in `GOVERNOR_SYSTEM`.
+- **Verified (sandbox):** `py_compile` clean on the changed `.py`; esbuild JSX
+  transform of `App.jsx` bundles clean; 23 unit checks pass for the authoring
+  tools (new-write/backup/overwrite, invalid-YAML rejection without approval,
+  denial blocks write, bad extension, outside-allowlist `BLOCKED`,
+  `edit_workflow` preserve + backup + bad-input paths, `build_tools` exposes both
+  new tools = 9 total). **Mac-pending:** live agent turn driving the dashboard
+  (stream + tool trace + approval round-trip), and an authoring round-trip
+  (`write_config`/`edit_workflow` approval → backup → save) end-to-end.
+
 ## 2026-06-14 — Phase 10 (NF-3) sub-phase 10b — governing agent (headless) 🟡 IN PROGRESS
 
 Built the governing agent + HITL + streaming endpoint on top of 10a. Headless

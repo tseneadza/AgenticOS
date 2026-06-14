@@ -80,12 +80,13 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     let v_scripts   = MenuItem::with_id(app, "view-scripts",    "Scripts",           true, Some("cmd+4"))?;
     let v_zsh       = MenuItem::with_id(app, "view-zsh-config", "Zsh Config Editor", true, Some("cmd+5"))?;
     let v_obsidian  = MenuItem::with_id(app, "view-obsidian",   "Obsidian Viewer",   true, Some("cmd+6"))?;
+    let v_agent     = MenuItem::with_id(app, "view-agent",      "Agent",             true, Some("cmd+7"))?;
     let sep_view    = PredefinedMenuItem::separator(app)?;
     let v_reload    = MenuItem::with_id(app, "view-reload",     "Reload",            true, Some("cmd+r"))?;
 
     let view_menu = Submenu::with_items(
         app, "View", true,
-        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_obsidian, &sep_view, &v_reload],
+        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_obsidian, &v_agent, &sep_view, &v_reload],
     )?;
 
     // ---- Agent ----

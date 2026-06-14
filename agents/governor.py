@@ -17,9 +17,19 @@ lazily constructs the LangGraph ReAct agent on top of it.
 from __future__ import annotations
 
 import json
+import shutil
+import time
+from pathlib import Path
 from typing import Any, Callable
 
-from core.constitution import ApprovalRequired, Constitution, ConstitutionViolation
+import yaml
+
+from core.constitution import (
+    CONFIG_DIR,
+    ApprovalRequired,
+    Constitution,
+    ConstitutionViolation,
+)
 
 # Type of the human-approval bridge: (action_type, description) -> decision str.
 ApprovalFn = Callable[[str, str], str]
@@ -39,7 +49,11 @@ GOVERNOR_SYSTEM = (
     "- list_tools / call_tool: dynamic Hub app + script tools.\n"
     "- list_agent_actions: in-process agent capabilities (reachable via "
     "workflows).\n"
-    "- get_status / get_runs: read-only system + run history.\n\n"
+    "- get_status / get_runs: read-only system + run history.\n"
+    "- write_config / edit_workflow: AUTHORING — change the OS's own YAML config "
+    "and workflow definitions. These always require human approval and write a "
+    "timestamped backup first. Use them only when the user explicitly asks to "
+    "change configuration or a workflow; describe the change before making it.\n\n"
     "Safety rules (enforced by the runtime, not optional):\n"
     "- Side-effectful actions pass a Constitution guard. Some require human "
     "approval; if a tool returns 'DENIED' or 'BLOCKED', respect it and explain "
@@ -204,6 +218,94 @@ class GovernorToolbox:
 
         return self._guarded("api_call_external", f"{name} {args_json}", _do)
 
+    # ------------------------------------------------------------- authoring
+    # FR-59: the agent can change the OS's own config + workflows. Authoring is
+    # the highest-risk capability, so it is guarded harder than ordinary tools:
+    #   1. the target must be inside the Constitution write_allowlist;
+    #   2. the payload is checked against the blocked-substring list;
+    #   3. it ALWAYS requires human approval — independent of the active model
+    #      and independent of whether the action_type is in approval_required;
+    #   4. the YAML is validated *before* asking for approval; and
+    #   5. a timestamped backup of any existing file is written before the save.
+    def _authoring_write(
+        self, action_type: str, target: Path, payload: str, write_fn: Callable[[], Any]
+    ) -> str:
+        try:
+            self.constitution.guard_write_path(target)
+        except ConstitutionViolation as cv:
+            return f"BLOCKED: {cv}"
+        try:
+            self.constitution.guard(action_type, payload)
+        except ConstitutionViolation as cv:
+            return f"BLOCKED: {cv}"
+        except ApprovalRequired:
+            # Authoring requires approval below regardless; ignore the config gate.
+            pass
+        decision = self.approval_fn(action_type, f"write {target.name}")
+        if not _is_yes(decision):
+            return f"DENIED: human did not approve '{action_type}' on {target}."
+        return self._run(action_type, str(target), write_fn)
+
+    def _save_with_backup(self, target: Path, text: str) -> dict:
+        """Write ``text`` to ``target``, backing up any existing file first."""
+        backup: str | None = None
+        if target.exists():
+            ts = time.strftime("%Y%m%d-%H%M%S")
+            backup_path = target.with_name(f"{target.name}.{ts}.bak")
+            shutil.copy2(target, backup_path)
+            backup = str(backup_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        return {"wrote": str(target), "backup": backup, "bytes": len(text)}
+
+    def write_config(self, filename: str, content: str) -> str:
+        """Create or overwrite a YAML config file in the OS config dir.
+
+        ``filename`` is a bare name (path components are stripped) ending in
+        .yaml/.yml. Requires approval; validates YAML; backs up the old file.
+        """
+        name = Path(filename).name
+        if not name.endswith((".yaml", ".yml")):
+            return "ERROR: config filename must end in .yaml or .yml"
+        try:
+            yaml.safe_load(content)
+        except yaml.YAMLError as exc:
+            return f"ERROR: invalid YAML, not written: {exc}"
+        target = CONFIG_DIR / name
+        return self._authoring_write(
+            "config_write", target, content, lambda: self._save_with_backup(target, content)
+        )
+
+    def edit_workflow(self, name: str, definition_json: str) -> str:
+        """Add or replace one workflow in config/workflows.yaml.
+
+        ``definition_json`` is a JSON object for the workflow body (description,
+        steps, schedule, …). Requires approval; validates the merged YAML; backs
+        up workflows.yaml. Other workflows are preserved untouched.
+        """
+        try:
+            definition = json.loads(definition_json)
+            if not isinstance(definition, dict):
+                raise ValueError("definition_json must be a JSON object")
+        except (ValueError, json.JSONDecodeError) as exc:
+            return f"ERROR: invalid definition_json: {exc}"
+        target = CONFIG_DIR / "workflows.yaml"
+        try:
+            doc = yaml.safe_load(target.read_text()) if target.exists() else {}
+            doc = doc or {}
+        except (OSError, yaml.YAMLError) as exc:
+            return f"ERROR: cannot read workflows.yaml: {exc}"
+        workflows = doc.setdefault("workflows", {})
+        workflows[name] = definition
+        new_text = yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+        try:
+            yaml.safe_load(new_text)  # round-trip validation before approval
+        except yaml.YAMLError as exc:
+            return f"ERROR: serialized workflows.yaml invalid, not written: {exc}"
+        return self._authoring_write(
+            "workflow_edit", target, new_text, lambda: self._save_with_backup(target, new_text)
+        )
+
 
 # --------------------------------------------------------------------------- #
 # LangGraph ReAct agent construction (lazy — keeps this module import-light)
@@ -220,6 +322,8 @@ def build_tools(toolbox: GovernorToolbox) -> list:
         (toolbox.get_runs, "get_runs"),
         (toolbox.run_workflow, "run_workflow"),
         (toolbox.call_tool, "call_tool"),
+        (toolbox.write_config, "write_config"),
+        (toolbox.edit_workflow, "edit_workflow"),
     ]
     return [
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())

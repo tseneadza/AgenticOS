@@ -1,8 +1,10 @@
 # Continuation note
 
-**2026-06-14: Phase 10 (NF-3) sub-phases 10a + 10b — CODE COMPLETE; Mac
-runtime smoke test pending.** Started NF-3 ahead of NF-4 per explicit request;
-10a/10b depend only on NF-2 (done), not NF-4, so they're safe to land first.
+**2026-06-14: Phase 10 (NF-3) sub-phases 10a + 10b + 10c — CODE COMPLETE; Mac
+runtime + GUI smoke tests pending.** Started NF-3 ahead of NF-4 per explicit
+request; 10a–c depend only on NF-2 (done), not NF-4, so they're safe to land
+first. **This session built 10c (FR-56/58/59) unattended; changes are unpushed
+— commit/push from the Mac (commands at the bottom).**
 
 ## Current state
 
@@ -10,8 +12,9 @@ Roadmap phases 1–8 ✅. NF-3 / Phase 10 in progress:
 - **10a (FR-52/53) code complete** — unified LLM layer + model registry.
 - **10b (FR-54/55/57) code complete** — governing agent + Constitution/HITL +
   `/ws/agent` streaming (headless; no GUI). See CHANGELOG 2026-06-14.
-- **10c (FR-56/58/59) not started** — Agent chat dashboard + safeguards +
-  authoring.
+- **10c (FR-56/58/59) code complete** — Agent chat dashboard + escalate toggle +
+  authoring tools. Sandbox-verified (py_compile + JSX transform + 23 unit
+  checks). See CHANGELOG 2026-06-14 and the 10c section below.
 
 ## 10a — what landed (headless; no GUI)
 
@@ -88,20 +91,59 @@ invalid-args + unknown-workflow guards, `build_tools` → 7 named+described tool
 `agent_runner` imports clean. `py_compile` clean on all changed files. (Full
 `app.py` import needs the Mac venv: fastapi + macOS-only `iterm2`.)
 
-### ▶ NEXT: 10c (FR-56/58/59) — Agent dashboard + safeguards + authoring
-- **FR-56:** new "Agent" dashboard in the Phase 8 `VIEWS` registry
-  (`gui/desktop/src/App.jsx`): chat transcript + input wired to `/ws/agent`,
-  streamed assistant output, visible tool-call/step trace, inline approval
-  prompts (resolve via `/api/approvals/{id}`), **model-selector dropdown**
-  (`/api/agent/models` + `POST /api/agent/model`) with a clear local/cloud
-  indicator. Add the View-menu entry in `src-tauri/src/lib.rs` (⌘7).
-- **FR-58:** per-conversation "escalate to cloud" toggle (switch model mid-
-  session); loop guard already in `agent_runner` (`MAX_TOOL_ITERATIONS`).
-- **FR-59 (authoring):** add guarded `write_config`/`edit_workflow` tools —
-  `guard_write_path()` (allowlist) **and** approval gate, timestamped backup +
-  YAML validation before save; authoring defaults to requiring approval
-  regardless of model. Full spec: `docs/PRD-addendum-phases-8-10.md` (Phase 10)
-  + `docs/feature-backlog.md` (NF-3).
+## 10c — what landed (this session)
+
+Files touched:
+- `gui/desktop/src/App.jsx` — new `AgentView` + `buildTranscript()` +
+  `ModelBadge`; appended `{ id: "agent", label: "Agent", component: AgentView,
+  badge: "approvals" }` as the **last** `VIEWS` entry (keeps ⌘1–6 stable, Agent =
+  ⌘7). Transcript is reconstructed from the shared AG-UI `feed` by filtering
+  `run_id` prefix `agt-` (no second WebSocket); messages sent via `POST
+  /api/agent/chat`. Inline approvals come from `ctx.approvals` filtered to
+  `workflow` starting `agent:` and resolve via `ctx.decide`. Model dropdown +
+  local/cloud badge + escalate checkbox drive `GET /api/agent/models` / `POST
+  /api/agent/model`.
+- `gui/desktop/src-tauri/src/lib.rs` — added `view-agent` MenuItem (`cmd+7`) to
+  the View submenu; the existing generic `view-<id>` handler routes it.
+- `gui/desktop/src/App.css` — `.agent-*` / `.trace-chip` styles (chat bubbles,
+  tool-trace chips, inline approval, model bar, input).
+- `agents/governor.py` — FR-59 authoring: `write_config` + `edit_workflow` +
+  `_authoring_write` + `_save_with_backup`; added to `build_tools` (9 tools) and
+  `GOVERNOR_SYSTEM`; new imports (`shutil`, `time`, `Path`, `yaml`, `CONFIG_DIR`).
+
+### Verified (sandbox)
+`/tmp`-style test (`outputs/test_governor_10c.py`, 23 checks): write_config
+new-write (no backup) / overwrite (timestamped `.bak` with prior content) /
+invalid-YAML-rejected-before-approval / denial-blocks-write / bad-extension /
+outside-allowlist `BLOCKED` (no approval asked); edit_workflow preserve-others +
+backup + bad-`definition_json`; `build_tools` exposes `write_config` +
+`edit_workflow` = 9 tools. `py_compile` clean on all changed `.py`. esbuild JSX
+transform of `App.jsx` bundles clean (56.6 kb). **No live model call** (sandbox
+can't run the Mac `.venv`/Ollama).
+
+### ▶ Pending on the Mac (before signing off 10c)
+1. `npm run tauri dev` (or build) → open **Agent** view (⌘7). Confirm: model
+   dropdown lists cloud + installed locals with the active one selected and a
+   local/cloud badge; the **escalate-to-cloud** checkbox flips active model and
+   the badge updates.
+2. Send a message → confirm the user bubble + streamed assistant reply appear and
+   the tool-trace chips show running→done as `TOOL_CALL_*` events arrive.
+3. Trigger a tool that needs approval (e.g. ask it to `call_tool`) → confirm the
+   inline Allow/Deny prompt appears in the transcript and resolving it (via the
+   shared `/api/approvals/{id}`) resumes the turn.
+4. **Authoring round-trip:** ask the agent to change a config value or add a tiny
+   workflow → confirm it always asks for approval, writes a `*.bak` backup next
+   to the edited file, and the saved YAML is valid. Confirm a write outside the
+   `write_allowlist` returns `BLOCKED`.
+5. `ruff check agents/governor.py gui/sidecar/app.py` (App.jsx/lib.rs unchanged
+   contracts).
+
+### ▶ NEXT (after 10c sign-off)
+- **Phase 10 final sign-off:** run the Mac smoke items for 10a + 10b (see those
+  sections above) and 10c (just above), then flip Phase 10 to ✅ in
+  `docs/roadmap.md`.
+- **NF-4 / Phase 9 (Hub absorption, FR-60–64):** still needs a detailed
+  drill-down before build (see Deferred). This is the next build target.
 
 ### Deferred / still open
 - NF-4 / Phase 9 (Hub absorption, FR-60–64) still needs a detailed drill-down
@@ -111,14 +153,26 @@ invalid-args + unknown-workflow guards, `build_tools` → 7 named+described tool
 
 ### Repo note
 This workspace can edit files but **cannot push** (sandbox has no GitHub creds;
-the mount blocks the file-deletes git needs). After edits, commit + push from
-the Mac: `git add -A && git commit -m "…" && git push`. This session's changes
-are unpushed.
+the mount blocks the file-deletes git needs). This session's 10c changes are
+unpushed. Commit + push from the Mac:
+
+```sh
+cd ~/Codehome/AgenticOS
+git add -A
+git commit -m "Phase 10 (NF-3) 10c: Agent dashboard (FR-56) + escalate toggle (FR-58) + authoring tools (FR-59)"
+git push
+```
+
+(Optional sandbox artifact: `outputs/test_governor_10c.py` is the 10c authoring
+unit test; copy it into `tests/` if you want it tracked.)
 
 ## Key files
 - `core/llm.py` — unified LLM layer (10a)
-- `agents/governor.py` — governing agent + guarded toolbox (10b)
+- `agents/governor.py` — governing agent + guarded toolbox + authoring (10b/10c)
 - `gui/sidecar/agent_runner.py` — agent turn runner + HITL bridge + streaming (10b)
+- `gui/desktop/src/App.jsx` — `AgentView` Agent dashboard (10c, FR-56/58)
+- `gui/desktop/src/App.css` — `.agent-*` chat styles (10c)
+- `gui/desktop/src-tauri/src/lib.rs` — ⌘7 Agent View-menu entry (10c)
 - `docs/roadmap.md` — phase status (Phase 10 🟡 10a)
 - `docs/CHANGELOG.md` — 2026-06-14 10a entry
 - `docs/PRD-addendum-phases-8-10.md` / `docs/feature-backlog.md` — NF-3 spec

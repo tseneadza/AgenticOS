@@ -937,8 +937,215 @@ function ComingSoon({ dashboard }) {
   );
 }
 
+// ================================================================ Agent (FR-56/58)
+// Conversational governing-agent dashboard. New interaction paradigm → its own
+// nav link (GUI principle #7), never an always-on panel. The transcript is
+// reconstructed from the shared AG-UI feed (every agent turn has a run_id that
+// starts with "agt-"); messages are sent via POST /api/agent/chat, whose output
+// streams back over that same feed. Inline approvals reuse the shared approval
+// queue (ctx.approvals + ctx.decide); the model selector + escalate toggle drive
+// GET/POST /api/agent/model[s].
+const AGENT_SESSION = "gui";
+
+// Fold the flat event feed into ordered agent turns.
+function buildTranscript(feed) {
+  const turns = [];
+  const byId = {};
+  for (const e of feed) {
+    const id = e.run_id;
+    if (!id || !String(id).startsWith("agt-")) continue;
+    let t = byId[id];
+    switch (e.type) {
+      case "RUN_STARTED":
+        if (!t) {
+          t = { id, model: e.model, user: e.message || "", text: "",
+                tools: [], status: "running", cost: 0, tokens: 0 };
+          byId[id] = t;
+          turns.push(t);
+        }
+        break;
+      case "TEXT_MESSAGE_CONTENT":
+        if (t && e.delta) t.text += e.delta;
+        break;
+      case "TOOL_CALL_START":
+        if (t) t.tools.push({ tool: e.tool, payload: e.payload || "", status: "running" });
+        break;
+      case "TOOL_CALL_END":
+        if (t) {
+          const tc = [...t.tools].reverse().find((x) => x.tool === e.tool && x.status === "running");
+          if (tc) tc.status = e.ok ? "done" : "error";
+        }
+        break;
+      case "RUN_FINISHED":
+        if (t) {
+          t.status = "completed";
+          if (!t.text && e.text) t.text = e.text;
+          t.cost = e.cost_usd || 0;
+          t.tokens = e.tokens_used || 0;
+        }
+        break;
+      case "RUN_ERROR":
+        if (t) { t.status = "failed"; t.error = e.error; }
+        break;
+      default:
+        break;
+    }
+  }
+  return turns;
+}
+
+function ModelBadge({ isLocal }) {
+  return (
+    <span className={`agent-badge ${isLocal ? "local" : "cloud"}`}>
+      {isLocal ? "● local" : "☁ cloud"}
+    </span>
+  );
+}
+
+function AgentView({ ctx }) {
+  const { feed, approvals, decide } = ctx;
+  const [models, setModels] = useState(null);
+  const [active, setActive] = useState(null);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef(null);
+
+  const loadModels = useCallback(() => {
+    get("/api/agent/models")
+      .then((d) => { setModels(d); setActive(d.active); })
+      .catch(() => setModels({ models: [], active: null, ollama_up: false }));
+  }, []);
+  useEffect(() => { loadModels(); }, [loadModels]);
+
+  const transcript = useMemo(() => buildTranscript(feed), [feed]);
+  // Pending approvals raised by an agent turn (workflow tag "agent:<session>").
+  const agentApprovals = approvals.filter(
+    (a) => String(a.workflow || "").startsWith("agent:")
+  );
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [transcript, agentApprovals.length]);
+
+  // RUN_STARTED echoes the user message, so clear the "sending" flag once the
+  // turn shows up in the transcript.
+  const lastTurn = transcript[transcript.length - 1];
+  useEffect(() => {
+    if (sending && lastTurn && lastTurn.status === "running") setSending(false);
+  }, [sending, lastTurn]);
+
+  const activeInfo = models?.models?.find((m) => m.id === active);
+  const activeIsLocal = !!activeInfo?.is_local;
+
+  const selectModel = (id) => {
+    setActive(id); // optimistic
+    post("/api/agent/model", { id }).then(loadModels).catch(loadModels);
+  };
+
+  // FR-58: per-conversation escalate-to-cloud. On → switch to the first
+  // available cloud model; off → back to the first available local model.
+  const toggleEscalate = () => {
+    const list = models?.models || [];
+    const target = activeIsLocal
+      ? list.find((m) => !m.is_local && m.available) || list.find((m) => !m.is_local)
+      : list.find((m) => m.is_local && m.available) || list.find((m) => m.is_local);
+    if (target) selectModel(target.id);
+  };
+
+  const send = () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setInput("");
+    post("/api/agent/chat", { message: text, session_id: AGENT_SESSION })
+      .catch(() => setSending(false));
+  };
+  const onKey = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  };
+
+  return (
+    <div className="agent-view">
+      <div className="agent-bar">
+        <div className="agent-model">
+          <label>Model</label>
+          <select value={active || ""} onChange={(e) => selectModel(e.target.value)}>
+            {(models?.models || []).map((m) => (
+              <option key={m.id} value={m.id} disabled={!m.available}>
+                {m.label}{m.available ? "" : m.is_local ? " (not installed)" : " (no API key)"}
+              </option>
+            ))}
+          </select>
+          {activeInfo && <ModelBadge isLocal={activeIsLocal} />}
+        </div>
+        <label className="agent-escalate" title="Switch this conversation between a local and a cloud model">
+          <input type="checkbox" checked={!activeIsLocal} onChange={toggleEscalate} />
+          Escalate to cloud
+        </label>
+      </div>
+
+      <div className="agent-scroll" ref={scrollRef}>
+        {transcript.length === 0 && (
+          <Empty msg="Ask the governing agent to operate the OS — e.g. “list my workflows”." />
+        )}
+        {transcript.map((t) => (
+          <div className="agent-turn" key={t.id}>
+            {t.user && <div className="agent-msg user"><div className="bubble">{t.user}</div></div>}
+            {t.tools.length > 0 && (
+              <div className="agent-trace">
+                {t.tools.map((tc, i) => (
+                  <span className={`trace-chip ${tc.status}`} key={i} title={tc.payload}>
+                    <span className="trace-dot" />{tc.tool}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="agent-msg assistant">
+              <div className="bubble">
+                {t.text || (t.status === "running" ? <span className="typing">…</span> : "")}
+                {t.status === "failed" && <span className="agent-err">error: {t.error}</span>}
+              </div>
+              {t.status === "completed" && (
+                <div className="agent-meta">
+                  {t.tokens ? `${t.tokens.toLocaleString()} tok` : "0 tok"}
+                  {t.cost > 0 ? ` · $${t.cost.toFixed(4)}` : " · $0"}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {agentApprovals.map((a) => (
+          <div className="agent-approval" key={a.approval_id}>
+            <div className="q">{a.question}</div>
+            <div className="agent-approval-actions">
+              <button className="btn approve" onClick={() => decide(a.approval_id, "approve")}>✓ Allow</button>
+              <button className="btn deny" onClick={() => decide(a.approval_id, "deny")}>✕ Deny</button>
+            </div>
+          </div>
+        ))}
+        {sending && <div className="agent-sending">sending…</div>}
+      </div>
+
+      <div className="agent-input">
+        <textarea
+          rows={2}
+          placeholder="Message the governing agent…  (Enter to send, Shift+Enter for newline)"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKey}
+        />
+        <button className="btn approve send-btn" disabled={!input.trim() || sending} onClick={send}>
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Dashboard registry (FR-46) — single source of truth for the nav + native menu.
-// Order locked 2026-06-14: SysOps, Workflows, then the four placeholders.
+// Order locked 2026-06-14: SysOps, Workflows, the four placeholders, then Agent
+// (⌘7). Agent is appended last so the ⌘1–6 bindings stay stable.
 const VIEWS = [
   { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
   { id: "workflows", label: "Workflows", component: WorkflowsDashboard },
@@ -950,6 +1157,7 @@ const VIEWS = [
     purpose: "Edit and version your zsh configuration with safe rollbacks." },
   { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
     purpose: "Read and search the Brain2 Obsidian vault inside the app." },
+  { id: "agent", label: "Agent", component: AgentView, badge: "approvals" },
 ];
 
 const VIEW_KEY = "agentic-os.activeView";

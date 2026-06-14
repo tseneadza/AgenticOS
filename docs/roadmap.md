@@ -148,12 +148,13 @@ retired. **Needs a detailed drill-down before build.**
 | Scripts dashboard live | FR-63 |
 | Hub `:8085` decommissioned | FR-64 |
 
-## Phase 10 — Governing Agent (NF-3) 🟡 IN PROGRESS (10a)
+## Phase 10 — Governing Agent (NF-3) 🟡 IN PROGRESS (10a/10b/10c)
 
 LangChain governing agent on a new unified LLM layer; local-default + cloud
-escalation; run **and** author under Constitution enforcement. Sub-phase
-**10a (LLM layer) ✅ + 10b (agent + HITL + streaming) ✅ code complete, Mac
-smoke test pending** → 10c (chat dashboard).
+escalation; run **and** author under Constitution enforcement. Sub-phases
+**10a (LLM layer) ✅ + 10b (agent + HITL + streaming) ✅ + 10c (Agent dashboard
++ escalate toggle + authoring) ✅ code complete** — all Mac smoke tests pending
+(live model run + GUI smoke).
 
 | Acceptance criterion | FR |
 |----------------------|----|
@@ -161,8 +162,8 @@ smoke test pending** → 10c (chat dashboard).
 | Model registry + runtime switch (cloud + local) ✅ | FR-53 |
 | Governing agent runs workflows + calls registry tools ✅ | FR-54 |
 | Constitution guard + HITL approvals on agent calls ✅ | FR-55 |
-| "Agent" chat dashboard with model selector + local/cloud indicator | FR-56 |
+| "Agent" chat dashboard with model selector + local/cloud indicator ✅ (⌘7; Mac GUI smoke pending) | FR-56 |
 | Agent streaming endpoint `/ws/agent` ✅ | FR-57 |
-| Small-local-model safeguards (loop guard, escalate toggle) 🟡 (loop guard) | FR-58 |
-| Authoring with approval + config backup + YAML validation | FR-59 |
+| Small-local-model safeguards (loop guard ✅ + escalate toggle ✅) | FR-58 |
+| Authoring with approval + config backup + YAML validation ✅ | FR-59 |
 
