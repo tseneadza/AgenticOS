@@ -5,14 +5,52 @@ workflows against the Brain2 vault, the Codehome Hub, and the Claude API —
 config-driven, constitution-constrained, with human-in-the-loop approval
 gates. Product spec: `[[Agentic OS - Full PRD]]` in Brain2.
 
-**Status: Phase 2 (Tauri Desktop GUI) core complete** — see
+**Status: Phases 1–8 complete** — core orchestration, Tauri desktop GUI,
+navigation shell, shell integration, Brain2 workflow agents, Codehome Hub
+integration, expandable panels + native menu bar, and the dashboard
+workspace are all in place. Next up is Phase 9 (Hub absorption). See
 [docs/roadmap.md](docs/roadmap.md).
 
 ```bash
-# Desktop GUI (Phase 2)
-./.venv/bin/python -m gui.sidecar          # FastAPI sidecar on :5130
+# Desktop app (sidecar auto-starts with the app)
 cd gui/desktop && npm run tauri dev        # Tauri v2 + React app
+# or run the sidecar on its own:
+./.venv/bin/python -m gui.sidecar          # FastAPI sidecar on :5130
 ```
+
+## What it does
+
+- **Orchestrates workflows** — LangGraph executes multi-step, config-driven
+  workflows (`config/workflows.yaml`) with SQLite checkpointing for
+  recoverable runs.
+- **Stays within guardrails** — every action passes through the Constitution
+  (`config/constitution.yaml`): blocked-pattern checks, allowlists, and
+  token/cost budgets, with human-in-the-loop approval gates.
+- **Works your Brain2 vault** — agents process raw notes, research learning
+  notes, compose the morning briefing, and write session reports back into
+  the vault.
+- **Manages Codehome apps** — wraps the Codehome Hub as MCP tools and surfaces
+  each app's agent-capability manifest and scripts.
+- **Integrates with your shell** — a ZSH plugin streams directory changes and
+  command context over a Unix socket; iTerm2 panes can be driven (and
+  policy-checked) by agents.
+- **Ships a desktop dashboard** — a Tauri v2 + React app with a registry of
+  named dashboards, expandable panels, an interactive PTY terminal, and a
+  native macOS menu bar.
+
+## Desktop dashboards
+
+The sidebar is a registry of dashboards (adding one = adding a registry entry;
+the native View menu and ⌘1–6 shortcuts stay in sync):
+
+- **SysOps** — the system-operations grid: System Health, Agent Activity, Keno
+  Telemetry, Codehome Hub, Approval Queue, and an interactive Terminal. Any
+  panel double-clicks to expand to the full frame.
+- **Workflows** — a combined dashboard linking a Workflows panel (definitions,
+  each expandable to its recent runs) and the live AG-UI Events feed. Click a
+  workflow, run, or event to highlight the matching events across both panels.
+- **Web News · Scripts · Zsh Config Editor · Obsidian Viewer** — registered
+  placeholders ("Coming Soon") that map to upcoming epics.
 
 ## Quick start
 
@@ -41,6 +79,15 @@ agentic-os run <name>  # execute a workflow
 agentic-os history     # recent runs
 ```
 
+### Scheduling
+
+`core/scheduler.py` generates and installs launchd plists (with an in-process
+APScheduler fallback) so workflows like the morning briefing run on a schedule:
+
+```bash
+./.venv/bin/python -m core.scheduler install
+```
+
 ## Documentation
 
 Full docs live in [`docs/`](docs/README.md):
@@ -61,12 +108,14 @@ behavior, with a dated [CHANGELOG.md](docs/CHANGELOG.md) entry. Details in
 ```
 main.py                  CLI entry point
 config/                  workflows.yaml · constitution.yaml · settings.yaml
-core/                    orchestrator · constitution enforcement · memory
-agents/                  brain2 · hub · briefing
-tools/                   guarded filesystem ops (MCP stdio client)
-gui/sidecar/             FastAPI sidecar — panels API + AG-UI WebSocket (:5130)
-gui/desktop/             Tauri v2 + React dashboard (six panels)
+core/                    orchestrator · constitution · memory · scheduler · socket server · tool registry
+agents/                  brain2 · briefing · hub · shell
+tools/                   guarded filesystem (MCP client) · hub_mcp · iterm2
+shell/                   agentic-os.plugin.zsh — ZSH integration plugin
+scripts/                 helper scripts (e.g. agentic-gui.sh)
+gui/sidecar/             FastAPI sidecar — panels API, AG-UI WebSocket, PTY terminal (:5130)
+gui/desktop/             Tauri v2 + React app — dashboard registry, expandable panels, native menu
+gui/mockups/             design mockups that informed the GUI
 docs/                    documentation (start at docs/README.md)
 data/                    state.db (gitignored)
-gui/mockups/             design mockups that informed the Phase 2 GUI
 ```
