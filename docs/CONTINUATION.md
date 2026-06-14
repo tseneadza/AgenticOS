@@ -27,10 +27,12 @@ Front-end-only, as specced. Files touched:
 - `gui/desktop/src-tauri/src/lib.rs` — View submenu now lists the six dashboards
   (⌘1–6) + Reload (⌘R); menu handler generic (`view-<id>` → `__agenticOsSetView`).
 
-Verified `App.jsx` with an esbuild JSX transform (clean). **Not yet run:**
-`npm run tauri dev` on the Mac and `cargo check` (sandbox lacks the macOS
-toolchain / GitHub creds). Recommend a quick manual smoke test on the Mac — see
-checklist below.
+Verified `App.jsx` with an esbuild JSX transform (clean). **Ran on the Mac
+2026-06-14:** `npm run tauri dev` compiled cleanly (Rust ~5s incremental) and the
+app launched; the native View menu now reads SysOps, Workflows, Web News,
+Scripts, Zsh Config Editor, Obsidian Viewer (⌘1–6) + Reload — FR-51 confirmed
+live with the sidecar serving real data on :5130. Committed + pushed as
+`ce6fc83` on `origin/main`. Remaining manual UI smoke test below (optional).
 
 ### Smoke test on the Mac
 `cd gui/desktop && npm run tauri dev`, then confirm:
