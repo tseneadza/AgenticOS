@@ -10,6 +10,9 @@ Roadmap phases 1–8 complete (see `docs/roadmap.md`):
 
 - Phases 1–7 ✅ (signed off 2026-06-14)
 - Phase 8 — Dashboard Workspace (NF-2) ✅ (FR-46–51, this session)
+- Root `README.md` refreshed to current state (Phases 1–8, dashboard
+  workspace, corrected layout) — pushed as `ae3e496`. All work on
+  `origin/main`; tree clean.
 
 ## Phase 8 (NF-2) — what landed
 
