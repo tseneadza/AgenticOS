@@ -9,3 +9,8 @@ uvicorn[standard]>=0.29
 psutil>=5.9
 mysql-connector-python>=8.0
 iterm2>=2.6              # Phase 4 FR-08: iTerm2 Python API (macOS only)
+
+# Phase 10 / NF-3 (FR-52): unified LLM provider layer (cloud + local).
+langchain-core>=0.3
+langchain-anthropic>=0.3
+langchain-ollama>=0.2   # talks to a local Ollama service on :11434 (optional)

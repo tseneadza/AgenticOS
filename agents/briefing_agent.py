@@ -1,16 +1,18 @@
 """Briefing agent — composes the morning brief.
 
-Uses the Claude API when ANTHROPIC_API_KEY is set; otherwise falls back to a
-deterministic template so the pipeline can be tested end-to-end without
-spending tokens (controlled by settings.allow_template_fallback).
-Token usage is reported back so the orchestrator can enforce the
-constitution's token budget.
+Routes every model call through the unified LLM provider layer
+(``core/llm.py``, FR-52) so cloud (Anthropic) and local (Ollama) models share
+one entry point, one model registry, and one cost accountant. When the chosen
+model isn't usable (e.g. a cloud model with no ANTHROPIC_API_KEY, or a local
+model with Ollama down), it falls back to a deterministic template so the
+pipeline can be tested end-to-end without spending tokens (controlled by
+settings.allow_template_fallback). Token usage is reported back so the
+orchestrator can enforce the constitution's token budget.
 """
 from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 from pathlib import Path
 
 import yaml
@@ -65,58 +67,40 @@ def compose_brief(state: dict) -> dict:
     vault = state["outputs"]["read_vault"]
     hub = state["outputs"]["check_hub"]
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+    from core import llm
+
+    model_id = llm.resolve(state.get("model", "default"))
+
+    # If the selected model can't run right now (no API key for a cloud model,
+    # or Ollama down for a local one), fall back to the deterministic template.
+    if not llm.is_available(model_id):
         if not CONFIG.get("allow_template_fallback", True):
-            raise RuntimeError("ANTHROPIC_API_KEY not set and template fallback disabled")
+            raise RuntimeError(
+                f"Model '{model_id}' unavailable and template fallback disabled"
+            )
         return {"brief": _template_brief(vault, hub), "tokens_used": 0, "mode": "template"}
 
-    # Daily cost cap gate — checked BEFORE spending (constitution limit)
+    # Daily cost cap gate — checked BEFORE spending (constitution limit).
+    # Local models are priced 0, so this is a no-op for them.
     from core import memory
     from core.constitution import Constitution
 
     Constitution.load().check_cost_budget(memory.cost_today())
 
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=api_key)
-    model_alias = state.get("model", "default")
-    model = CONFIG["models"].get(model_alias, CONFIG["models"]["default"])
-
     context = json.dumps({"vault": vault, "hub": hub}, indent=2)
-    resp = client.messages.create(
-        model=model,
-        max_tokens=1024,
+    result = llm.complete(
+        [{"role": "user", "content": f"Context:\n{context}"}],
         system=_SYSTEM,
-        messages=[{"role": "user", "content": f"Context:\n{context}"}],
+        model=model_id,
+        max_tokens=1024,
     )
-    brief = "".join(block.text for block in resp.content if block.type == "text")
-    tokens = resp.usage.input_tokens + resp.usage.output_tokens
-    cost = _cost_usd(model, resp.usage.input_tokens, resp.usage.output_tokens)
     return {
-        "brief": brief,
-        "tokens_used": tokens,
-        "cost_usd": cost,
-        "mode": "claude",
-        "model": model,
+        "brief": result.text,
+        "tokens_used": result.tokens_used,
+        "cost_usd": result.cost_usd,
+        "mode": result.provider,  # "anthropic" | "ollama"
+        "model": result.model,
     }
-
-
-def _cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Cost from the settings pricing table (USD per MTok).
-
-    Unknown models fall back to the most expensive listed rates so the cap
-    errs conservative rather than undercounting.
-    """
-    pricing = CONFIG.get("pricing", {})
-    if not pricing:
-        return 0.0
-    rates = pricing.get(model) or max(
-        pricing.values(), key=lambda r: r["input"] + r["output"]
-    )
-    return round(
-        input_tokens * rates["input"] / 1e6 + output_tokens * rates["output"] / 1e6, 6
-    )
 
 
 ACTIONS = {"compose_brief": compose_brief}

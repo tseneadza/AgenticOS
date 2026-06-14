@@ -154,6 +154,56 @@ def decide(approval_id: str, body: Decision) -> dict:
     return {"ok": True}
 
 
+# ------------------------------------------------------------- agent models
+# Phase 10 / NF-3 (FR-53): model registry + runtime switch over the unified
+# LLM provider layer (core/llm.py). Lists configured cloud models + locally
+# installed Ollama models; POST switches the active model for later turns.
+@app.get("/api/agent/models")
+def agent_models() -> dict:
+    from core import llm
+
+    return llm.list_models()
+
+
+class ModelSelect(BaseModel):
+    id: str
+
+
+@app.post("/api/agent/model")
+def agent_set_model(body: ModelSelect) -> dict:
+    from core import llm
+
+    try:
+        info = llm.set_active_model(body.id)
+    except KeyError as exc:
+        raise HTTPException(404, f"Unknown model '{body.id}'") from exc
+    return {
+        "active": info.id,
+        "provider": info.provider,
+        "label": info.label,
+        "is_local": info.is_local,
+        "available": llm.is_available(info.id),
+    }
+
+
+# FR-54/57: start a governing-agent turn. Output streams over the AG-UI bus
+# (/ws/agui) and the dedicated /ws/agent feed; this POST is the headless trigger.
+class AgentChat(BaseModel):
+    message: str
+    model: str | None = None
+    session_id: str = "default"
+
+
+@app.post("/api/agent/chat")
+def agent_chat(body: AgentChat) -> dict:
+    from gui.sidecar.agent_runner import agent_runner
+
+    turn_id = agent_runner.start_turn(
+        body.message, model=body.model, session_id=body.session_id
+    )
+    return {"turn_id": turn_id, "session_id": body.session_id}
+
+
 # ------------------------------------------------------------- panels
 @app.get("/api/panels/system")
 def panel_system() -> dict:
@@ -229,6 +279,45 @@ async def agui_stream(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        bus.unsubscribe(q)
+
+
+# --------------------------------------------------------- Governing agent WS
+@app.websocket("/ws/agent")
+async def ws_agent(ws: WebSocket) -> None:
+    """FR-57: governing-agent stream.
+
+    Inbound: ``{"message": str, "model"?: str, "session_id"?: str}`` starts a
+    turn. Outbound: AG-UI events (RUN_STARTED, TEXT_MESSAGE_CONTENT,
+    TOOL_CALL_START/END, APPROVAL_REQUIRED, RUN_FINISHED/RUN_ERROR) for this and
+    other activity, replayed from recent history on connect.
+    """
+    from gui.sidecar.agent_runner import agent_runner
+
+    await ws.accept()
+    for event in bus.history[-50:]:
+        await ws.send_json(event)
+    q = bus.subscribe()
+
+    async def _forward() -> None:
+        while True:
+            await ws.send_json(await q.get())
+
+    forward_task = asyncio.create_task(_forward())
+    try:
+        while True:
+            msg = await ws.receive_json()
+            text = (msg or {}).get("message", "").strip()
+            if text:
+                agent_runner.start_turn(
+                    text,
+                    model=(msg or {}).get("model"),
+                    session_id=(msg or {}).get("session_id", "default"),
+                )
+    except WebSocketDisconnect:
+        pass
+    finally:
+        forward_task.cancel()
         bus.unsubscribe(q)
 
 

@@ -13,9 +13,11 @@ settings:
   # ~/Codehome/hub/docs/PORT_ASSIGNMENTS.md (TR-10).
   sidecar_port: 5130
 
+  # Workflow step aliases → concrete model ids (resolved by core/llm.py).
   models:
     default: "claude-sonnet-4-6"
     fast: "claude-haiku-4-5-20251001"
+    local: "qwen2.5:7b-instruct"
 
   # If ANTHROPIC_API_KEY is not set, briefing falls back to a
   # deterministic template (useful for dry runs / testing).
@@ -23,6 +25,43 @@ settings:
 
   # USD per million tokens — verify against https://www.anthropic.com/pricing
   # Unknown models fall back to the most expensive entry here (conservative).
+  # Local (Ollama) models are priced 0 so they never consume the daily cap.
   pricing:
     claude-sonnet-4-6: {input: 3.00, output: 15.00}
     claude-haiku-4-5-20251001: {input: 1.00, output: 5.00}
+    "qwen2.5:7b-instruct": {input: 0, output: 0}
+    "llama3.1:8b": {input: 0, output: 0}
+
+  # Phase 10 / NF-3 — governing agent + unified LLM layer (FR-52/53).
+  agent:
+    # Active model on sidecar startup. Decision (2026-06-14): local-default,
+    # escalate to cloud one toggle away. Falls back to cloud if Ollama is down.
+    default_model: "qwen2.5:7b-instruct"
+    # Local Ollama service. Optional: if unreachable, only cloud models offered.
+    ollama_base_url: "http://localhost:11434"
+    # Model registry (FR-53). cost_per_mtok 0 ⇒ does not count against the cap.
+    models:
+      - id: "claude-sonnet-4-6"
+        provider: "anthropic"
+        label: "Claude Sonnet 4.6 (cloud)"
+        context_window: 200000
+        supports_tools: true
+        cost_per_mtok: {input: 3.00, output: 15.00}
+      - id: "claude-haiku-4-5-20251001"
+        provider: "anthropic"
+        label: "Claude Haiku 4.5 (cloud)"
+        context_window: 200000
+        supports_tools: true
+        cost_per_mtok: {input: 1.00, output: 5.00}
+      - id: "qwen2.5:7b-instruct"
+        provider: "ollama"
+        label: "Qwen2.5 7B Instruct (local)"
+        context_window: 32768
+        supports_tools: true
+        cost_per_mtok: {input: 0, output: 0}
+      - id: "llama3.1:8b"
+        provider: "ollama"
+        label: "Llama 3.1 8B (local)"
+        context_window: 131072
+        supports_tools: true
+        cost_per_mtok: {input: 0, output: 0}

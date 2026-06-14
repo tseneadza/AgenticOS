@@ -1,3 +1,75 @@
+## 2026-06-14 — Phase 10 (NF-3) sub-phase 10b — governing agent (headless) 🟡 IN PROGRESS
+
+Built the governing agent + HITL + streaming endpoint on top of 10a. Headless
+(no GUI yet — that's 10c). Live agent run is Mac-pending (needs LangChain +
+a model).
+
+- **FR-54 Governing agent (`agents/governor.py`):** `GovernorToolbox` exposes
+  seven guarded tools wrapping existing capability — `list_workflows`,
+  `run_workflow` (via the threaded runner, so it keeps its own step approvals),
+  `list_tools`/`call_tool` (dynamic `tool_registry`), `list_agent_actions`,
+  `get_status`, `get_runs`. `build_agent()` lazily builds a LangGraph
+  `create_react_agent` over `llm.get_chat_model()` + these tools with the
+  `GOVERNOR_SYSTEM` prompt. The toolbox is a plain object (no LangChain at
+  import) so it's fully unit-testable.
+- **FR-55 Constitution + HITL:** all side-effectful tool calls route through
+  `GovernorToolbox._guarded` → `constitution.guard(action_type, payload)`.
+  `ConstitutionViolation` → `BLOCKED:`; `ApprovalRequired` → bridged to a human
+  via an injected `approval_fn`, then re-guarded `approved=True`. `call_tool` is
+  classed as `api_call_external` (approval-required). Per-turn token + cloud-cost
+  budgets enforced after the turn (local = 0).
+- **FR-57 Agent runner + streaming (`gui/sidecar/agent_runner.py`):**
+  session-scoped `AgentRunner` runs each turn on a worker thread and streams
+  `RUN_STARTED` / `TEXT_MESSAGE_CONTENT` / `TOOL_CALL_START`/`END` /
+  `APPROVAL_REQUIRED` / `RUN_FINISHED`/`RUN_ERROR` over the `events.py` bus.
+  Token streaming via `stream_mode="messages"` with an `invoke()` fallback.
+  **HITL is unified with workflows:** agent approvals are parked in the shared
+  `runner.approvals` queue and resolved by the existing `POST /api/approvals/{id}`.
+- **FR-57 endpoints (`gui/sidecar/app.py`):** `POST /api/agent/chat` (headless
+  trigger → `turn_id`) and `WS /ws/agent` (inbound `{message, model?,
+  session_id?}` starts a turn; outbound the AG-UI event stream with history
+  replay).
+- **Verified (sandbox, langgraph installed; no model call):** toolbox
+  guard/deny/block/approve + event hooks, invalid-args + unknown-workflow paths,
+  `build_tools` → 7 named/described StructuredTools, `agent_runner` imports
+  clean, `py_compile` clean on all changed files. **Mac-pending:** live turn via
+  a local model (tool call + approval round-trip over `/ws/agent`); confirm
+  agent approvals appear in `/api/approvals`. Next: **10c** (Agent dashboard).
+
+## 2026-06-14 — Phase 10 (NF-3) sub-phase 10a — unified LLM layer 🟡 IN PROGRESS
+
+Started NF-3 with sub-phase **10a** (foundational, depends only on NF-2 which is
+done — NOT on NF-4). Headless LLM provider layer + model registry; no GUI yet.
+
+- **FR-52 Unified LLM provider layer (`core/llm.py`):** one seam over cloud
+  (Anthropic) + local (Ollama) via LangChain (`ChatAnthropic`/`ChatOllama`,
+  lazy-imported so the module loads without the packages). Model registry
+  (`ModelInfo`), alias→id `resolve()` (`default`/`fast`/`local`), active-model
+  session state (`active_model`/`set_active_model`), `is_available()`
+  (cloud=API key, local=Ollama tag), `cost_usd()` (local priced 0; unknown
+  cloud → most-expensive rate, conservative), and `complete()` returning text +
+  token + cost accounting via `usage_metadata`.
+- **FR-52 briefing refactor:** `agents/briefing_agent.compose_brief` now routes
+  through `core/llm.py` — single LLM entry point. Template fallback now triggers
+  on `llm.is_available(model)` (covers both no-API-key cloud and Ollama-down
+  local), not just a bare API-key check. Removed the agent's local `_cost_usd`
+  (moved to `llm.cost_usd`).
+- **FR-53 Model registry + runtime switch:** `config/settings.yaml > agent`
+  (default_model = local `qwen2.5:7b-instruct`, `ollama_base_url`, model
+  registry of 2 cloud + 2 local with `cost_per_mtok`). Added local pricing
+  entries (0) + a `local` alias. New endpoints in `gui/sidecar/app.py`:
+  `GET /api/agent/models` (cloud + installed Ollama, `active`/`installed`/
+  `available` flags) and `POST /api/agent/model {id}` (sets active model).
+- **Deps:** `langchain-core`, `langchain-anthropic`, `langchain-ollama` added to
+  `requirements.txt` (not yet `pip install`-ed on the Mac venv).
+- **Verified (sandbox, no LangChain needed — lazy):** registry/resolve/cost/
+  active-model/`list_models`/`is_available` + briefing template fallback all
+  pass; `py_compile` clean on all three files.
+- **Pending on the Mac:** `pip install -r requirements.txt`; `ollama serve` +
+  pull `qwen2.5:7b-instruct` & `llama3.1:8b`; register **:11434** in
+  `~/Codehome/hub/docs/PORT_ASSIGNMENTS.md` (TR-10); ruff; live briefing via a
+  local model + `/api/agent/models` smoke test. Next: **10b** (FR-54/55/57).
+
 ## 2026-06-14 — Phase 8 (NF-2) Dashboard Workspace ✅ COMPLETE
 
 - **FR-46 Dashboard registry:** `VIEWS` in `gui/desktop/src/App.jsx` is now the
