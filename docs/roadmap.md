@@ -112,3 +112,56 @@ stdio server without error. Signed off by Tony.
 | Terminal panel is a fully interactive PTY (FR-33 enhanced) | ✅ `terminal.py` async PTY handler; xterm.js frontend; resize frames; oh-my-posh renders correctly |
 | Per-core CPU data in sidecar | ✅ `psutil.cpu_percent(percpu=True)` in `system_health()` |
 
+---
+
+# Planned — Phases 8–10 (priorities locked 2026-06-14)
+
+Next batch from `docs/feature-backlog.md`. Full spec staged in
+`docs/PRD-addendum-phases-8-10.md` (paste into the Brain2 Full PRD). Build order:
+**Phase 8 → 9 → 10.**
+
+## Phase 8 — Dashboard Workspace (NF-2) ✅ COMPLETE (2026-06-14)
+
+Sidebar becomes a registry of dashboards; merge Workflows + Events into one
+linked dashboard; add placeholder dashboards. Front-end-only (no new sidecar
+endpoints; events already carry `run_id` + `workflow`).
+
+| Acceptance criterion | FR | Status |
+|----------------------|----|--------|
+| Registry-driven dashboard list in sidebar | FR-46 | ✅ `VIEWS` registry drives nav + native menu |
+| Dashboard → "SysOps" rename + persisted-view migration | FR-47 | ✅ `dashboard`/`events` → `sysops`/`workflows` shim |
+| Combined Workflows dashboard (Workflows + Events panels); standalone Events removed | FR-48 | ✅ `WorkflowsDashboard` (runs from `/api/runs`) |
+| Bidirectional workflow↔run↔event highlighting | FR-49 | ✅ `selWf`/`selRun` selection + highlight CSS |
+| Placeholders (Web News, Scripts, Zsh Config Editor, Obsidian Viewer) → "Coming Soon" | FR-50 | ✅ shared `ComingSoon` stub |
+| Native menu / shortcuts synced to registry | FR-51 | ✅ ⌘1–6 + generic `view-*` handler in `lib.rs` |
+
+## Phase 9 — Hub Absorption & Decommission (NF-4) 🔲 PLANNED (spec provisional)
+
+AgenticOS natively owns Codehome app management; external Hub on `:8085`
+retired. **Needs a detailed drill-down before build.**
+
+| Acceptance criterion | FR |
+|----------------------|----|
+| Native app registry from `~/Codehome/**/app.json` | FR-60 |
+| Native start/stop/restart/status (no external Hub) | FR-61 |
+| Agent blocks + scripts register natively (tool-registry contract unchanged) | FR-62 |
+| Scripts dashboard live | FR-63 |
+| Hub `:8085` decommissioned | FR-64 |
+
+## Phase 10 — Governing Agent (NF-3) 🔲 PLANNED
+
+LangChain governing agent on a new unified LLM layer; local-default + cloud
+escalation; run **and** author under Constitution enforcement. Sub-phase
+10a (LLM layer) → 10b (agent + HITL) → 10c (chat dashboard).
+
+| Acceptance criterion | FR |
+|----------------------|----|
+| `core/llm.py` serves Anthropic + Ollama; briefing uses it | FR-52 |
+| Model registry + runtime switch (cloud + local) | FR-53 |
+| Governing agent runs workflows + calls registry tools | FR-54 |
+| Constitution guard + HITL approvals on agent calls | FR-55 |
+| "Agent" chat dashboard with model selector + local/cloud indicator | FR-56 |
+| Agent streaming endpoint `/ws/agent` | FR-57 |
+| Small-local-model safeguards (loop guard, escalate toggle) | FR-58 |
+| Authoring with approval + config backup + YAML validation | FR-59 |
+

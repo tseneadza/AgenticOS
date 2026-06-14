@@ -71,15 +71,21 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     let file_menu = Submenu::with_items(app, "File", true, &[&close_window])?;
 
     // ---- View ----
-    let v_dashboard = MenuItem::with_id(app, "view-dashboard", "Dashboard",  true, Some("cmd+1"))?;
-    let v_workflows = MenuItem::with_id(app, "view-workflows", "Workflows",  true, Some("cmd+2"))?;
-    let v_events    = MenuItem::with_id(app, "view-events",    "Events",     true, Some("cmd+3"))?;
+    // Mirrors the JS dashboard registry (VIEWS in App.jsx). Each id is
+    // "view-<registry id>"; the menu handler derives the view id generically,
+    // so adding a dashboard here only needs a matching registry entry.
+    let v_sysops    = MenuItem::with_id(app, "view-sysops",     "SysOps",            true, Some("cmd+1"))?;
+    let v_workflows = MenuItem::with_id(app, "view-workflows",  "Workflows",         true, Some("cmd+2"))?;
+    let v_webnews   = MenuItem::with_id(app, "view-web-news",   "Web News",          true, Some("cmd+3"))?;
+    let v_scripts   = MenuItem::with_id(app, "view-scripts",    "Scripts",           true, Some("cmd+4"))?;
+    let v_zsh       = MenuItem::with_id(app, "view-zsh-config", "Zsh Config Editor", true, Some("cmd+5"))?;
+    let v_obsidian  = MenuItem::with_id(app, "view-obsidian",   "Obsidian Viewer",   true, Some("cmd+6"))?;
     let sep_view    = PredefinedMenuItem::separator(app)?;
-    let v_reload    = MenuItem::with_id(app, "view-reload",    "Reload",     true, Some("cmd+r"))?;
+    let v_reload    = MenuItem::with_id(app, "view-reload",     "Reload",            true, Some("cmd+r"))?;
 
     let view_menu = Submenu::with_items(
         app, "View", true,
-        &[&v_dashboard, &v_workflows, &v_events, &sep_view, &v_reload],
+        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_obsidian, &sep_view, &v_reload],
     )?;
 
     // ---- Agent ----
@@ -122,24 +128,16 @@ pub fn run() {
             app.on_menu_event(|app, event| {
                 let Some(window) = app.get_webview_window("main") else { return };
                 match event.id().as_ref() {
-                    // View navigation — calls the global hook exposed by App.jsx
-                    "view-dashboard" => {
-                        let _ = window.eval(
-                            "window.__agenticOsSetView && window.__agenticOsSetView('dashboard')",
-                        );
-                    }
-                    "view-workflows" => {
-                        let _ = window.eval(
-                            "window.__agenticOsSetView && window.__agenticOsSetView('workflows')",
-                        );
-                    }
-                    "view-events" => {
-                        let _ = window.eval(
-                            "window.__agenticOsSetView && window.__agenticOsSetView('events')",
-                        );
-                    }
                     "view-reload" => {
                         let _ = window.eval("window.location.reload()");
+                    }
+                    // View navigation — any "view-<id>" item maps to the matching
+                    // registry id and calls the hook exposed by App.jsx (FR-51).
+                    id if id.starts_with("view-") => {
+                        let view = &id["view-".len()..];
+                        let _ = window.eval(&format!(
+                            "window.__agenticOsSetView && window.__agenticOsSetView('{view}')",
+                        ));
                     }
                     // Agent quick-actions
                     "agent-morning-briefing" => {

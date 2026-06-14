@@ -376,3 +376,103 @@ td { padding: 3px 6px; border-bottom: 1px solid #2e2e2b; font-family: var(--mono
   padding: 0;
   overflow: hidden;
 }
+
+/* ============================================================
+   Phase 8 (FR-46–51): Dashboard Workspace
+   ============================================================ */
+
+/* ---- Combined Workflows dashboard: two panels filling the frame ---- */
+.wf-grid {
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: minmax(0, 1fr);
+  align-content: stretch;
+}
+.wf-grid .panel { min-height: 0; }
+
+/* ---- Selection bar (FR-49) ---- */
+.sel-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 14px;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg-inset);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+.sel-bar b { color: var(--accent); }
+
+/* ---- Generic run button ---- */
+.run-btn {
+  border: 1px solid var(--border-soft);
+  background: none;
+  color: var(--text);
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.run-btn:hover { border-color: var(--accent); }
+
+/* ---- Workflows panel: clickable rows + run subrows (FR-48/49) ---- */
+.linked-row { cursor: pointer; }
+.linked-row:hover { background: rgba(255,255,255,0.03); }
+.linked-row.selected { background: rgba(217,123,79,0.16); }
+.disclosure {
+  display: inline-block;
+  width: 14px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.run-subrow { cursor: pointer; }
+.run-subrow td { color: var(--text-dim); background: var(--bg-inset); }
+.run-subrow:hover td { background: rgba(255,255,255,0.04); }
+.run-subrow.selected td { background: rgba(217,123,79,0.16); color: var(--text); }
+
+/* ---- Linked events feed (FR-49) ---- */
+.linked-feed .feed-line.linkable { cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+.linked-feed .feed-line.linkable:hover { background: rgba(255,255,255,0.04); }
+.linked-feed .feed-line.hi { background: rgba(217,123,79,0.16); }
+.linked-feed .feed-line.hi b { color: var(--accent); }
+.linked-feed .feed-line.dim { opacity: 0.34; }
+.feed-run { color: var(--accent); font-size: 10px; }
+
+/* ---- Placeholder "Coming Soon" stub (FR-50) ---- */
+.coming-soon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cs-card {
+  text-align: center;
+  max-width: 420px;
+  padding: 32px 28px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+}
+.cs-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.cs-badge {
+  display: inline-block;
+  margin: 12px 0;
+  padding: 3px 12px;
+  border-radius: 12px;
+  background: var(--bg-inset);
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.cs-purpose {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}

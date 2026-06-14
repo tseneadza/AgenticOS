@@ -1,3 +1,42 @@
+## 2026-06-14 — Phase 8 (NF-2) Dashboard Workspace ✅ COMPLETE
+
+- **FR-46 Dashboard registry:** `VIEWS` in `gui/desktop/src/App.jsx` is now the
+  single source of truth (`{id,label,component,badge?,placeholder?,purpose?}`);
+  nav and the native menu derive from it.
+- **FR-47 SysOps rename:** former "Dashboard" 6-panel grid → `SysOpsView`
+  (id `sysops`, keeps the approvals badge). Migration shim on
+  `localStorage["agentic-os.activeView"]`: `dashboard`→`sysops`,
+  `events`→`workflows`, so existing installs don't open to a dead view.
+- **FR-48 Combined Workflows dashboard:** new `WorkflowsDashboard` reuses the
+  Phase 7 `Panel` expand/collapse — a Workflows panel (definitions, each row
+  expandable to recent runs from `/api/runs`, with run button) + an Events panel
+  (the AG-UI feed, each line tagged with `workflow` + short `run_id`). Standalone
+  Events nav entry removed. Front-end-only — no sidecar changes.
+- **FR-49 Bidirectional linking:** `selectedWorkflow`/`selectedRunId` lifted to
+  the dashboard. Click workflow → highlight its events; click run → highlight
+  that run's events; click event → select its run + scroll the matching workflow
+  row into view; clear → unfiltered live feed. Highlight is visual only (no
+  refetch; keys already in `feed`).
+- **FR-50 Placeholders:** Web News, Scripts, Zsh Config Editor, Obsidian Viewer
+  registered, each rendering a shared `ComingSoon` stub (title + purpose).
+- **FR-51 Menu sync:** `src-tauri/src/lib.rs` View submenu lists the six
+  dashboards (⌘1–6) + Reload (⌘R); handler is generic (`view-<id>` → registry id)
+  so future dashboards only need a registry + menu-item pair.
+- Verified: `App.jsx` passes an esbuild JSX transform; new highlight/stub styles
+  added to `App.css`.
+
+## 2026-06-14 — Next batch scoped: priorities locked, PRD staged (Phases 8–10)
+
+- New feature intake captured in `docs/feature-backlog.md` (NF-1…NF-4).
+- **NF-1** (host on GitHub) ✅ done — public repo `tseneadza/AgenticOS`.
+- Priorities **locked**: NF-2 → Phase 8, NF-4 → Phase 9, NF-3 → Phase 10.
+- Detailed specs written for **NF-2** (FR-46–51) and **NF-3** (FR-52–59);
+  **NF-4** (FR-60–64) staged provisionally, pending a detailed drill-down.
+- PRD update **staged** in `docs/PRD-addendum-phases-8-10.md` (paste into the
+  Brain2 Full PRD — vault not accessible from this workspace).
+- `docs/roadmap.md` extended with Planned Phases 8–10. Planning/docs only — no
+  behavior change.
+
 ## 2026-06-14 — Phases 4, 5, 6 signed off ✅ COMPLETE
 
 - **Phase 4 — Shell Integration:** verification checklist passed (ZSH plugin

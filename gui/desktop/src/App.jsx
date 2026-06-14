@@ -1,5 +1,5 @@
 // Agentic OS dashboard — Phase 7 (FR-40–44): expandable panels over Phase 3 nav shell
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./api";
 import "./App.css";
 import "@xterm/xterm/css/xterm.css";
@@ -705,107 +705,251 @@ const Panel = ({ title, children, expanded, onExpand }) => {
 };
 
 // ================================================================ views (FR-38)
-function DashboardView({ ctx }) {
-  const { approvals, refreshKey, decide } = ctx;
+// Shared panel-grid expand/collapse logic (FR-40/41/44). Each multi-panel
+// dashboard calls this with its own storage key so its "expanded panel"
+// persists independently.
+function usePanelGrid(storageKey) {
   const gridRef = useRef(null);
-
-  // FR-44: persist last-expanded panel across restarts
   const [expandedPanel, setExpandedPanel] = useState(
-    () => localStorage.getItem(EXPAND_KEY) || null
+    () => localStorage.getItem(storageKey) || null
   );
-
   const toggle = useCallback((title) => {
     setExpandedPanel((prev) => {
       const next = prev === title ? null : title;
       if (next) {
-        localStorage.setItem(EXPAND_KEY, next);
+        localStorage.setItem(storageKey, next);
         // scroll grid to top so the absolute overlay starts from the visible area
         if (gridRef.current) gridRef.current.scrollTop = 0;
       } else {
-        localStorage.removeItem(EXPAND_KEY);
+        localStorage.removeItem(storageKey);
       }
       return next;
     });
-  }, []);
+  }, [storageKey]);
+  return { gridRef, expandedPanel, toggle };
+}
 
-  const mkPanel = (title, content) => (
-    <Panel
-      key={title}
-      title={title}
-      expanded={expandedPanel === title}
-      onExpand={() => toggle(title)}
-    >
-      {content}
-    </Panel>
-  );
+const mkPanel = (title, content, expandedPanel, toggle) => (
+  <Panel
+    key={title}
+    title={title}
+    expanded={expandedPanel === title}
+    onExpand={() => toggle(title)}
+  >
+    {content}
+  </Panel>
+);
 
+// FR-47: SysOps — the system-operations grid (formerly "Dashboard").
+function SysOpsView({ ctx }) {
+  const { approvals, refreshKey, decide } = ctx;
+  const { gridRef, expandedPanel, toggle } = usePanelGrid(EXPAND_KEY);
   const exp = expandedPanel;
+  const P = (title, content) => mkPanel(title, content, expandedPanel, toggle);
 
   return (
     <div ref={gridRef} className={`grid${exp ? " has-expanded" : ""}`}>
-      {mkPanel("System Health", <SystemHealth expanded={exp === "System Health"} />)}
-      {mkPanel("Agent Activity", <AgentActivity refreshKey={refreshKey} expanded={exp === "Agent Activity"} />)}
-      {mkPanel("Keno Telemetry", <KenoTelemetry expanded={exp === "Keno Telemetry"} />)}
-      {mkPanel("Codehome Hub", <HubPanel expanded={exp === "Codehome Hub"} />)}
-      {mkPanel("Approval Queue", <ApprovalQueue approvals={approvals} onDecide={decide} expanded={exp === "Approval Queue"} />)}
-      {mkPanel("Terminal", <TerminalStrip expanded={exp === "Terminal"} />)}
+      {P("System Health", <SystemHealth expanded={exp === "System Health"} />)}
+      {P("Agent Activity", <AgentActivity refreshKey={refreshKey} expanded={exp === "Agent Activity"} />)}
+      {P("Keno Telemetry", <KenoTelemetry expanded={exp === "Keno Telemetry"} />)}
+      {P("Codehome Hub", <HubPanel expanded={exp === "Codehome Hub"} />)}
+      {P("Approval Queue", <ApprovalQueue approvals={approvals} onDecide={decide} expanded={exp === "Approval Queue"} />)}
+      {P("Terminal", <TerminalStrip expanded={exp === "Terminal"} />)}
     </div>
   );
 }
 
-function WorkflowsView({ ctx }) {
-  const { workflows, runWorkflow, feed } = ctx;
+// FR-48: combined "Workflows" dashboard — Workflows + Events as linked panels.
+const WF_EXPAND_KEY = "agentic-os.wfExpandedPanel";
+const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
+const runDot = (s) =>
+  `dot ${s === "completed" ? "on" : s === "running" ? "warn" : s === "error" ? "err" : "off"}`;
+
+// Workflows panel: definitions, each row expandable to its recent runs (FR-48).
+function WorkflowsPanel({
+  workflows, runs, feed, runWorkflow,
+  selWf, selRun, openWf, onSelectWorkflow, onSelectRun, rowRefs,
+}) {
   const lastRunEvent = (name) =>
-    [...feed].reverse().find((e) => e.workflow === name && (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR" || e.type === "RUN_STARTED"));
-  if (!workflows.length) return <div className="view-pad"><Empty msg="No workflows defined" /></div>;
+    [...feed].reverse().find(
+      (e) => e.workflow === name &&
+        (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR" || e.type === "RUN_STARTED")
+    );
+  const runsByWf = useMemo(() => {
+    const m = {};
+    for (const r of runs) (m[r.workflow] ||= []).push(r);
+    return m;
+  }, [runs]);
+
+  if (!workflows.length) return <Empty msg="No workflows defined" />;
   return (
-    <div className="view-pad">
-      <table>
-        <thead><tr><th>Workflow</th><th>Description</th><th>Last event</th><th></th></tr></thead>
-        <tbody>
-          {workflows.map((w) => {
-            const ev = lastRunEvent(w.name);
-            return (
-              <tr key={w.name}>
-                <td>{w.name}</td>
-                <td style={{ fontFamily: "inherit" }}>{w.description}</td>
+    <table className="linked-table">
+      <thead><tr><th>Workflow</th><th>Last event</th><th></th></tr></thead>
+      <tbody>
+        {workflows.map((w) => {
+          const ev = lastRunEvent(w.name);
+          const wfRuns = runsByWf[w.name] || [];
+          const open = openWf === w.name;
+          return (
+            <Fragment key={w.name}>
+              <tr
+                ref={(el) => { if (rowRefs) rowRefs.current[w.name] = el; }}
+                className={`linked-row${selWf === w.name && !selRun ? " selected" : ""}`}
+                onClick={() => onSelectWorkflow(w.name)}
+              >
+                <td><span className="disclosure">{open ? "▾" : "▸"}</span>{w.name}</td>
                 <td>{ev ? ev.type : "—"}</td>
                 <td style={{ textAlign: "right" }}>
-                  <button className="run-btn" onClick={() => runWorkflow(w.name)}>run</button>
+                  <button
+                    className="run-btn"
+                    onClick={(e) => { e.stopPropagation(); runWorkflow(w.name); }}
+                  >run</button>
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+              {open && wfRuns.length === 0 && (
+                <tr className="run-subrow">
+                  <td colSpan={3} style={{ color: "var(--text-dim)", paddingLeft: 22 }}>no recorded runs</td>
+                </tr>
+              )}
+              {open && wfRuns.map((r) => (
+                <tr
+                  key={r.run_id}
+                  className={`run-subrow${selRun === r.run_id ? " selected" : ""}`}
+                  onClick={(e) => { e.stopPropagation(); onSelectRun(r); }}
+                >
+                  <td style={{ paddingLeft: 22 }}>
+                    <span className={runDot(r.status)} />{shortId(r.run_id)}
+                  </td>
+                  <td>{r.status}</td>
+                  <td style={{ textAlign: "right", color: "var(--text-dim)" }}>
+                    {r.finished_at && r.started_at
+                      ? `${Math.round(r.finished_at - r.started_at)}s`
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+            </Fragment>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
-function EventsView({ ctx }) {
-  const { feed } = ctx;
+// Events panel: the live AG-UI feed, highlight-linked to the selection (FR-49).
+function LinkedEventsPanel({ feed, selWf, selRun, onSelectEvent }) {
   const ref = useRef(null);
+  const hasSel = !!(selWf || selRun);
   useEffect(() => {
-    ref.current?.scrollTo(0, ref.current.scrollHeight);
-  }, [feed]);
-  if (!feed.length) return <div className="view-pad"><Empty msg="No events yet — run a workflow" /></div>;
+    if (!hasSel) ref.current?.scrollTo(0, ref.current.scrollHeight);
+  }, [feed, hasSel]);
+  if (!feed.length) return <Empty msg="No events yet — run a workflow" />;
+  const isHi = (e) => (selRun ? e.run_id === selRun : selWf ? e.workflow === selWf : true);
   return (
-    <div className="view-pad feed-scroll" ref={ref}>
-      {feed.map((e, i) => (
-        <div className="feed-line" key={i}>
-          <b>{e.type}</b> {e.workflow || ""}{e.step ? ` · ${e.step}` : ""}
-          {e.ts ? <span className="feed-ts"> {e.ts}</span> : null}
-        </div>
-      ))}
+    <div className="feed-scroll linked-feed" ref={ref}>
+      {feed.map((e, i) => {
+        const cls = hasSel ? (isHi(e) ? " hi" : " dim") : "";
+        return (
+          <div className={`feed-line linkable${cls}`} key={i} onClick={() => onSelectEvent(e)}>
+            <b>{e.type}</b> {e.workflow || ""}{e.step ? ` · ${e.step}` : ""}
+            {e.run_id ? <span className="feed-run"> {shortId(e.run_id)}</span> : null}
+            {e.ts ? <span className="feed-ts"> {e.ts}</span> : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-// View registry (FR-37)
+function WorkflowsDashboard({ ctx }) {
+  const { workflows, runWorkflow, feed, refreshKey } = ctx;
+  const { gridRef, expandedPanel, toggle } = usePanelGrid(WF_EXPAND_KEY);
+  const [runs, setRuns] = useState([]);
+  const [selWf, setSelWf] = useState(null);
+  const [selRun, setSelRun] = useState(null);
+  const [openWf, setOpenWf] = useState(null);
+  const rowRefs = useRef({});
+
+  // FR-48: recent runs from /api/runs; refresh when a run finishes (refreshKey).
+  useEffect(() => {
+    get("/api/runs?limit=50").then((r) => setRuns(r.runs || [])).catch(() => {});
+  }, [refreshKey]);
+
+  // FR-49: shared selection model.
+  const onSelectWorkflow = (name) => {
+    setSelWf(name);
+    setSelRun(null);
+    setOpenWf((o) => (o === name ? null : name));
+  };
+  const onSelectRun = (r) => { setSelWf(r.workflow); setSelRun(r.run_id); setOpenWf(r.workflow); };
+  const onSelectEvent = (e) => {
+    if (e.run_id) { setSelWf(e.workflow || null); setSelRun(e.run_id); }
+    else if (e.workflow) { setSelWf(e.workflow); setSelRun(null); }
+    if (e.workflow) {
+      setOpenWf(e.workflow);
+      requestAnimationFrame(() =>
+        rowRefs.current[e.workflow]?.scrollIntoView({ block: "nearest" })
+      );
+    }
+  };
+  const clearSel = () => { setSelWf(null); setSelRun(null); };
+
+  const exp = expandedPanel;
+  const selLabel = selRun ? `run ${shortId(selRun)}` : selWf || null;
+
+  const wfPanel = (
+    <WorkflowsPanel
+      workflows={workflows} runs={runs} feed={feed} runWorkflow={runWorkflow}
+      selWf={selWf} selRun={selRun} openWf={openWf}
+      onSelectWorkflow={onSelectWorkflow} onSelectRun={onSelectRun} rowRefs={rowRefs}
+    />
+  );
+  const evPanel = (
+    <LinkedEventsPanel feed={feed} selWf={selWf} selRun={selRun} onSelectEvent={onSelectEvent} />
+  );
+
+  return (
+    <>
+      {selLabel && (
+        <div className="sel-bar">
+          <span>selection: <b>{selLabel}</b></span>
+          <button className="btn" onClick={clearSel}>clear</button>
+        </div>
+      )}
+      <div ref={gridRef} className={`grid wf-grid${exp ? " has-expanded" : ""}`}>
+        {mkPanel("Workflows", wfPanel, expandedPanel, toggle)}
+        {mkPanel("Events", evPanel, expandedPanel, toggle)}
+      </div>
+    </>
+  );
+}
+
+// FR-50: shared "Coming Soon" stub for placeholder dashboards.
+function ComingSoon({ dashboard }) {
+  return (
+    <div className="view-pad coming-soon">
+      <div className="cs-card">
+        <div className="cs-title">{dashboard.label}</div>
+        <div className="cs-badge">Coming Soon</div>
+        <p className="cs-purpose">{dashboard.purpose}</p>
+      </div>
+    </div>
+  );
+}
+
+// Dashboard registry (FR-46) — single source of truth for the nav + native menu.
+// Order locked 2026-06-14: SysOps, Workflows, then the four placeholders.
 const VIEWS = [
-  { id: "dashboard", label: "Dashboard", component: DashboardView },
-  { id: "workflows", label: "Workflows", component: WorkflowsView },
-  { id: "events", label: "Events", component: EventsView },
+  { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
+  { id: "workflows", label: "Workflows", component: WorkflowsDashboard },
+  { id: "web-news", label: "Web News", placeholder: true,
+    purpose: "Curated developer & AI news, summarized by the agent." },
+  { id: "scripts", label: "Scripts", placeholder: true,
+    purpose: "Browse and run Codehome scripts — future home of the absorbed Hub (NF-4)." },
+  { id: "zsh-config", label: "Zsh Config Editor", placeholder: true,
+    purpose: "Edit and version your zsh configuration with safe rollbacks." },
+  { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
+    purpose: "Read and search the Brain2 Obsidian vault inside the app." },
 ];
 
 const VIEW_KEY = "agentic-os.activeView";
@@ -818,8 +962,10 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [view, setView] = useState(() => {
-    const saved = localStorage.getItem(VIEW_KEY);
-    return VIEWS.some((v) => v.id === saved) ? saved : "dashboard";
+    let saved = localStorage.getItem(VIEW_KEY);
+    if (saved === "dashboard") saved = "sysops";      // FR-47 migration
+    if (saved === "events") saved = "workflows";      // Events merged into Workflows dashboard
+    return VIEWS.some((v) => v.id === saved) ? saved : "sysops";
   });
 
   const loadApprovals = () =>
@@ -869,7 +1015,7 @@ export default function App() {
               onClick={() => setView(v.id)}
             >
               {v.label}
-              {v.id === "dashboard" && approvals.length > 0 && (
+              {v.badge === "approvals" && approvals.length > 0 && (
                 <span className="nav-badge">{approvals.length}</span>
               )}
             </button>
@@ -887,7 +1033,9 @@ export default function App() {
           <span className="title">{active.label}</span>
           <span className="metric">approvals pending <b>{approvals.length}</b></span>
         </div>
-        <ActiveView ctx={ctx} />
+        {active.placeholder
+          ? <ComingSoon dashboard={active} />
+          : <ActiveView ctx={ctx} />}
         <div className="statusbar">
           <span>AG-UI {connected ? "● live" : "○ reconnecting"}</span>
           <span>events {feed.length}</span>

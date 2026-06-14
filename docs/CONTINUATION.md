@@ -1,31 +1,60 @@
 # Continuation note
 
-**2026-06-14: Phases 1–7 all ✅ COMPLETE and signed off. Next: scoping a new
-batch of features + functionality fixes into the PRD.**
+**2026-06-14: Phase 8 (NF-2) Dashboard Workspace ✅ COMPLETE. Next up:
+NF-4 / Phase 9 (Hub absorption) — but it still needs a detailed drill-down
+before build.**
 
 ## Current state
 
-All seven roadmap phases are complete (see `docs/roadmap.md`):
+Roadmap phases 1–8 complete (see `docs/roadmap.md`):
 
-- Phase 1 — Core Orchestration ✅
-- Phase 2 — Tauri Desktop GUI ✅
-- Phase 3 — GUI Navigation Shell ✅
-- Phase 4 — Shell Integration ✅ (verified/signed off 2026-06-14)
-- Phase 5 — Brain2 Workflow Agents ✅ (verified/signed off 2026-06-14)
-- Phase 6 — Codehome Deep Integration ✅ (verified/signed off 2026-06-14)
-- Phase 7 — Expandable Panels + Menu Bar + Terminal ✅
+- Phases 1–7 ✅ (signed off 2026-06-14)
+- Phase 8 — Dashboard Workspace (NF-2) ✅ (FR-46–51, this session)
 
-## In progress
+## Phase 8 (NF-2) — what landed
 
-Tony is assembling a list of new features and functionality fixes to fold into
-the PRD. Workflow: capture each idea → flesh out requirements → classify
-(net-new feature vs. bug/functionality fix) → slot into the phase structure
-(would be Phase 8+) → update the Full PRD and propose a prioritized build order.
+Front-end-only, as specced. Files touched:
+- `gui/desktop/src/App.jsx` — `VIEWS` registry generalized (FR-46); `usePanelGrid`
+  hook + module-level `mkPanel` extracted from the old `DashboardView`;
+  `DashboardView`→`SysOpsView` (FR-47); new `WorkflowsDashboard` +
+  `WorkflowsPanel` + `LinkedEventsPanel` replacing `WorkflowsView`/`EventsView`
+  (FR-48/49); `ComingSoon` stub + four placeholder entries (FR-50); activeView
+  migration shim (`dashboard`→`sysops`, `events`→`workflows`); nav badge now
+  keyed on `v.badge === "approvals"`; placeholder render branch in the shell.
+- `gui/desktop/src/App.css` — Phase 8 block at end of file (`.wf-grid`,
+  `.sel-bar`, `.run-btn`, `.linked-row`/`.run-subrow`, `.linked-feed`
+  `.hi`/`.dim`, `.coming-soon`/`.cs-*`).
+- `gui/desktop/src-tauri/src/lib.rs` — View submenu now lists the six dashboards
+  (⌘1–6) + Reload (⌘R); menu handler generic (`view-<id>` → `__agenticOsSetView`).
 
-Open item: the Full PRD lives in `Brain2/01 - Projects/PRDs/Agentic OS - Full
-PRD.md`, which is NOT in the mounted folder this session. To update it directly,
-mount Brain2; otherwise PRD changes will be staged as a doc in this repo for
-manual paste-in.
+Verified `App.jsx` with an esbuild JSX transform (clean). **Not yet run:**
+`npm run tauri dev` on the Mac and `cargo check` (sandbox lacks the macOS
+toolchain / GitHub creds). Recommend a quick manual smoke test on the Mac — see
+checklist below.
+
+### Smoke test on the Mac
+`cd gui/desktop && npm run tauri dev`, then confirm:
+- Nav lists: SysOps, Workflows, Web News, Scripts, Zsh Config Editor, Obsidian
+  Viewer; ⌘1–6 + the View menu switch between them.
+- SysOps shows the original six-panel grid; an existing `dashboard`/`events`
+  value in localStorage opens SysOps/Workflows (no dead screen).
+- Workflows dashboard: expand a workflow → its runs load from `/api/runs`; click
+  workflow/run/event → highlighting links both panels; "clear" resets the feed.
+- Each placeholder shows its "Coming Soon" card.
+
+### ▶ NEXT SESSION: NF-4 / Phase 9 (Hub Absorption) — drill-down first
+Still **provisional** (FR-60–64). Firm up the spec before building. Full notes:
+`docs/feature-backlog.md` (NF-4) and `docs/PRD-addendum-phases-8-10.md` (Phase 9).
+
+### Deferred
+- NF-3 (Phase 10) fully specced (FR-52–59); depends on NF-2 (done) + NF-4.
+- Optionally capture further features as new NF-n items in the backlog.
+
+### Repo note
+This workspace can edit files but **cannot push** (sandbox has no GitHub creds;
+the mount blocks the file-deletes git needs). After edits, commit + push from
+the Mac: `git add -A && git commit -m "…" && git push`. Uncommitted doc changes
+from this session are waiting to be pushed.
 
 ## Key files
 
