@@ -542,10 +542,17 @@ td { padding: 3px 6px; border-bottom: 1px solid #2e2e2b; font-family: var(--mono
 
 .agent-sending { color: var(--text-dim); font-size: 12px; padding: 4px 2px; }
 
+.agent-hint {
+  font-size: 12px; line-height: 1.4; color: var(--yellow);
+  background: rgba(217,167,79,0.10); border-top: 1px solid var(--border-soft);
+  padding: 7px 14px;
+}
+
 .agent-input {
   display: flex; gap: 8px; padding: 10px 14px;
   border-top: 2px solid var(--border); background: var(--bg-inset);
 }
+.agent-input textarea:disabled { opacity: 0.55; cursor: not-allowed; }
 .agent-input textarea {
   flex: 1; resize: none; background: var(--bg-panel); color: var(--text);
   border: 1px solid var(--border-soft); border-radius: 6px;

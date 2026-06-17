@@ -1,5 +1,18 @@
 # Continuation note
 
+**2026-06-17 (2): Open issue #3 (small-model tool-calling) + Ollama model-list
+overhaul. `core/llm.py` now auto-starts `ollama serve` when down, dynamically
+discovers ALL pulled models (not just the 4 in settings.yaml), and RAM-gates
+locals (available only if < half of total RAM; oversized → `too_large`, service
+down → `ollama_off`). `GOVERNOR_SYSTEM` rewritten with a tool-first directive +
+request→tool map. Sandbox-tested (stubbed tags/RAM); live `ollama serve` spawn +
+GUI check Mac-pending. Issues #2 + #4 still open.**
+
+**2026-06-17: Open issue #1 (Send-to-unavailable-model UX) FIXED in
+`AgentView` — Send/textarea now gated on the active model's availability, with
+auto-fallback to an available local model and an inline hint. Parse-verified;
+live GUI check Mac-pending. Issues #2–#4 still open.**
+
 **2026-06-14: Phase 10 (NF-3) 10a+10b+10c CODE COMPLETE. Live Mac smoke test
 IN PROGRESS — Agent dashboard runs, model plumbing now works end-to-end. Four
 issues queued for the next session (see "Open issues" below).**
@@ -28,35 +41,64 @@ Roadmap phases 1–8 ✅. NF-3 / Phase 10 in progress:
 
 ### ⚠️ Uncommitted (commit + push from the Mac)
 - `core/llm.py` — OLLAMA_HOST support (FR-52 fix).
-- `docs/CHANGELOG.md` — entry for the OLLAMA_HOST fix.
+- `gui/desktop/src/App.jsx` + `gui/desktop/src/App.css` — issue #1 fix (Send
+  gated on availability + auto-fallback + `.agent-hint`) **and** dynamic model
+  list (size suffixes, reason-aware labels via `modelSuffix`/`modelHint`).
+- `core/llm.py` — Ollama auto-start (`ensure_ollama_running`), dynamic discovery
+  (`discover_ollama`), RAM gating (`total_ram_bytes`/`_ram_fit`), discovered-id
+  resolution in `get_model_info`/`set_active_model`, **and** pinned cloud endpoint
+  (`anthropic_base_url`/`_isolated_anthropic_env`, issue #2).
+- `config/settings.yaml` — new `agent.anthropic_base_url` (issue #2).
+- `gui/sidecar/app.py` — `/api/agent/models?start=` ensures Ollama + re-discovers.
+- `agents/governor.py` — tool-first `GOVERNOR_SYSTEM` (issue #3).
+- `scripts/diagnose_cloud.py` **(new)** — layered diagnostic for issue #2
+  (sys.path fix + ANTHROPIC_BASE_URL warning).
+- `docs/CHANGELOG.md` — entries for the OLLAMA_HOST fix, issue #1, issue #3 +
+  the Ollama model-list overhaul.
 - `docs/CONTINUATION.md`, `docs/roadmap.md`, `README.md` — this checkpoint.
 ```sh
 cd ~/Codehome/AgenticOS && git add -A && \
-  git commit -m "NF-3: honor OLLAMA_HOST in core/llm; Phase 10 smoke-test docs" && git push
+  git commit -m "NF-3: OLLAMA_HOST + Agent Send-guard (#1) + dynamic Ollama discovery/auto-start/RAM gate + tool-first governor (#3)" && git push
 ```
 
 ### ▶ Open issues — START HERE next session (user-confirmed 2026-06-14)
-1. **Send to unavailable model (UX).** The Agent view let a message be sent
-   while the active model was "not installed" (`AgentView` in
-   `gui/desktop/src/App.jsx`: the `<option>` is `disabled` but the active model
-   still defaulted to local-qwen and Send stayed enabled). Fix: disable Send (or
-   auto-fall back to an available model) when `activeInfo.available` is false;
-   surface a hint.
-2. **Cloud "Connection error".** Selecting `claude-sonnet-4-6` returned the
-   anthropic SDK's `APIConnectionError` ("Connection error.") even though the key
-   is present (option not greyed). Not yet diagnosed. Repro/diagnostics:
-   `curl https://api.anthropic.com/v1/models -H "x-api-key: $ANTHROPIC_API_KEY"
-   -H "anthropic-version: 2023-06-01"` and a direct `llm.complete(... model=
-   "claude-sonnet-4-6")` for the full traceback. Suspects: SSL/proxy, or the
-   sidecar env differing from the shell. (Key IS in the sidecar env — the cloud
-   option renders available.)
-3. **Small-model tool-calling reliability (FR-58).** Qwen2.5-7B may answer in
-   prose without invoking tools (e.g. `list_workflows`). Tune `GOVERNOR_SYSTEM`,
-   prefer a stronger local tool-caller, or lean on escalate-to-cloud. Verify the
-   tool-trace chips render when a tool *is* called.
-4. **Commit message mislabel.** 10c landed inside commit `0270602` whose message
-   reads "10a+10b". History understates 10c. Optional: a follow-up empty/marker
-   commit or a note so the log is accurate.
+1. ~~**Send to unavailable model (UX).**~~ ✅ FIXED 2026-06-17. `AgentView`
+   derives `activeAvailable` from `activeInfo.available` and gates the Send
+   button, `send()`, and the textarea on it; auto-falls-back once to the first
+   available local model (never silently to cloud); shows an `.agent-hint`
+   explaining the block. Parse-verified — confirm in the live GUI.
+2. ~~**Cloud "Connection error".**~~ ✅ ROOT-CAUSED + FIXED 2026-06-17.
+   `scripts/diagnose_cloud.py` revealed the shell exports
+   `ANTHROPIC_BASE_URL=http://localhost:12434` + `ANTHROPIC_AUTH_TOKEN=ollama`
+   (to route other tools through local Ollama). `ChatAnthropic()` inherited them,
+   so "cloud" calls hit localhost:12434 → `404 model not found` (or
+   `APIConnectionError` when Ollama was down). curl + httpx to the real API = 200,
+   isolating it to SDK env inheritance. **Fix:** `core/llm.get_chat_model` now
+   pins `base_url` (`anthropic_base_url()`, settable via
+   `settings.agent.anthropic_base_url`) + passes the key explicitly, and builds
+   the client inside `_isolated_anthropic_env()` (strips the two ambient vars for
+   the build, restores after). ▶ Verify on the Mac: in the Agent view pick
+   `claude-sonnet-4-6` and confirm a real reply + non-zero tokens/cost; rerun
+   `scripts/diagnose_cloud.py` — section 6 (`core.llm.complete`) should now
+   succeed.
+3. ~~**Small-model tool-calling reliability (FR-58).**~~ ✅ ADDRESSED 2026-06-17.
+   `GOVERNOR_SYSTEM` now has an explicit "use tools, do not guess" section + a
+   request→tool map (list_workflows / run_workflow / list_tools / get_status /
+   get_runs). Escalate-to-cloud stays as the fallback. ▶ Verify on the Mac: with
+   qwen2.5-7B active, "list my workflows" now emits a `list_workflows` call (and
+   the trace chips render) rather than prose. If still flaky, switch the default
+   local to llama3.1:8b or lean on escalate.
+   **Also shipped alongside (user request):** dynamic Ollama model list +
+   auto-start + RAM gating (see CHANGELOG 2026-06-17). ▶ Mac verification:
+   (a) quit Ollama, open the Agent view → sidecar should spawn `ollama serve` on
+   :12434 and the dropdown should populate within a few seconds;
+   (b) confirm every pulled model appears (not just the 4 configured), with sizes;
+   (c) confirm any model needing ≥ half your RAM shows disabled `(too large)`.
+   Note: a Finder-launched build needs `ollama` on PATH to auto-start — if it
+   isn't, set `agent.ollama_base_url`/keep the menubar app running.
+4. ~~**Commit message mislabel.**~~ ✅ NOTED 2026-06-17. History left unrewritten;
+   a marker note at the top of the 10c CHANGELOG entry records that commit
+   `0270602` = 10a + 10b + 10c (source of truth).
 
 ### Known gotchas (Mac runtime) — learned this session
 - **Stale sidecar on :5130.** If `/api/agent/*` 404s but `/ws/agui` events flow,

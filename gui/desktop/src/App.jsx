@@ -1002,6 +1002,38 @@ function ModelBadge({ isLocal }) {
   );
 }
 
+// Format a model's RAM/disk footprint (bytes → "4.7 GB").
+const gb = (bytes) => (bytes ? `${(bytes / 1e9).toFixed(1)} GB` : "");
+
+// Dropdown suffix: show size for runnable locals, or why one is unavailable.
+function modelSuffix(m) {
+  if (m.available) return m.is_local && m.size_bytes ? ` · ${gb(m.size_bytes)}` : "";
+  switch (m.reason) {
+    case "ollama_off": return " (Ollama offline)";
+    case "not_installed": return " (not installed)";
+    case "too_large": return ` (too large${m.size_bytes ? ` · ${gb(m.size_bytes)}` : ""})`;
+    case "no_api_key": return " (no API key)";
+    default: return m.is_local ? " (unavailable)" : " (no API key)";
+  }
+}
+
+// Inline hint explaining why the active model can't be used, and the fix.
+function modelHint(m) {
+  if (!m) return "The selected model is unavailable — pick another above.";
+  switch (m.reason) {
+    case "ollama_off":
+      return `Ollama isn’t running, so ${m.label} can’t be used — it should start automatically; press Reload, or start Ollama manually.`;
+    case "not_installed":
+      return `${m.label} isn’t installed — pull it with Ollama (\`ollama pull ${m.id}\`), or pick an available model above.`;
+    case "too_large":
+      return `${m.label} needs ${m.size_bytes ? `~${gb(m.size_bytes)}` : "more than half your RAM"} and may not run comfortably on this machine — pick a smaller model, or escalate to cloud.`;
+    case "no_api_key":
+      return `No API key for ${m.label} — set ANTHROPIC_API_KEY, or pick a local model above.`;
+    default:
+      return `${m.label} is unavailable — pick another model above.`;
+  }
+}
+
 function AgentView({ ctx }) {
   const { feed, approvals, decide } = ctx;
   const [models, setModels] = useState(null);
@@ -1036,11 +1068,31 @@ function AgentView({ ctx }) {
 
   const activeInfo = models?.models?.find((m) => m.id === active);
   const activeIsLocal = !!activeInfo?.is_local;
+  // Issue 1: the active model can be unavailable (e.g. the default local model
+  // isn't installed, or a cloud model has no API key). Until models load,
+  // activeInfo is undefined — treat that as "not yet sendable" too.
+  const activeAvailable = !!activeInfo?.available;
 
   const selectModel = (id) => {
     setActive(id); // optimistic
     post("/api/agent/model", { id }).then(loadModels).catch(loadModels);
   };
+
+  // Issue 1: if the active model is unavailable, fall back once to the first
+  // available LOCAL model. We never auto-jump to a cloud model — that could
+  // incur cost silently; instead Send is disabled with a hint and the user can
+  // escalate to cloud explicitly.
+  const fellBackRef = useRef(false);
+  useEffect(() => {
+    if (!models?.models?.length || !active) return;
+    if (activeAvailable) { fellBackRef.current = false; return; }
+    if (fellBackRef.current) return;
+    const fallback = models.models.find((m) => m.is_local && m.available);
+    if (fallback) {
+      fellBackRef.current = true;
+      selectModel(fallback.id);
+    }
+  }, [models, active, activeAvailable]);
 
   // FR-58: per-conversation escalate-to-cloud. On → switch to the first
   // available cloud model; off → back to the first available local model.
@@ -1054,7 +1106,7 @@ function AgentView({ ctx }) {
 
   const send = () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if (!text || sending || !activeAvailable) return;
     setSending(true);
     setInput("");
     post("/api/agent/chat", { message: text, session_id: AGENT_SESSION })
@@ -1072,7 +1124,7 @@ function AgentView({ ctx }) {
           <select value={active || ""} onChange={(e) => selectModel(e.target.value)}>
             {(models?.models || []).map((m) => (
               <option key={m.id} value={m.id} disabled={!m.available}>
-                {m.label}{m.available ? "" : m.is_local ? " (not installed)" : " (no API key)"}
+                {m.label}{modelSuffix(m)}
               </option>
             ))}
           </select>
@@ -1127,15 +1179,27 @@ function AgentView({ ctx }) {
         {sending && <div className="agent-sending">sending…</div>}
       </div>
 
+      {models && active && !activeAvailable && (
+        <div className="agent-hint">{modelHint(activeInfo)}</div>
+      )}
+
       <div className="agent-input">
         <textarea
           rows={2}
-          placeholder="Message the governing agent…  (Enter to send, Shift+Enter for newline)"
+          placeholder={activeAvailable
+            ? "Message the governing agent…  (Enter to send, Shift+Enter for newline)"
+            : "Select an available model to start chatting…"}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKey}
+          disabled={!activeAvailable}
         />
-        <button className="btn approve send-btn" disabled={!input.trim() || sending} onClick={send}>
+        <button
+          className="btn approve send-btn"
+          disabled={!input.trim() || sending || !activeAvailable}
+          title={!activeAvailable ? "The selected model is unavailable" : undefined}
+          onClick={send}
+        >
           Send
         </button>
       </div>

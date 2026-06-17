@@ -19,8 +19,10 @@ Design notes
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -76,7 +78,9 @@ def get_model_info(model_id: str) -> ModelInfo | None:
     for info in registry():
         if info.id == model_id:
             return info
-    return None
+    # Dynamically discovered Ollama models (pulled but not in settings.yaml).
+    with _discovery_lock:
+        return _discovered.get(model_id)
 
 
 def resolve(alias_or_id: str | None) -> str:
@@ -126,11 +130,48 @@ def ollama_base_url() -> str:
     return _agent_cfg().get("ollama_base_url", "http://localhost:11434")
 
 
+# Anthropic cloud endpoint. Pinned (configurable via settings) so the OS's cloud
+# path is self-contained and is NOT hijacked by ambient ``ANTHROPIC_BASE_URL`` /
+# ``ANTHROPIC_AUTH_TOKEN`` a user may export to route OTHER tools (e.g. Claude
+# Code) through a local Ollama/proxy. Without this, "cloud" requests silently
+# hit that local endpoint and 404 / fail to connect (Open issue #2).
+_DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
+
+
+def anthropic_base_url() -> str:
+    return _agent_cfg().get("anthropic_base_url") or _DEFAULT_ANTHROPIC_BASE_URL
+
+
+@contextlib.contextmanager
+def _isolated_anthropic_env():
+    """Temporarily drop ambient ANTHROPIC_* routing vars while constructing the
+    cloud client, so a gateway/Ollama-routing shell can't redirect it. Restored
+    immediately after — other tools and the user's shell are unaffected."""
+    saved: dict[str, str] = {}
+    for var in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"):
+        if var in os.environ:
+            saved[var] = os.environ.pop(var)
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
+
+
 # --------------------------------------------------------------------------- #
 # Active-model session state (single-process sidecar)
 # --------------------------------------------------------------------------- #
 _lock = threading.Lock()
 _active: str | None = None
+
+# Discovered-Ollama state (models pulled on the machine, not just the ones
+# configured in settings.yaml). Populated by discover_ollama(); short TTL cache
+# so repeated list/cost calls don't hammer /api/tags.
+_discovery_lock = threading.Lock()
+_discovered: dict[str, ModelInfo] = {}
+_discovered_meta: dict[str, dict] = {}
+_discovered_at: float = 0.0
+_DISCOVERY_TTL = 5.0  # seconds
+_ollama_proc: Any = None  # handle to a sidecar-spawned `ollama serve`
 
 
 def active_model() -> str:
@@ -145,8 +186,16 @@ def active_model() -> str:
 
 
 def set_active_model(model_id: str) -> ModelInfo:
-    """Set the model used for subsequent turns. Raises KeyError if unknown."""
+    """Set the model used for subsequent turns. Raises KeyError if unknown.
+
+    Unknown ids trigger a forced Ollama re-discovery first, so a model the user
+    just pulled (and selected in the dropdown) can be activated even though it
+    isn't in settings.yaml.
+    """
     info = get_model_info(model_id)
+    if info is None:
+        discover_ollama(force=True)
+        info = get_model_info(model_id)
     if info is None:
         raise KeyError(model_id)
     global _active
@@ -156,70 +205,276 @@ def set_active_model(model_id: str) -> ModelInfo:
 
 
 # --------------------------------------------------------------------------- #
-# Availability
+# Ollama service: liveness, auto-start, discovery
 # --------------------------------------------------------------------------- #
-def _ollama_installed_ids(timeout: float = 1.5) -> set[str]:
-    """Model ids reported by a running Ollama service, or empty if it's down.
+def _ollama_tags(timeout: float = 1.5) -> list[dict] | None:
+    """Raw ``/api/tags`` model list, or ``None`` if the service is unreachable.
 
-    Ollama is treated as optional everywhere: any failure → no local models.
+    ``None`` (down) is distinct from ``[]`` (up but nothing pulled).
     """
     try:
         import requests
 
         resp = requests.get(f"{ollama_base_url()}/api/tags", timeout=timeout)
         resp.raise_for_status()
-        data = resp.json()
+        return resp.json().get("models", []) or []
     except Exception:
-        return set()
-    return {m.get("name", "") for m in data.get("models", []) if m.get("name")}
+        return None
+
+
+def ollama_up(timeout: float = 1.0) -> bool:
+    """True if the Ollama service answers at ``ollama_base_url()``."""
+    return _ollama_tags(timeout) is not None
+
+
+def _ollama_binary() -> str | None:
+    """Locate the ``ollama`` CLI, including the common macOS/Homebrew paths a
+    Finder-launched sidecar may not have on PATH."""
+    import shutil
+
+    found = shutil.which("ollama")
+    if found:
+        return found
+    for cand in ("/opt/homebrew/bin/ollama", "/usr/local/bin/ollama",
+                 "/Applications/Ollama.app/Contents/Resources/ollama"):
+        if Path(cand).exists():
+            return cand
+    return None
+
+
+def ensure_ollama_running(wait: float = 8.0) -> dict:
+    """Best-effort: if Ollama isn't up, spawn ``ollama serve`` and wait for it.
+
+    The child inherits the environment (incl. ``OLLAMA_HOST``) so it binds the
+    same port the sidecar connects to; if ``OLLAMA_HOST`` is unset we derive it
+    from ``ollama_base_url()`` so a custom port still works. Detached via a new
+    session so it outlives the request but never blocks shutdown.
+    """
+    global _ollama_proc
+    if ollama_up():
+        return {"up": True, "started": False}
+
+    binary = _ollama_binary()
+    if not binary:
+        return {"up": False, "started": False,
+                "error": "ollama binary not found on PATH"}
+
+    import subprocess
+    from urllib.parse import urlparse
+
+    env = dict(os.environ)
+    if "OLLAMA_HOST" not in env:
+        parsed = urlparse(ollama_base_url())
+        if parsed.hostname and parsed.port:
+            env["OLLAMA_HOST"] = f"{parsed.hostname}:{parsed.port}"
+    try:
+        _ollama_proc = subprocess.Popen(  # noqa: S603 — known binary, no shell
+            [binary, "serve"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as exc:  # pragma: no cover — platform/permission dependent
+        return {"up": False, "started": False, "error": f"spawn failed: {exc}"}
+
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        if ollama_up():
+            return {"up": True, "started": True}
+        time.sleep(0.3)
+    return {"up": False, "started": True,
+            "error": "ollama did not become ready in time"}
+
+
+def _label_for(name: str, details: dict) -> str:
+    """Human label for a discovered (unconfigured) Ollama model."""
+    params = (details or {}).get("parameter_size")
+    return f"{name} ({params}, local)" if params else f"{name} (local)"
+
+
+def discover_ollama(force: bool = False) -> dict[str, ModelInfo]:
+    """Discover every model the local Ollama has pulled (FR-53, dynamic).
+
+    Curated models (in settings.yaml) keep their nice labels/metadata; any other
+    pulled model is added with sensible defaults (local ⇒ cost 0). Cached for
+    ``_DISCOVERY_TTL`` seconds. Returns a copy of {id -> ModelInfo}.
+    """
+    global _discovered_at
+    now = time.monotonic()
+    with _discovery_lock:
+        fresh = _discovered and (now - _discovered_at) < _DISCOVERY_TTL
+        if not force and fresh:
+            return dict(_discovered)
+
+    tags = _ollama_tags()
+    if tags is None:  # service down — keep last known set, don't wipe it
+        with _discovery_lock:
+            return dict(_discovered)
+
+    curated = {m.id: m for m in registry() if m.provider == "ollama"}
+    disc: dict[str, ModelInfo] = {}
+    meta: dict[str, dict] = {}
+    for tag in tags:
+        name = tag.get("name")
+        if not name:
+            continue
+        details = tag.get("details", {}) or {}
+        disc[name] = curated.get(name) or ModelInfo(
+            id=name,
+            provider="ollama",
+            label=_label_for(name, details),
+            context_window=0,
+            supports_tools=True,
+            cost_per_mtok={"input": 0.0, "output": 0.0},
+        )
+        meta[name] = {"size_bytes": int(tag.get("size", 0) or 0), "details": details}
+
+    with _discovery_lock:
+        _discovered.clear()
+        _discovered.update(disc)
+        _discovered_meta.clear()
+        _discovered_meta.update(meta)
+        _discovered_at = now
+        return dict(_discovered)
+
+
+def _ollama_installed_ids() -> set[str]:
+    """Ids of currently-pulled Ollama models (back-compat helper)."""
+    return set(discover_ollama().keys())
+
+
+# --------------------------------------------------------------------------- #
+# Machine RAM (to flag models too large to run comfortably)
+# --------------------------------------------------------------------------- #
+def total_ram_bytes() -> int:
+    """Total physical RAM in bytes, or 0 if it can't be determined."""
+    try:
+        import psutil
+
+        return int(psutil.virtual_memory().total)
+    except Exception:
+        pass
+    try:
+        import subprocess
+        import sys
+
+        if sys.platform == "darwin":
+            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"])  # noqa: S603,S607
+            return int(out.strip())
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemTotal"):
+                    return int(line.split()[1]) * 1024
+    except Exception:
+        pass
+    return 0
 
 
 def is_available(model_id: str) -> bool:
     """Can we actually run this model right now?
 
     * anthropic → ANTHROPIC_API_KEY must be set.
-    * ollama → the service must be up and the model pulled.
+    * ollama → the service must be up, the model pulled, AND small enough to run
+      comfortably (< half of total RAM) when RAM/size are known.
     """
     info = get_model_info(model_id)
     provider = info.provider if info else "anthropic"
     if provider == "anthropic":
         return bool(os.environ.get("ANTHROPIC_API_KEY"))
     if provider == "ollama":
-        return model_id in _ollama_installed_ids()
+        if model_id not in _ollama_installed_ids():
+            return False
+        size = int(_discovered_meta.get(model_id, {}).get("size_bytes", 0))
+        fits, _ = _ram_fit(size)
+        return fits
     return False
 
 
-def list_models() -> dict:
+def _ram_fit(size_bytes: int) -> tuple[bool, str | None]:
+    """(fits, reason). A model fits if it needs < half of total RAM. Unknown
+    size or unknown RAM ⇒ fits=True (don't over-block on missing data)."""
+    ram = total_ram_bytes()
+    half = ram / 2 if ram else 0
+    if size_bytes <= 0 or half <= 0:
+        return True, None
+    return (size_bytes < half), (None if size_bytes < half else "too_large")
+
+
+def list_models(*, ensure_ollama: bool = True) -> dict:
     """Payload for GET /api/agent/models (FR-53).
 
-    Cloud models are always listed (with ``available`` keyed on the API key);
-    local models are listed from the registry with an ``installed`` flag from
-    Ollama's tag list. If Ollama is down, locals show installed=False.
+    When ``ensure_ollama`` is set (the default for the endpoint), first try to
+    bring the Ollama service up. Then list cloud models (``available`` keyed on
+    the API key) plus every pulled local model — curated ones keep their labels,
+    others are discovered dynamically. Local models are flagged ``fits`` /
+    ``available`` based on whether they need less than half the machine's RAM.
     """
-    installed = _ollama_installed_ids()
+    if ensure_ollama:
+        ensure_ollama_running()
+    discovered = discover_ollama(force=ensure_ollama)
+    up = ollama_up()
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    models: list[dict[str, Any]] = []
+    ram = total_ram_bytes()
+
+    def _row(info: ModelInfo, *, installed: bool, available: bool,
+             size: int, fits: bool, reason: str | None) -> dict:
+        return {
+            "id": info.id,
+            "provider": info.provider,
+            "label": info.label,
+            "context_window": info.context_window,
+            "supports_tools": info.supports_tools,
+            "cost_per_mtok": info.cost_per_mtok,
+            "is_local": info.is_local,
+            "installed": installed,
+            "available": available,
+            "size_bytes": size,
+            "ram_required_bytes": size,
+            "fits": fits,
+            "reason": reason,
+        }
+
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    # 1. registry order: cloud models + curated locals (keeps labels + ⌘ order).
     for info in registry():
+        seen.add(info.id)
         if info.provider == "ollama":
-            inst = info.id in installed
-            available = inst
+            if not up:  # service offline ⇒ no local model is runnable right now
+                out.append(_row(info, installed=False, available=False,
+                                size=0, fits=False, reason="ollama_off"))
+                continue
+            installed = info.id in discovered
+            size = int(_discovered_meta.get(info.id, {}).get("size_bytes", 0))
+            if not installed:
+                out.append(_row(info, installed=False, available=False,
+                                size=0, fits=False, reason="not_installed"))
+            else:
+                fits, reason = _ram_fit(size)
+                out.append(_row(info, installed=True, available=fits,
+                                size=size, fits=fits, reason=reason))
         else:
-            inst = True
-            available = has_key
-        models.append(
-            {
-                "id": info.id,
-                "provider": info.provider,
-                "label": info.label,
-                "context_window": info.context_window,
-                "supports_tools": info.supports_tools,
-                "cost_per_mtok": info.cost_per_mtok,
-                "is_local": info.is_local,
-                "installed": inst,
-                "available": available,
-            }
-        )
-    return {"active": active_model(), "ollama_up": bool(installed), "models": models}
+            out.append(_row(info, installed=True, available=has_key,
+                            size=0, fits=True,
+                            reason=None if has_key else "no_api_key"))
+    # 2. dynamically discovered locals not in the curated registry (only when the
+    #    service is up — a stale cache must not look runnable while Ollama is off).
+    if up:
+        for mid, info in discovered.items():
+            if mid in seen:
+                continue
+            size = int(_discovered_meta.get(mid, {}).get("size_bytes", 0))
+            fits, reason = _ram_fit(size)
+            out.append(_row(info, installed=True, available=fits,
+                            size=size, fits=fits, reason=reason))
+
+    return {
+        "active": active_model(),
+        "ollama_up": up,
+        "ram_total_bytes": ram,
+        "models": out,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -263,7 +518,14 @@ def get_chat_model(model_id: str | None = None, **kwargs: Any):
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
-        return ChatAnthropic(model=model_id, **kwargs)
+        # Pin the endpoint + key explicitly and build with ambient ANTHROPIC_*
+        # routing vars stripped, so the cloud client always reaches the real API
+        # (Open issue #2).
+        kwargs.setdefault("base_url", anthropic_base_url())
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            kwargs.setdefault("api_key", os.environ["ANTHROPIC_API_KEY"])
+        with _isolated_anthropic_env():
+            return ChatAnthropic(model=model_id, **kwargs)
     if provider == "ollama":
         from langchain_ollama import ChatOllama
 

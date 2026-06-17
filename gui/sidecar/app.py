@@ -159,10 +159,12 @@ def decide(approval_id: str, body: Decision) -> dict:
 # LLM provider layer (core/llm.py). Lists configured cloud models + locally
 # installed Ollama models; POST switches the active model for later turns.
 @app.get("/api/agent/models")
-def agent_models() -> dict:
+def agent_models(start: bool = True) -> dict:
+    """List models. By default (`start=true`) tries to bring Ollama up first and
+    re-discovers pulled models; pass `?start=false` for a cheap read-only poll."""
     from core import llm
 
-    return llm.list_models()
+    return llm.list_models(ensure_ollama=start)
 
 
 class ModelSelect(BaseModel):

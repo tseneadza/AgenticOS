@@ -1,3 +1,81 @@
+## 2026-06-17 — Phase 10: fix cloud "Connection error" — pin the Anthropic endpoint (Open issue #2)
+
+- **Root cause (diagnosed, not guessed).** `scripts/diagnose_cloud.py` showed the
+  shell exports `ANTHROPIC_BASE_URL=http://localhost:12434` and
+  `ANTHROPIC_AUTH_TOKEN=ollama` (to route *other* tools through local Ollama).
+  `ChatAnthropic()` was built with no explicit `base_url`/`api_key`, so the
+  anthropic SDK read those ambient vars and sent "cloud" requests to
+  **localhost:12434** — returning `404 model 'claude-sonnet-4-6' not found` when
+  Ollama was up, and the original `APIConnectionError` when it wasn't. Direct
+  curl + httpx to the real API returned 200, isolating it to SDK env inheritance.
+- **Fix (`core/llm.py`).** The cloud path is now self-contained: `get_chat_model`
+  pins `base_url` (new `anthropic_base_url()`, configurable via
+  `settings.agent.anthropic_base_url`, default `https://api.anthropic.com`) and
+  passes `ANTHROPIC_API_KEY` explicitly, and constructs the client inside
+  `_isolated_anthropic_env()` — a context manager that strips
+  `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN` for the duration of the build and
+  restores them immediately after, so Claude Code / the user's shell are
+  unaffected. Local (Ollama) routing is unchanged.
+- **`config/settings.yaml`.** New `agent.anthropic_base_url` (documented; only
+  change to intentionally front Anthropic with a gateway).
+- **`scripts/diagnose_cloud.py`.** Added repo-root to `sys.path` (section 6 now
+  runs) and an explicit warning when `ANTHROPIC_BASE_URL` is set.
+- Verified (sandbox, fake `langchain_anthropic`): client pinned to the official
+  URL with the key passed; ambient `ANTHROPIC_*` stripped during construction and
+  restored after. `py_compile` clean. Live cloud reply in the GUI is Mac-pending.
+
+## 2026-06-17 — Phase 10: dynamic Ollama discovery + auto-start + RAM gating; governor tool-first prompt (Open issue #3)
+
+- **Auto-start Ollama (`core/llm.ensure_ollama_running`).** `GET /api/agent/models`
+  now brings the service up before listing: if `/api/tags` doesn't answer, the
+  sidecar spawns `ollama serve` (detached, new session) and waits up to 8s. The
+  child inherits `OLLAMA_HOST` (and we derive `host:port` from `ollama_base_url()`
+  when it's unset), so it binds the user's custom port (:12434). Binary located
+  via PATH + Homebrew/`/usr/local`/Ollama.app fallbacks. Pass `?start=false` for
+  a cheap read-only poll.
+- **Dynamic model discovery (`discover_ollama`).** The dropdown now reflects
+  *every* pulled model from `/api/tags`, not just the four configured in
+  settings.yaml. Curated models keep their labels/metadata; others are added
+  with sensible defaults (local ⇒ cost 0). 5s TTL cache. `get_model_info` /
+  `set_active_model` resolve discovered ids too (force a re-discover on miss), so
+  a just-pulled model is selectable and runnable; `cost_usd` correctly returns 0
+  for discovered locals (no cloud-price fallback).
+- **RAM comfort gating.** Each local model carries `size_bytes` / `ram_required_bytes`
+  / `fits`; a model is `available` only if it needs **< half** of total RAM
+  (`total_ram_bytes()` via psutil → `sysctl hw.memsize` → `/proc/meminfo`).
+  Oversized models show disabled with a `too_large` reason + size. When Ollama is
+  offline, locals report `ollama_off` (authoritative liveness check, so a stale
+  discovery cache never looks runnable).
+- **Frontend (`App.jsx`/`App.css`).** Dropdown options gain size suffixes and
+  reason-aware labels (`(Ollama offline)` / `(not installed)` / `(too large · N GB)`
+  / `(no API key)`); the issue-#1 hint and auto-fallback reuse the same
+  `available` flag, so they now also respect RAM fit and liveness.
+- **Issue #3 — governor tool-first prompt (`agents/governor.GOVERNOR_SYSTEM`).**
+  Added an explicit "use tools, do not guess" section with a request→tool map, to
+  stop small local models (qwen2.5-7B) answering in prose instead of calling
+  `list_workflows`/`get_status`/etc. Escalate-to-cloud remains the fallback.
+- Verified (sandbox, stubbed `/api/tags` + RAM): RAM gate at 16/8 GB, discovered-
+  model select + zero local cost, Ollama-down → `ollama_off`, `OLLAMA_HOST=:12434`
+  resolution. `py_compile` + `@babel/parser` clean. Live GUI + real `ollama serve`
+  spawn are Mac-pending.
+
+## 2026-06-17 — Phase 10 Agent UX fix: guard Send against unavailable models (Open issue #1)
+
+- `AgentView` (`gui/desktop/src/App.jsx`) no longer lets a message be sent while
+  the active model is unavailable. The default model can be a local model that
+  isn't installed (or a cloud model with no API key); previously the dropdown
+  `<option>` was disabled but the active model still defaulted to it and **Send
+  stayed enabled**, so a click went to a dead model.
+  - Derived `activeAvailable` from `activeInfo.available`; Send button, the
+    `send()` handler, and the textarea are all gated on it (textarea also dims
+    while unavailable).
+  - Auto-fallback: when the active model is unavailable, fall back **once** to
+    the first available *local* model. We never silently jump to a cloud model
+    (would incur cost) — instead the user escalates explicitly.
+  - Surfaced a `.agent-hint` line explaining *why* it's blocked and what to do
+    ("…isn't installed — pull it with Ollama" / "No API key… set ANTHROPIC_API_KEY").
+  - Verified: `@babel/parser` parse of `App.jsx` clean. Live GUI check Mac-pending.
+
 ## 2026-06-14 — NF-3 fix: honor OLLAMA_HOST in the LLM layer
 
 - `core/llm.ollama_base_url()` now reads the standard `OLLAMA_HOST` env var
@@ -8,6 +86,11 @@
   installed" and chat 404'd. Found during the 10c Mac smoke test.
 
 ## 2026-06-14 — Phase 10 (NF-3) sub-phase 10c — Agent dashboard + authoring 🟡 IN PROGRESS
+
+> **Git-history note (Open issue #4):** the 10c code actually landed inside commit
+> `0270602`, whose message reads "10a+10b" — the log understates it. History is
+> left unrewritten; this note is the source of truth: **commit `0270602` = 10a +
+> 10b + 10c.**
 
 Put a GUI on the 10a/10b governing agent and added self-authoring tools. Code
 complete + sandbox-verified; live model run is Mac-pending (needs LangChain +

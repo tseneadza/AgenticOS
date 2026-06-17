@@ -4,6 +4,10 @@ nicknames:
 preferences:
   - friendly_conversation
   - assistance_requests
+  - cheeky_responses
 personality_traits:
   - curious
+  - witty
+  - empathetic
+  - playful
   - helpful

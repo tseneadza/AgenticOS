@@ -39,6 +39,11 @@ settings:
     default_model: "qwen2.5:7b-instruct"
     # Local Ollama service. Optional: if unreachable, only cloud models offered.
     ollama_base_url: "http://localhost:11434"
+    # Cloud (Anthropic) endpoint. Pinned so the OS's cloud path is NOT hijacked
+    # by an ambient ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN the shell exports to
+    # route other tools (e.g. Claude Code) through a local proxy/Ollama. Only
+    # change this if you intentionally front Anthropic with a gateway.
+    anthropic_base_url: "https://api.anthropic.com"
     # Model registry (FR-53). cost_per_mtok 0 ⇒ does not count against the cap.
     models:
       - id: "claude-sonnet-4-6"
