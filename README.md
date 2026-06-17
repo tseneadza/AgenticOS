@@ -5,10 +5,13 @@ workflows against the Brain2 vault, the Codehome Hub, and the Claude API —
 config-driven, constitution-constrained, with human-in-the-loop approval
 gates. Product spec: `[[Agentic OS - Full PRD]]` in Brain2.
 
-**Status: Phases 1–8 complete** — core orchestration, Tauri desktop GUI,
-navigation shell, shell integration, Brain2 workflow agents, Codehome Hub
-integration, expandable panels + native menu bar, and the dashboard
-workspace are all in place. Next up is Phase 9 (Hub absorption). See
+**Status: Phases 1–8 complete; Phase 10 (governing agent) code-complete and in
+live smoke test.** Core orchestration, Tauri desktop GUI, navigation shell,
+shell integration, Brain2 workflow agents, Codehome Hub integration, expandable
+panels + native menu bar, and the dashboard workspace are all in place. Phase 10
+adds a unified local/cloud LLM layer and a natural-language **governing agent**
+that operates the OS through guarded tools (see the Agent dashboard below).
+Phase 9 (Hub absorption) is the remaining build. See
 [docs/roadmap.md](docs/roadmap.md).
 
 ```bash
@@ -37,6 +40,11 @@ cd gui/desktop && npm run tauri dev        # Tauri v2 + React app
 - **Ships a desktop dashboard** — a Tauri v2 + React app with a registry of
   named dashboards, expandable panels, an interactive PTY terminal, and a
   native macOS menu bar.
+- **Talks to a governing agent** — a unified LLM layer (`core/llm.py`) over
+  cloud (Anthropic) and local (Ollama) models with a runtime model switch, and
+  a LangChain/LangGraph governing agent (`agents/governor.py`) that runs
+  workflows, calls registry tools, and authors config — every action routed
+  through the same Constitution guard + approval queue.
 
 ## Desktop dashboards
 
@@ -49,6 +57,9 @@ the native View menu and ⌘1–6 shortcuts stay in sync):
 - **Workflows** — a combined dashboard linking a Workflows panel (definitions,
   each expandable to its recent runs) and the live AG-UI Events feed. Click a
   workflow, run, or event to highlight the matching events across both panels.
+- **Agent** — the governing-agent console (⌘7): chat the agent that operates the
+  OS, with a model selector (local/cloud) + escalate-to-cloud toggle, a live
+  tool-call trace, and inline approval prompts.
 - **Web News · Scripts · Zsh Config Editor · Obsidian Viewer** — registered
   placeholders ("Coming Soon") that map to upcoming epics.
 
@@ -108,12 +119,12 @@ behavior, with a dated [CHANGELOG.md](docs/CHANGELOG.md) entry. Details in
 ```
 main.py                  CLI entry point
 config/                  workflows.yaml · constitution.yaml · settings.yaml
-core/                    orchestrator · constitution · memory · scheduler · socket server · tool registry
-agents/                  brain2 · briefing · hub · shell
+core/                    orchestrator · constitution · memory · scheduler · socket server · tool registry · llm (unified provider layer)
+agents/                  brain2 · briefing · hub · shell · governor (governing agent)
 tools/                   guarded filesystem (MCP client) · hub_mcp · iterm2
 shell/                   agentic-os.plugin.zsh — ZSH integration plugin
 scripts/                 helper scripts (e.g. agentic-gui.sh)
-gui/sidecar/             FastAPI sidecar — panels API, AG-UI WebSocket, PTY terminal (:5130)
+gui/sidecar/             FastAPI sidecar — panels API, AG-UI WebSocket, PTY terminal, agent runner + /ws/agent (:5130)
 gui/desktop/             Tauri v2 + React app — dashboard registry, expandable panels, native menu
 gui/mockups/             design mockups that informed the GUI
 docs/                    documentation (start at docs/README.md)

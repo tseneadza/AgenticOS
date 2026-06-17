@@ -1,3 +1,12 @@
+## 2026-06-14 — NF-3 fix: honor OLLAMA_HOST in the LLM layer
+
+- `core/llm.ollama_base_url()` now reads the standard `OLLAMA_HOST` env var
+  first (normalizing bare-port / host:port / URL forms, mapping 0.0.0.0→
+  127.0.0.1), falling back to `settings.yaml > agent.ollama_base_url` then the
+  :11434 default. Fixes the sidecar looking at :11434 while the user's Ollama
+  (and pulled models) run on a custom port — local models showed "not
+  installed" and chat 404'd. Found during the 10c Mac smoke test.
+
 ## 2026-06-14 — Phase 10 (NF-3) sub-phase 10c — Agent dashboard + authoring 🟡 IN PROGRESS
 
 Put a GUI on the 10a/10b governing agent and added self-authoring tools. Code

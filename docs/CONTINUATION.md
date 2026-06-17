@@ -1,20 +1,75 @@
 # Continuation note
 
-**2026-06-14: Phase 10 (NF-3) sub-phases 10a + 10b + 10c — CODE COMPLETE; Mac
-runtime + GUI smoke tests pending.** Started NF-3 ahead of NF-4 per explicit
-request; 10a–c depend only on NF-2 (done), not NF-4, so they're safe to land
-first. **This session built 10c (FR-56/58/59) unattended; changes are unpushed
-— commit/push from the Mac (commands at the bottom).**
+**2026-06-14: Phase 10 (NF-3) 10a+10b+10c CODE COMPLETE. Live Mac smoke test
+IN PROGRESS — Agent dashboard runs, model plumbing now works end-to-end. Four
+issues queued for the next session (see "Open issues" below).**
 
 ## Current state
 
 Roadmap phases 1–8 ✅. NF-3 / Phase 10 in progress:
 - **10a (FR-52/53) code complete** — unified LLM layer + model registry.
 - **10b (FR-54/55/57) code complete** — governing agent + Constitution/HITL +
-  `/ws/agent` streaming (headless; no GUI). See CHANGELOG 2026-06-14.
+  `/ws/agent` streaming (headless; no GUI).
 - **10c (FR-56/58/59) code complete** — Agent chat dashboard + escalate toggle +
-  authoring tools. Sandbox-verified (py_compile + JSX transform + 23 unit
-  checks). See CHANGELOG 2026-06-14 and the 10c section below.
+  authoring tools.
+
+### Live smoke-test progress (this session)
+- ✅ Sidecar serves the agent endpoints (after clearing a **stale sidecar** that
+  was squatting :5130 — see gotchas). `/api/agent/models` returns the registry.
+- ✅ Model dropdown populates; model switch + escalate-to-cloud toggle work
+  (badge flips local↔cloud).
+- ✅ **Local model path fixed:** sidecar was hitting Ollama on :11434 but the
+  user runs Ollama on **:12434** (`OLLAMA_HOST`). Fixed in `core/llm.py` —
+  `ollama_base_url()` now honors `OLLAMA_HOST`. Verified: sidecar resolves
+  `http://127.0.0.1:12434` and sees `qwen2.5:7b-instruct` + `llama3.1:8b`.
+- ⏳ Still to confirm in the GUI: a clean local reply, the tool-call trace, the
+  approval round-trip, and an authoring round-trip (the 10c "Pending on the Mac"
+  list below).
+
+### ⚠️ Uncommitted (commit + push from the Mac)
+- `core/llm.py` — OLLAMA_HOST support (FR-52 fix).
+- `docs/CHANGELOG.md` — entry for the OLLAMA_HOST fix.
+- `docs/CONTINUATION.md`, `docs/roadmap.md`, `README.md` — this checkpoint.
+```sh
+cd ~/Codehome/AgenticOS && git add -A && \
+  git commit -m "NF-3: honor OLLAMA_HOST in core/llm; Phase 10 smoke-test docs" && git push
+```
+
+### ▶ Open issues — START HERE next session (user-confirmed 2026-06-14)
+1. **Send to unavailable model (UX).** The Agent view let a message be sent
+   while the active model was "not installed" (`AgentView` in
+   `gui/desktop/src/App.jsx`: the `<option>` is `disabled` but the active model
+   still defaulted to local-qwen and Send stayed enabled). Fix: disable Send (or
+   auto-fall back to an available model) when `activeInfo.available` is false;
+   surface a hint.
+2. **Cloud "Connection error".** Selecting `claude-sonnet-4-6` returned the
+   anthropic SDK's `APIConnectionError` ("Connection error.") even though the key
+   is present (option not greyed). Not yet diagnosed. Repro/diagnostics:
+   `curl https://api.anthropic.com/v1/models -H "x-api-key: $ANTHROPIC_API_KEY"
+   -H "anthropic-version: 2023-06-01"` and a direct `llm.complete(... model=
+   "claude-sonnet-4-6")` for the full traceback. Suspects: SSL/proxy, or the
+   sidecar env differing from the shell. (Key IS in the sidecar env — the cloud
+   option renders available.)
+3. **Small-model tool-calling reliability (FR-58).** Qwen2.5-7B may answer in
+   prose without invoking tools (e.g. `list_workflows`). Tune `GOVERNOR_SYSTEM`,
+   prefer a stronger local tool-caller, or lean on escalate-to-cloud. Verify the
+   tool-trace chips render when a tool *is* called.
+4. **Commit message mislabel.** 10c landed inside commit `0270602` whose message
+   reads "10a+10b". History understates 10c. Optional: a follow-up empty/marker
+   commit or a note so the log is accurate.
+
+### Known gotchas (Mac runtime) — learned this session
+- **Stale sidecar on :5130.** If `/api/agent/*` 404s but `/ws/agui` events flow,
+  an old sidecar (pre-agent-endpoints) owns the port and the new one couldn't
+  bind. Quit the app → `pkill -f gui.sidecar` → confirm `lsof -nP -iTCP:5130
+  -sTCP:LISTEN` is empty → relaunch.
+- **Ollama port via `OLLAMA_HOST`.** The user runs Ollama on :12434, not the
+  :11434 default. `core/llm.ollama_base_url()` now honors `OLLAMA_HOST`; the
+  sidecar must be launched from a shell where it's exported (dev mode inherits
+  it; Finder-launched builds do not — then set `agent.ollama_base_url` in
+  `config/settings.yaml`).
+- The Mac `.venv` (Python 3.12) is the project interpreter; the Linux sandbox
+  cannot run it. Verify imports with `./.venv/bin/python`.
 
 ## 10a — what landed (headless; no GUI)
 

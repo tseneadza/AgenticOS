@@ -91,7 +91,38 @@ def resolve(alias_or_id: str | None) -> str:
     return aliases.get(alias_or_id, alias_or_id)
 
 
+def _normalize_ollama_host(value: str) -> str:
+    """Normalize an OLLAMA_HOST-style value into a base URL.
+
+    Accepts a full URL ("http://host:port"), a bare port ("12434"), a host, or
+    "host:port" — the same flexible forms the official ollama client accepts.
+    A 0.0.0.0 bind address is mapped to 127.0.0.1 for connecting.
+    """
+    value = value.strip()
+    if "://" not in value:
+        if value.isdigit():
+            host, port = "127.0.0.1", value
+        elif ":" in value:
+            host, port = value.rsplit(":", 1)
+        else:
+            host, port = value, "11434"
+        host = host or "127.0.0.1"
+        if host == "0.0.0.0":  # noqa: S104 — bind-all → loopback for connecting
+            host = "127.0.0.1"
+        value = f"http://{host}:{port}"
+    return value.rstrip("/")
+
+
 def ollama_base_url() -> str:
+    """Base URL of the local Ollama service.
+
+    Honors the standard ``OLLAMA_HOST`` env var first (so the sidecar aligns
+    with whatever the user's ollama CLI/other tools use), then falls back to
+    settings.yaml > agent.ollama_base_url, then the Ollama default :11434.
+    """
+    env = os.environ.get("OLLAMA_HOST")
+    if env:
+        return _normalize_ollama_host(env)
     return _agent_cfg().get("ollama_base_url", "http://localhost:11434")
 
 

@@ -153,8 +153,11 @@ retired. **Needs a detailed drill-down before build.**
 LangChain governing agent on a new unified LLM layer; local-default + cloud
 escalation; run **and** author under Constitution enforcement. Sub-phases
 **10a (LLM layer) ✅ + 10b (agent + HITL + streaming) ✅ + 10c (Agent dashboard
-+ escalate toggle + authoring) ✅ code complete** — all Mac smoke tests pending
-(live model run + GUI smoke).
++ escalate toggle + authoring) ✅ code complete.** Live Mac smoke test in
+progress (2026-06-14): Agent dashboard runs, model registry + local/cloud
+switch work, local model path confirmed end-to-end (after the `OLLAMA_HOST`
+fix). Remaining GUI confirmations + 4 follow-up issues tracked in
+`docs/CONTINUATION.md`.
 
 | Acceptance criterion | FR |
 |----------------------|----|
