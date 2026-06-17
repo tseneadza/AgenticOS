@@ -1,3 +1,83 @@
+## 2026-06-17 — Soul + Memory: persistent agent identity & memory across sessions/models
+
+- **Idea.** Keep the agent's identity ("Osa") and durable memory intact across
+  sessions AND across whichever model is active (local/cloud), via two
+  human-editable Markdown files.
+- **Files.** `config/Soul.md` (identity: name, who it serves, personality, voice,
+  memory policy — migrated from the old `Soul.yaml`) and `config/Memory.md`
+  (durable facts, append-only Log). The old `.yaml` versions are superseded; the
+  loader prefers `.md` and falls back to `.yaml`, so they're harmless until
+  deleted (the sandbox mount can't unlink them — `rm config/Soul.yaml
+  config/Memory.yaml` on the Mac).
+- **Loader (`core/soul.py`, new).** `load_soul()` / `load_memory()` /
+  `identity_preamble()` compose a Soul+Memory block; `remember(note)` appends a
+  timestamped line to `Memory.md` (append-only, bounded to that file, scaffolds
+  the header on first write). Loaded fresh each turn ⇒ model-agnostic, survives
+  restarts.
+- **Injection (all LLM-facing agents).** `governor.build_agent` prepends the
+  preamble to the system prompt (order: identity → governor system → tool
+  roster), and `briefing_agent.compose_brief` prepends it to its system. The
+  other agents (brain2/shell/hub) are deterministic and don't prompt a model.
+- **Memory writes = automatic (per decision).** New `remember` tool on the
+  governor toolbox (10 tools now) writes memory WITHOUT an approval gate — the
+  agent persists facts on its own; bounded to `Memory.md`.
+- Verified (sandbox): `.md`-preferred resolution, preamble merge, `remember`
+  append + fresh-file scaffold + empty-note rejection + `.yaml` fallback, and the
+  real `Soul.md`/`Memory.md` rendering into the composed governor prompt in the
+  right order. `py_compile` clean. Live GUI check Mac-pending (restart sidecar).
+
+## 2026-06-17 — Phase 10 Agent: "no tools available" — probe + prompt hardening (live-verification finding)
+
+- Reported on a **local** model: the agent said it had no tools. Wiring is
+  actually correct (`build_agent` → `create_react_agent(model, tools,
+  prompt=...)`, which binds tools; `prompt=` is right for the installed
+  langgraph 1.2.4). Prime suspect: a small local model answering in prose / not
+  emitting tool calls.
+- **Diagnose (`scripts/diagnose_tools.py`, new).** Binds the real governor tools
+  to a given model (active by default; takes a model id arg) and prints the
+  decisive signal — whether the BOUND model emits `tool_calls` for "list my
+  workflows" / "system status", whether `bind_tools` attaches, whether Ollama's
+  `/api/show` advertises a `tools` capability for that model, and a full
+  `create_react_agent` turn. Interpretation guide included (local-empty +
+  cloud-emits ⇒ capability gap; empty everywhere / TypeError ⇒ binding/version).
+- **Harden (`agents/governor.py`).** `build_agent` now injects an explicit tool
+  manifest (name + one-line description of every bound tool) into the system
+  prompt via `_prompt_with_tool_manifest`, telling the model it DOES have tools
+  and to never claim otherwise. Helps regardless of the probe outcome; verified
+  formatting in isolation.
+- **Result (probe run on the Mac 2026-06-17):** tools work end-to-end on BOTH
+  models. qwen2.5-7B — Ollama advertises `['completion','tools']`, `bind_tools`
+  attaches, and the bound model emits the correct `tool_calls`
+  (`list_workflows`/`get_status`); the full `create_react_agent` turn invoked
+  `list_workflows` and answered correctly. claude-sonnet-4-6 — identical (also
+  reconfirms the issue-#2 cloud fix). So there is **no capability gap and no
+  binding bug**; the GUI "no tools" was the pre-hardening prose behavior / a
+  stale sidecar. Fix = the injected tool manifest + restarting the sidecar to
+  load it. The optional local-tool fallback / auto-escalate are **not needed**.
+
+## 2026-06-17 — Phase 10 Agent fix: persistent chat transcript (live-verification finding)
+
+- **Bug.** The Agent chat "refreshed" after each Q&A round — earlier turns
+  vanished. Root cause: `AgentView` re-derived the whole transcript every render
+  from the global AG-UI `feed`, which is capped at the last 200 events
+  (`slice(-200)`) and shared with workflow events. Replies stream **one
+  `TEXT_MESSAGE_CONTENT` event per token**, so a single answer overran the window
+  and evicted the `RUN_STARTED` markers that anchor each turn — `buildTranscript`
+  could no longer reconstruct them, so prior turns (and sometimes the current one)
+  disappeared.
+- **Fix (`gui/desktop/src/App.jsx`).** Replaced the per-render `buildTranscript`
+  with an incremental `foldAgentEvent(acc, evt)` that accumulates turns into
+  **persistent App-level state** (`agentTurns`, fed as events arrive in the shared
+  `connectAgui` handler, keyed by the unique `agt-<uuid>` run_id). `AgentView`
+  now reads `ctx.agentTurns` instead of folding the sliced feed. The log is no
+  longer subject to the 200-event cap and now also survives switching away from
+  and back to the Agent view. The global `feed` (Workflows/SysOps) is unchanged.
+- Verified: a 300-token reply across two turns retains **both** turns (user text,
+  tool chips, status, tokens) and ignores non-`agt-` workflow events;
+  `@babel/parser` parse clean. Backend already assigns a unique run_id per turn
+  and includes `message`/`model` in `RUN_STARTED`, so user bubbles + model badge
+  populate.
+
 ## 2026-06-17 — Phase 10: fix cloud "Connection error" — pin the Anthropic endpoint (Open issue #2)
 
 - **Root cause (diagnosed, not guessed).** `scripts/diagnose_cloud.py` showed the

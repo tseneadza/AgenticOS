@@ -87,10 +87,16 @@ def compose_brief(state: dict) -> dict:
 
     Constitution.load().check_cost_budget(memory.cost_today())
 
+    # Carry the persistent agent identity + memory into the brief (FR: Soul/Memory).
+    from core import soul
+
+    preamble = soul.identity_preamble()
+    system = f"{preamble}\n\n{_SYSTEM}" if preamble else _SYSTEM
+
     context = json.dumps({"vault": vault, "hub": hub}, indent=2)
     result = llm.complete(
         [{"role": "user", "content": f"Context:\n{context}"}],
-        system=_SYSTEM,
+        system=system,
         model=model_id,
         max_tokens=1024,
     )

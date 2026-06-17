@@ -947,51 +947,56 @@ function ComingSoon({ dashboard }) {
 // GET/POST /api/agent/model[s].
 const AGENT_SESSION = "gui";
 
-// Fold the flat event feed into ordered agent turns.
-function buildTranscript(feed) {
-  const turns = [];
-  const byId = {};
-  for (const e of feed) {
-    const id = e.run_id;
-    if (!id || !String(id).startsWith("agt-")) continue;
-    let t = byId[id];
-    switch (e.type) {
-      case "RUN_STARTED":
-        if (!t) {
-          t = { id, model: e.model, user: e.message || "", text: "",
-                tools: [], status: "running", cost: 0, tokens: 0 };
-          byId[id] = t;
-          turns.push(t);
-        }
-        break;
-      case "TEXT_MESSAGE_CONTENT":
-        if (t && e.delta) t.text += e.delta;
-        break;
-      case "TOOL_CALL_START":
-        if (t) t.tools.push({ tool: e.tool, payload: e.payload || "", status: "running" });
-        break;
-      case "TOOL_CALL_END":
-        if (t) {
-          const tc = [...t.tools].reverse().find((x) => x.tool === e.tool && x.status === "running");
-          if (tc) tc.status = e.ok ? "done" : "error";
-        }
-        break;
-      case "RUN_FINISHED":
-        if (t) {
-          t.status = "completed";
-          if (!t.text && e.text) t.text = e.text;
-          t.cost = e.cost_usd || 0;
-          t.tokens = e.tokens_used || 0;
-        }
-        break;
-      case "RUN_ERROR":
-        if (t) { t.status = "failed"; t.error = e.error; }
-        break;
-      default:
-        break;
-    }
+// Fold a single AG-UI event into a *persistent* agent-turn accumulator.
+// `acc` = { byId: {}, list: [] }. Returns true if the event changed state.
+//
+// The chat transcript must NOT be re-derived from the global event feed: that
+// feed is capped (slice(-200)) and reply text streams one event per token, so a
+// single answer evicts the RUN_STARTED markers that anchor earlier turns. Folding
+// incrementally into long-lived state keeps the whole session's log intact.
+function foldAgentEvent(acc, e) {
+  const id = e.run_id;
+  if (!id || !String(id).startsWith("agt-")) return false;
+  let t = acc.byId[id];
+  switch (e.type) {
+    case "RUN_STARTED":
+      if (!t) {
+        t = { id, model: e.model, user: e.message || "", text: "",
+              tools: [], status: "running", cost: 0, tokens: 0 };
+        acc.byId[id] = t;
+        acc.list.push(t);
+        return true;
+      }
+      // A late RUN_STARTED (e.g. after reconnect) may carry the user message.
+      if (!t.user && e.message) { t.user = e.message; return true; }
+      return false;
+    case "TEXT_MESSAGE_CONTENT":
+      if (t && e.delta) { t.text += e.delta; return true; }
+      return false;
+    case "TOOL_CALL_START":
+      if (t) { t.tools.push({ tool: e.tool, payload: e.payload || "", status: "running" }); return true; }
+      return false;
+    case "TOOL_CALL_END":
+      if (t) {
+        const tc = [...t.tools].reverse().find((x) => x.tool === e.tool && x.status === "running");
+        if (tc) { tc.status = e.ok ? "done" : "error"; return true; }
+      }
+      return false;
+    case "RUN_FINISHED":
+      if (t) {
+        t.status = "completed";
+        if (!t.text && e.text) t.text = e.text;
+        t.cost = e.cost_usd || 0;
+        t.tokens = e.tokens_used || 0;
+        return true;
+      }
+      return false;
+    case "RUN_ERROR":
+      if (t) { t.status = "failed"; t.error = e.error; return true; }
+      return false;
+    default:
+      return false;
   }
-  return turns;
 }
 
 function ModelBadge({ isLocal }) {
@@ -1035,7 +1040,7 @@ function modelHint(m) {
 }
 
 function AgentView({ ctx }) {
-  const { feed, approvals, decide } = ctx;
+  const { agentTurns, approvals, decide } = ctx;
   const [models, setModels] = useState(null);
   const [active, setActive] = useState(null);
   const [input, setInput] = useState("");
@@ -1049,7 +1054,9 @@ function AgentView({ ctx }) {
   }, []);
   useEffect(() => { loadModels(); }, [loadModels]);
 
-  const transcript = useMemo(() => buildTranscript(feed), [feed]);
+  // Persistent, session-long chat log (accumulated in App, immune to the capped
+  // feed) — never re-derived from the sliced event buffer.
+  const transcript = agentTurns;
   // Pending approvals raised by an agent turn (workflow tag "agent:<session>").
   const agentApprovals = approvals.filter(
     (a) => String(a.workflow || "").startsWith("agent:")
@@ -1231,6 +1238,8 @@ export default function App() {
   const [workflows, setWorkflows] = useState([]);
   const [approvals, setApprovals] = useState([]);
   const [feed, setFeed] = useState([]);
+  const [agentTurns, setAgentTurns] = useState([]);
+  const agentAcc = useRef({ byId: {}, list: [] });
   const [connected, setConnected] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [view, setView] = useState(() => {
@@ -1248,6 +1257,10 @@ export default function App() {
     loadApprovals();
     const stop = connectAgui((evt) => {
       setFeed((f) => [...f.slice(-200), evt]);
+      // Persist the agent chat log independently of the capped feed.
+      if (foldAgentEvent(agentAcc.current, evt)) {
+        setAgentTurns(agentAcc.current.list.slice());
+      }
       if (evt.type === "APPROVAL_REQUIRED" || evt.type === "APPROVAL_RESOLVED") loadApprovals();
       if (evt.type === "RUN_FINISHED" || evt.type === "RUN_ERROR") setRefreshKey((k) => k + 1);
     }, setConnected);
@@ -1272,7 +1285,7 @@ export default function App() {
 
   const active = VIEWS.find((v) => v.id === view) || VIEWS[0];
   const ActiveView = active.component;
-  const ctx = { workflows, approvals, feed, refreshKey, runWorkflow, decide };
+  const ctx = { workflows, approvals, feed, agentTurns, refreshKey, runWorkflow, decide };
 
   return (
     <div className="shell">

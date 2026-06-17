@@ -231,6 +231,17 @@ class GovernorToolbox:
 
         return self._guarded("api_call_external", f"{name} {args_json}", _do)
 
+    # -------------------------------------------------------------- memory
+    def remember(self, note: str) -> str:
+        """Save a durable fact, preference, or piece of context to long-term
+        memory (config/Memory.md) so it survives across sessions and models.
+        Use this whenever you learn something worth remembering about the user
+        or the ongoing work. Append-only; returns a confirmation.
+        """
+        from core import soul
+
+        return soul.remember(note, source="osa")
+
     # ------------------------------------------------------------- authoring
     # FR-59: the agent can change the OS's own config + workflows. Authoring is
     # the highest-risk capability, so it is guarded harder than ordinary tools:
@@ -335,6 +346,7 @@ def build_tools(toolbox: GovernorToolbox) -> list:
         (toolbox.get_runs, "get_runs"),
         (toolbox.run_workflow, "run_workflow"),
         (toolbox.call_tool, "call_tool"),
+        (toolbox.remember, "remember"),
         (toolbox.write_config, "write_config"),
         (toolbox.edit_workflow, "edit_workflow"),
     ]
@@ -342,6 +354,27 @@ def build_tools(toolbox: GovernorToolbox) -> list:
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())
         for fn, name in specs
     ]
+
+
+def _prompt_with_tool_manifest(tools: list) -> str:
+    """GOVERNOR_SYSTEM + an explicit roster of the bound tools.
+
+    Small local models sometimes claim they "have no tools". Naming the tools in
+    the system prompt (in addition to binding them) makes that failure far less
+    likely — the model can see exactly what it can call.
+    """
+    lines = []
+    for t in tools:
+        desc = (getattr(t, "description", "") or "").strip()
+        first = desc.splitlines()[0].strip() if desc else ""
+        lines.append(f"- {t.name}: {first}" if first else f"- {t.name}")
+    roster = "\n".join(lines)
+    return (
+        f"{GOVERNOR_SYSTEM}\n\n"
+        "You DO have tools available — the following are bound and callable RIGHT "
+        "NOW. Never claim you have no tools; call the matching one:\n"
+        f"{roster}"
+    )
 
 
 def build_agent(
@@ -366,6 +399,12 @@ def build_agent(
     toolbox = toolbox or GovernorToolbox(
         constitution=constitution, approval_fn=approval_fn, event_fn=event_fn
     )
+    from core import soul
+
     model = llm.get_chat_model(model_id)
     tools = build_tools(toolbox)
-    return create_react_agent(model, tools, prompt=GOVERNOR_SYSTEM)
+    prompt = _prompt_with_tool_manifest(tools)
+    preamble = soul.identity_preamble()
+    if preamble:
+        prompt = f"{preamble}\n\n{prompt}"
+    return create_react_agent(model, tools, prompt=prompt)
