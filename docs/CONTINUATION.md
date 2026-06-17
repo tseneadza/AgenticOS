@@ -1,5 +1,40 @@
 # Continuation note
 
+**2026-06-17 (3) — LIVE-VERIFICATION SESSION. All four original open issues
+CLOSED, plus several live-found fixes shipped. Three commits this session; two
+pushed, one local pending push.**
+
+- **Issues #1–#4: done.** #1 Send-guard, #2 cloud endpoint pinned
+  (root cause: shell exports `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN` → Ollama),
+  #3 tool-first prompt + dynamic Ollama discovery/auto-start/RAM-gating, #4 git
+  history note. Probe on the Mac confirmed tools bind + emit `tool_calls` on BOTH
+  qwen2.5-7B and claude-sonnet-4-6 (no capability/binding bug).
+- **Live-found fixes shipped this session:**
+  - **Persistent chat transcript** (`App.jsx`) — chat no longer "refreshes" each
+    turn; agent turns accumulate in App state (`agentTurns` via `foldAgentEvent`),
+    immune to the 200-event feed cap + survives view switches. ✅ confirmed live.
+  - **Tool-manifest hardening** (`governor.py`) — injects the bound-tool roster
+    into the system prompt so models never claim "no tools."
+  - **Soul + Memory** (`core/soul.py`, `config/Soul.md`, `config/Memory.md`) —
+    persistent agent identity ("Osa") + durable memory injected into all
+    LLM-facing agents (governor + briefing); `remember` tool (automatic writes).
+    Migrated Soul/Memory from YAML → Markdown.
+  - **`run_shell` tool** (`governor.py` + `constitution.yaml`) — agent runs
+    terminal commands inline in chat; allowlist-auto (read-only), approve-the-rest
+    (HITL), blocked-patterns hard-refused, runs in `~`.
+  - **Native Edit menu** (`src-tauri/src/lib.rs`) — fixes paste/copy/cut in Tauri
+    text inputs (the Agent prompt box).
+  - Diagnostics added: `scripts/diagnose_cloud.py`, `scripts/diagnose_tools.py`.
+- **▶ NEXT SESSION — live checks (need sidecar restart + Tauri rebuild):**
+  1. `run_shell`: ask Osa "what's in my home directory?" (auto-runs `ls`); a
+     mutating command (e.g. "make a folder test") should prompt Allow/Deny.
+  2. Edit menu: Cmd+V into the Agent prompt (needs `npm run tauri dev` rebuild).
+  3. Soul/Memory: "what's your name?" → Osa; "remember that …" → appended to
+     `config/Memory.md`.
+  4. Push the pending local commit (see below), then `rm config/Soul.yaml
+     config/Memory.yaml` leftovers if still present.
+- **Phase 9 (Hub absorption) remains the last roadmap build** — not started.
+
 **2026-06-17 (2): Open issue #3 (small-model tool-calling) + Ollama model-list
 overhaul. `core/llm.py` now auto-starts `ollama serve` when down, dynamically
 discovers ALL pulled models (not just the 4 in settings.yaml), and RAM-gates
@@ -39,27 +74,27 @@ Roadmap phases 1–8 ✅. NF-3 / Phase 10 in progress:
   approval round-trip, and an authoring round-trip (the 10c "Pending on the Mac"
   list below).
 
-### ⚠️ Uncommitted (commit + push from the Mac)
-- `core/llm.py` — OLLAMA_HOST support (FR-52 fix).
-- `gui/desktop/src/App.jsx` + `gui/desktop/src/App.css` — issue #1 fix (Send
-  gated on availability + auto-fallback + `.agent-hint`) **and** dynamic model
-  list (size suffixes, reason-aware labels via `modelSuffix`/`modelHint`).
-- `core/llm.py` — Ollama auto-start (`ensure_ollama_running`), dynamic discovery
-  (`discover_ollama`), RAM gating (`total_ram_bytes`/`_ram_fit`), discovered-id
-  resolution in `get_model_info`/`set_active_model`, **and** pinned cloud endpoint
-  (`anthropic_base_url`/`_isolated_anthropic_env`, issue #2).
-- `config/settings.yaml` — new `agent.anthropic_base_url` (issue #2).
-- `gui/sidecar/app.py` — `/api/agent/models?start=` ensures Ollama + re-discovers.
-- `agents/governor.py` — tool-first `GOVERNOR_SYSTEM` (issue #3).
-- `scripts/diagnose_cloud.py` **(new)** — layered diagnostic for issue #2
-  (sys.path fix + ANTHROPIC_BASE_URL warning).
-- `docs/CHANGELOG.md` — entries for the OLLAMA_HOST fix, issue #1, issue #3 +
-  the Ollama model-list overhaul.
-- `docs/CONTINUATION.md`, `docs/roadmap.md`, `README.md` — this checkpoint.
+### ✅ Commit ledger (this session)
+- **`1fd38dc`** (pushed) — issues #1–#4: Send-guard, Ollama discovery/auto-start/
+  RAM-gating, tool-first governor, cloud endpoint pin, 10c history note.
+- **`00282f3`** (pushed) — persistent chat transcript; tool-manifest hardening +
+  `remember` tool; Soul+Memory identity (`core/soul.py`, `Soul.md`, `Memory.md`);
+  `diagnose_tools.py`; Soul/Memory YAML→Markdown migration.
+- **`a07fa50`** (⚠ committed locally, NOT pushed) — `run_shell` tool + native
+  Edit menu (`lib.rs`).
+
+**▶ Push the pending commit from the Mac** (the sandbox mount blocks git's index
+lock; commit `a07fa50` was made via plumbing — push needs your machine):
 ```sh
-cd ~/Codehome/AgenticOS && git add -A && \
-  git commit -m "NF-3: OLLAMA_HOST + Agent Send-guard (#1) + dynamic Ollama discovery/auto-start/RAM gate + tool-first governor (#3)" && git push
+cd ~/Codehome/AgenticOS
+git status                                   # expect: ahead of origin by 1
+git push
+rm -f .git/_sl_* .git/_stalelock* .git/index.lock   # tidy lock-workaround leftovers
+rm -f config/Soul.yaml config/Memory.yaml           # dead files (migrated to .md), if still present
+git status                                   # clean, up to date
 ```
+If `git status` shows committed files as "modified", `git reset --hard HEAD`
+resyncs the index (work is safe in the commits above).
 
 ### ▶ Open issues — START HERE next session (user-confirmed 2026-06-14)
 1. ~~**Send to unavailable model (UX).**~~ ✅ FIXED 2026-06-17. `AgentView`
