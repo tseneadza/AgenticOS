@@ -70,6 +70,23 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     let close_window = PredefinedMenuItem::close_window(app, None)?;
     let file_menu = Submenu::with_items(app, "File", true, &[&close_window])?;
 
+    // ---- Edit ----
+    // On macOS the standard editing shortcuts (Cmd+X/C/V/A, undo/redo) are
+    // delivered to the focused webview control via the app's Edit-menu items
+    // carrying the predefined edit *roles*. Without this submenu, paste (and the
+    // others) silently do nothing inside text inputs — e.g. the Agent prompt box.
+    let undo       = PredefinedMenuItem::undo(app, None)?;
+    let redo       = PredefinedMenuItem::redo(app, None)?;
+    let sep_edit   = PredefinedMenuItem::separator(app)?;
+    let cut        = PredefinedMenuItem::cut(app, None)?;
+    let copy       = PredefinedMenuItem::copy(app, None)?;
+    let paste      = PredefinedMenuItem::paste(app, None)?;
+    let select_all = PredefinedMenuItem::select_all(app, None)?;
+    let edit_menu = Submenu::with_items(
+        app, "Edit", true,
+        &[&undo, &redo, &sep_edit, &cut, &copy, &paste, &select_all],
+    )?;
+
     // ---- View ----
     // Mirrors the JS dashboard registry (VIEWS in App.jsx). Each id is
     // "view-<registry id>"; the menu handler derives the view id generically,
@@ -110,7 +127,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
         &[&minimize, &maximize, &sep_win, &fullscreen],
     )?;
 
-    Menu::with_items(app, &[&app_menu, &file_menu, &view_menu, &agent_menu, &window_menu])
+    Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu, &agent_menu, &window_menu])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

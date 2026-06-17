@@ -11,6 +11,8 @@ constitution:
       description: "Sending any email"
     - action: api_call_external
       description: "Any outbound call to an external API (non-localhost)"
+    - action: shell_exec
+      description: "Running a non-allowlisted terminal command"
     - action: git_push
       description: "Pushing code to a remote"
     - action: hub_stop_all

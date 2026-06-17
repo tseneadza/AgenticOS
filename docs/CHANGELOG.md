@@ -1,3 +1,47 @@
+## 2026-06-17 — Agent can run terminal commands (`run_shell`) — allowlist-auto, approve-the-rest
+
+- **New capability.** The governing agent (Osa) can now run terminal commands and
+  show the result inline in the chat. New `run_shell(command)` tool on the
+  governor toolbox (11 tools); output (stdout+stderr + exit code) returns as the
+  tool result, so it renders seamlessly in the conversation like any other tool.
+- **Safety policy (per decision: allowlist-auto, approve-the-rest).**
+  - Read-only, single, un-chained commands (`ls`, `cat`, `pwd`, `grep`, `find`,
+    `df`, `git status/log/diff`, …) run immediately — no approval.
+  - Anything else — or any command containing shell chaining/redirect/
+    substitution (`;`, `&&`, `|`, `>`, `` ` ``, `$(`) — routes through the
+    existing HITL approval queue (new `shell_exec` entry in
+    `config/constitution.yaml > approval_required`), surfacing an Allow/Deny
+    prompt in the chat.
+  - The Constitution's blocked-pattern list (`rm -rf`, `mkfs`, `> /dev/`, …) is
+    enforced on **every** command, allowlisted or not — hard `BLOCKED`.
+  - Commands run in the user's **home directory**, 30s timeout, output truncated
+    to 4 000 chars.
+- **Implementation (`agents/governor.py`).** `_is_safe_shell` (metachar-aware
+  allowlist), `_exec_shell` (one-shot `subprocess`), `run_shell` reuses
+  `_guarded`/`_run` so it shares the Constitution + approval plumbing. Added to
+  the system-prompt request→tool map ("run <command>" → run_shell).
+- Verified (sandbox): allowlist classifier (safe vs unsafe inc. `ls; curl|sh`
+  style bypass attempts → approval path); allowlisted runs w/o approval; blocked
+  pattern refused; non-allowlisted approve→runs / deny→DENIED-and-NOT-executed
+  (marker-file check); empty rejected. `py_compile` + YAML clean. Sidecar restart
+  picks it up (Python-only; no Tauri rebuild).
+
+## 2026-06-17 — GUI fix: paste/copy/cut don't work in text inputs — add native Edit menu
+
+- **Bug.** Pasting (Cmd+V) into the Agent prompt box did nothing. On macOS the
+  standard editing shortcuts (Cmd+X/C/V/A, undo/redo) are delivered to the
+  focused webview control via the app's **Edit-menu items carrying the predefined
+  edit roles**. The native menu (`gui/desktop/src-tauri/src/lib.rs`) had App /
+  File / View / Agent / Window but **no Edit menu**, so the webview inputs never
+  received those commands.
+- **Fix.** Added an Edit submenu (undo, redo, ─, cut, copy, paste, select-all via
+  `PredefinedMenuItem`) in the conventional position between File and View. This
+  is app-wide, so every text input benefits (Agent prompt, terminal, future
+  inputs). The `on_menu_event` `match` already has a catch-all, so the role-based
+  items need no handler changes.
+- Rust change — needs a Tauri rebuild to take effect (`npm run tauri dev`); a JS
+  reload alone won't pick up `lib.rs`.
+
 ## 2026-06-17 — Soul + Memory: persistent agent identity & memory across sessions/models
 
 - **Idea.** Keep the agent's identity ("Osa") and durable memory intact across

