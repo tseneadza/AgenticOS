@@ -45,6 +45,8 @@ class SocketServer:
     def __init__(self, socket_path: Path = SOCKET_PATH):
         self.socket_path = socket_path
         self._handlers: list[Handler] = []
+        self._server: asyncio.Server | None = None
+        self._active_writers: list[asyncio.StreamWriter] = []
 
     def add_handler(self, handler: Handler) -> None:
         self._handlers.append(handler)
@@ -54,14 +56,20 @@ class SocketServer:
     # ------------------------------------------------------------------
 
     async def serve(self) -> None:
-        """Start the Unix socket server.  Runs until cancelled."""
+        """Start the Unix socket server.  Runs until cancelled.
+
+        Uses an asyncio.Event wait instead of serve_forever() so that task
+        cancellation is handled cleanly: active connections are force-closed
+        in the finally block, which avoids the wait_closed() hang that occurs
+        when the ZSH plugin is still connected at shutdown time.
+        """
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Clean up stale socket file
         if self.socket_path.exists():
             self.socket_path.unlink()
 
-        server = await asyncio.start_unix_server(
+        self._server = await asyncio.start_unix_server(
             self._handle_client, path=str(self.socket_path)
         )
 
@@ -69,14 +77,32 @@ class SocketServer:
         os.chmod(self.socket_path, stat.S_IRUSR | stat.S_IWUSR)
 
         logger.info("Shell socket server listening at %s", self.socket_path)
-        async with server:
-            await server.serve_forever()
+        try:
+            # asyncio.start_unix_server begins serving immediately; we just
+            # park here waiting for cancellation instead of calling
+            # serve_forever() (which delegates to wait_closed() on cancel).
+            await asyncio.get_event_loop().create_future()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Close the listening socket so no new connections are accepted.
+            if self._server:
+                self._server.close()
+            # Force-close every active ZSH connection so wait_closed() returns
+            # immediately rather than blocking until the shell session ends.
+            for writer in list(self._active_writers):
+                try:
+                    writer.close()
+                except Exception:
+                    pass
+            self._active_writers.clear()
 
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         peer = writer.get_extra_info("peername") or "zsh"
         logger.debug("Shell plugin connected: %s", peer)
+        self._active_writers.append(writer)
         try:
             while True:
                 line = await reader.readline()
@@ -101,6 +127,8 @@ class SocketServer:
                         logger.exception("Shell event handler error for %s", event)
         finally:
             writer.close()
+            if writer in self._active_writers:
+                self._active_writers.remove(writer)
             logger.debug("Shell plugin disconnected")
 
 

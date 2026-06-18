@@ -4,27 +4,42 @@ import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./a
 import "./App.css";
 import "@xterm/xterm/css/xterm.css";
 
-function usePoll(path, ms) {
-  const [data, setData] = useState(null);
+// Adaptive polling hook.
+//   ms      — normal interval when service is available
+//   fastMs  — recovery interval when service is down (default 2 s)
+//   key     — increment to trigger an immediate extra fetch (e.g. on WS event)
+function usePoll(path, ms, fastMs = 2000, key = 0) {
+  const [data, setData]       = useState(null);
+  const [available, setAvail] = useState(true); // optimistic; corrected on first tick
+
+  // When down use fastMs so we detect recovery quickly; when up use ms.
+  const interval = available ? ms : fastMs;
+
   useEffect(() => {
     let alive = true;
     const tick = () =>
       get(path)
-        .then((d) => alive && setData(d))
-        .catch(() => alive && setData({ available: false, error: "sidecar unreachable" }));
-    tick();
-    const id = setInterval(tick, ms);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [path, ms]);
+        .then((d) => {
+          if (!alive) return;
+          setData(d);
+          setAvail(d?.available !== false);
+        })
+        .catch(() => {
+          if (!alive) return;
+          setData({ available: false, error: "sidecar unreachable" });
+          setAvail(false);
+        });
+    tick();                                   // immediate fetch on mount / key change
+    const id = setInterval(tick, interval);
+    return () => { alive = false; clearInterval(id); };
+  }, [path, interval, key]);                  // key change re-runs → immediate tick
+
   return data;
 }
 
 // ---------------------------------------------------------------- FR-28
 function SystemHealth({ expanded }) {
-  const d = usePoll("/api/panels/system", 2000);
+  const d = usePoll("/api/panels/system", 2000, 1000);
   if (!d || d.available === false) return <Empty msg="No system data" />;
 
   if (!expanded) {
@@ -157,12 +172,10 @@ function SystemHealth({ expanded }) {
 
 // ---------------------------------------------------------------- FR-29
 function AgentActivity({ refreshKey, expanded }) {
-  const [d, setD] = useState(null);
+  // Poll every 10 s normally; drop to 2 s when sidecar is unreachable so we
+  // recover quickly. refreshKey causes an immediate extra fetch on WS events.
+  const d = usePoll("/api/panels/activity", 10_000, 2_000, refreshKey);
   const [allRuns, setAllRuns] = useState(null);
-
-  useEffect(() => {
-    get("/api/panels/activity").then(setD).catch(() => setD(null));
-  }, [refreshKey]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -278,7 +291,7 @@ function AgentActivity({ refreshKey, expanded }) {
 
 // ---------------------------------------------------------------- FR-30
 function KenoTelemetry({ expanded }) {
-  const d = usePoll("/api/panels/keno", 30000);
+  const d = usePoll("/api/panels/keno", 30_000, 3_000);
   if (!d) return <Empty msg="Loading…" />;
   if (!d.available) return <Empty msg={`Keno DB unavailable — ${d.error}`} />;
 
@@ -356,13 +369,40 @@ function KenoTelemetry({ expanded }) {
 
 // ---------------------------------------------------------------- FR-31
 function HubPanel({ expanded }) {
-  const d = usePoll("/api/panels/hub", 5000);
-  const m = usePoll("/api/panels/hub/manifests", 60000);
+  const d = usePoll("/api/panels/hub", 5_000, 2_000);
+  const m = usePoll("/api/panels/hub/manifests", 60_000, 5_000);
   const [busy, setBusy] = useState(null);
   const [expandedManifest, setExpandedManifest] = useState(null);
+  const lastStartAttempt = useRef(0);
+
+  // Auto-start hub on every poll that finds it offline, rate-limited to once
+  // per 30 s so we don't spam the endpoint. This fires immediately on first
+  // offline poll (lastStartAttempt starts at 0) and self-resets — no stuck
+  // "prevAvailable=false" state to worry about if a start attempt silently fails.
+  useEffect(() => {
+    if (!d || d.available) return;
+    const now = Date.now();
+    if (now - lastStartAttempt.current > 30_000) {
+      lastStartAttempt.current = now;
+      post("/api/panels/hub/start").catch(() => {});
+    }
+  }, [d]);
+
+  const retryStart = () => {
+    lastStartAttempt.current = 0; // reset cooldown so next poll fires immediately
+    post("/api/panels/hub/start").catch(() => {});
+  };
 
   if (!d) return <Empty msg="Loading…" />;
-  if (!d.available) return <Empty msg={`Hub unreachable — ${d.error}`} />;
+  if (!d.available) return (
+    <div className="hub-offline">
+      <span className="hub-offline-status">
+        <span className="dot warn hub-pulse" />
+        Hub offline — reconnecting…
+      </span>
+      <button className="btn" onClick={retryStart}>↻ Retry</button>
+    </div>
+  );
 
   const manifests = m?.manifests || {};
   const act = async (id, action) => {
@@ -559,7 +599,7 @@ function ApprovalQueue({ approvals, onDecide, expanded }) {
 // ---------------------------------------------------------------- FR-33
 function TerminalStrip({ expanded }) {
   // Condensed: read-only strip showing the last 15 lines of agent shell output
-  const d = usePoll("/api/panels/terminal", 3000);
+  const d = usePoll("/api/panels/terminal", 3_000, 2_000);
 
   // Expanded: full interactive xterm.js terminal over a PTY WebSocket
   const containerRef = useRef(null);
@@ -1249,20 +1289,30 @@ export default function App() {
     return VIEWS.some((v) => v.id === saved) ? saved : "sysops";
   });
 
-  const loadApprovals = () =>
-    get("/api/approvals").then((d) => setApprovals(d.approvals)).catch(() => {});
+  // Approvals: fast when sidecar is down; immediate re-fetch on WS approval events.
+  const [approvalKey, setApprovalKey] = useState(0);
+  const approvalsData = usePoll("/api/approvals", 15_000, 2_000, approvalKey);
+  useEffect(() => {
+    if (approvalsData?.approvals) setApprovals(approvalsData.approvals);
+  }, [approvalsData]);
+
+  // Workflows: change slowly (WS events drive real-time); fast recovery when down.
+  const workflowsData = usePoll("/api/workflows", 30_000, 2_000);
+  useEffect(() => {
+    if (workflowsData?.workflows) setWorkflows(workflowsData.workflows);
+  }, [workflowsData]);
 
   useEffect(() => {
-    get("/api/workflows").then((d) => setWorkflows(d.workflows)).catch(() => {});
-    loadApprovals();
     const stop = connectAgui((evt) => {
       setFeed((f) => [...f.slice(-200), evt]);
       // Persist the agent chat log independently of the capped feed.
       if (foldAgentEvent(agentAcc.current, evt)) {
         setAgentTurns(agentAcc.current.list.slice());
       }
-      if (evt.type === "APPROVAL_REQUIRED" || evt.type === "APPROVAL_RESOLVED") loadApprovals();
-      if (evt.type === "RUN_FINISHED" || evt.type === "RUN_ERROR") setRefreshKey((k) => k + 1);
+      if (evt.type === "APPROVAL_REQUIRED" || evt.type === "APPROVAL_RESOLVED")
+        setApprovalKey((k) => k + 1);           // immediate re-fetch
+      if (evt.type === "RUN_FINISHED" || evt.type === "RUN_ERROR")
+        setRefreshKey((k) => k + 1);
     }, setConnected);
     return stop;
   }, []);

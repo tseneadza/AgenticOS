@@ -76,6 +76,98 @@ async def _start_shell_socket() -> None:
 
 
 @app.on_event("startup")
+async def _ensure_hub_running() -> None:
+    """Auto-start the Codehome Hub if it is not already up.
+
+    Runs as a background task so a slow Hub start does not block the sidecar
+    from accepting requests.  The same logic as POST /api/panels/hub/start —
+    kept in sync intentionally so both paths behave identically.
+    """
+    import logging
+    import socket
+    import subprocess
+
+    _log = logging.getLogger("agentcos.hub_autostart")
+
+    def _hub_alive() -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", 8085), timeout=0.4):
+                return True
+        except OSError:
+            return False
+
+    async def _run() -> None:
+        if _hub_alive():
+            _log.info("Hub already running — skipping auto-start")
+            return
+
+        home = Path.home()
+        hub_bin = home / "Codehome" / "hub" / "hub_server"
+        if not hub_bin.exists():
+            _log.warning("Hub binary not found at %s — cannot auto-start", hub_bin)
+            return
+
+        log_path = home / "Codehome" / "hub" / "hub.log"
+        try:
+            log_fh = open(log_path, "a")  # noqa: WPS515, SIM115
+            subprocess.Popen(
+                [str(hub_bin)],
+                cwd=str(home / "Codehome" / "hub"),
+                stdout=log_fh,
+                stderr=log_fh,
+                start_new_session=True,
+            )
+            _log.warning("Hub was down — auto-started hub_server (log: %s)", log_path)
+        except Exception as exc:  # noqa: BLE001
+            _log.error("Hub auto-start failed: %s", exc)
+
+    task = asyncio.create_task(_run(), name="hub-autostart")
+    app.state.hub_autostart_task = task  # prevent GC
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    """Clean shutdown: cancel background tasks then remove the PID file.
+
+    The shell socket server and hub-autostart tasks run forever, so uvicorn's
+    "Waiting for background tasks" phase hangs unless we cancel them here.
+    Cancelling is safe — the ZSH plugin reconnects automatically, and the hub
+    is already running as an independent process.
+    """
+    import os
+    import logging
+
+    _log = logging.getLogger("agentcos.shutdown")
+
+    # Cancel every long-running background task we own.
+    for attr in ("shell_socket_task", "hub_autostart_task", "apscheduler"):
+        task = getattr(app.state, attr, None)
+        if task is None:
+            continue
+        if hasattr(task, "cancel"):          # asyncio.Task
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        elif hasattr(task, "shutdown"):      # APScheduler
+            try:
+                task.shutdown(wait=False)
+            except Exception:
+                pass
+
+    # Belt-and-suspenders PID cleanup (atexit also fires, but may be delayed
+    # if the process lingers in the "waiting for tasks" phase).
+    pid_file = Path.home() / ".agentic-os" / "sidecar.pid"
+    try:
+        if pid_file.exists() and pid_file.read_text().strip() == str(os.getpid()):
+            pid_file.unlink()
+            _log.info("PID file removed on shutdown.")
+    except OSError:
+        pass
+
+
+@app.on_event("startup")
 async def _start_scheduler() -> None:
     """FR-16: start APScheduler as an in-process fallback for scheduled workflows.
 
@@ -237,6 +329,44 @@ def panel_hub_action(app_id: str, action: str) -> dict:
         raise HTTPException(502, f"Hub action failed: {exc}") from exc
 
 
+@app.post("/api/panels/hub/start")
+def panel_hub_start() -> dict:
+    """Start the Codehome Hub server if it is not already running."""
+    import socket
+    import subprocess
+    from pathlib import Path
+
+    def _hub_alive() -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", 8085), timeout=0.4):
+                return True
+        except OSError:
+            return False
+
+    if _hub_alive():
+        return {"ok": True, "started": False, "msg": "Hub already running"}
+
+    home = Path.home()
+    hub_bin = home / "Codehome" / "hub" / "hub_server"
+    if not hub_bin.exists():
+        raise HTTPException(503, f"Hub binary not found at {hub_bin}")
+
+    log_path = home / "Codehome" / "hub" / "hub.log"
+    try:
+        log_fh = open(log_path, "a")  # noqa: WPS515, SIM115
+        subprocess.Popen(
+            [str(hub_bin)],
+            cwd=str(home / "Codehome" / "hub"),
+            stdout=log_fh,
+            stderr=log_fh,
+            start_new_session=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"Failed to start hub: {exc}") from exc
+
+    return {"ok": True, "started": True, "msg": "Hub starting"}
+
+
 @app.get("/api/panels/terminal")
 def panel_terminal(limit: int = 15) -> dict:
     return panels.iterm_strip(lines=limit)
@@ -323,8 +453,123 @@ async def ws_agent(ws: WebSocket) -> None:
         bus.unsubscribe(q)
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901
+    import atexit
+    import logging
+    import os
+    import signal
+    import socket
+    import time
     import uvicorn
+
+    _log = logging.getLogger("agentcos.main")
+    logging.basicConfig(level=logging.INFO)
+
+    my_pid = os.getpid()
+    pid_dir = Path.home() / ".agentic-os"
+    pid_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = pid_dir / "sidecar.pid"
+
+    # ------------------------------------------------------------------ helpers
+    def _port_alive(port: int) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                return True
+        except OSError:
+            return False
+
+    def _process_alive(pid: int) -> bool:
+        """True if process exists AND we can signal it (catches PermissionError)."""
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # Process exists but belongs to another user — treat as not ours.
+            return False
+
+    def _wait_port_free(port: int, timeout: float = 3.0, interval: float = 0.25) -> bool:
+        """Poll until port is free or timeout expires. Returns True if port is free."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not _port_alive(port):
+                return True
+            time.sleep(interval)
+        return False
+
+    def _safe_cleanup() -> None:
+        """Remove PID file only if it still names our PID — guards against races."""
+        try:
+            if pid_file.exists() and pid_file.read_text().strip() == str(my_pid):
+                pid_file.unlink()
+        except OSError:
+            pass
+
+    # ------------------------------------------------------------------ zombie / duplicate check
+    old_pid: int | None = None
+    if pid_file.exists():
+        try:
+            old_pid = int(pid_file.read_text().strip())
+        except (ValueError, OSError):
+            pid_file.unlink(missing_ok=True)
+
+    if old_pid and old_pid != my_pid:
+        if _process_alive(old_pid):
+            if _port_alive(SIDECAR_PORT):
+                # Healthy duplicate — stand down.
+                _log.info(
+                    "Sidecar already running (PID %d) on :%d — exiting.",
+                    old_pid, SIDECAR_PORT,
+                )
+                return
+            else:
+                # Zombie: alive but not serving — evict it and wait for the port.
+                _log.warning(
+                    "Evicting zombie sidecar PID %d (alive but not on :%d).",
+                    old_pid, SIDECAR_PORT,
+                )
+                try:
+                    os.kill(old_pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                if not _wait_port_free(SIDECAR_PORT, timeout=3.0):
+                    _log.error(
+                        "Port %d still in use after evicting zombie — cannot start.",
+                        SIDECAR_PORT,
+                    )
+                    return
+        # Stale PID file (process is dead) — fall through and overwrite.
+        pid_file.unlink(missing_ok=True)
+
+    # ------------------------------------------------------------------ fallback port check
+    # Catches the case where a sidecar that predates PID-file support is running
+    # (no PID file but port is live), or a non-clean start where two processes
+    # race and neither has written a file yet.
+    if _port_alive(SIDECAR_PORT):
+        _log.info(
+            "Port %d is live without a PID file — another sidecar is running, exiting.",
+            SIDECAR_PORT,
+        )
+        return
+
+    # ------------------------------------------------------------------ write PID + cleanup hooks
+    pid_file.write_text(str(my_pid))
+
+    # Belt-and-suspenders: atexit covers SIGTERM/normal exit; the explicit
+    # SIGTERM handler ensures sys.exit() (and therefore atexit) is called even
+    # if something else intercepts the signal before uvicorn's handler fires.
+    atexit.register(_safe_cleanup)
+
+    _original_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def _sigterm_handler(signum: int, frame: object) -> None:  # noqa: ANN001
+        _safe_cleanup()
+        # Restore and re-raise so uvicorn (and anything else upstream) still sees it.
+        signal.signal(signal.SIGTERM, _original_sigterm)
+        os.kill(my_pid, signal.SIGTERM)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
 
     uvicorn.run(app, host="127.0.0.1", port=SIDECAR_PORT, log_level="info")
 

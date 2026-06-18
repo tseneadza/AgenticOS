@@ -4,6 +4,9 @@
 // spawn the FastAPI sidecar from the AgenticOS venv; on exit we kill it.
 // If :5130 is already alive we leave it alone and only kill what we spawned.
 //
+// Hub lifecycle: on launch, if the Codehome Hub is not serving :8085 we
+// spawn ~/Codehome/hub/hub_server; on exit we kill what we spawned.
+//
 // Menu bar: native macOS app menu with View navigation, Agent quick-actions,
 // and standard Window/File items. View items communicate with the React
 // frontend via window.__agenticOsSetView (injected by App.jsx).
@@ -16,12 +19,18 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
 struct SidecarState(Mutex<Option<Child>>);
 
-fn sidecar_alive() -> bool {
+struct HubState(Mutex<Option<Child>>);
+
+fn port_alive(port: u16) -> bool {
     TcpStream::connect_timeout(
-        &"127.0.0.1:5130".parse().unwrap(),
+        &format!("127.0.0.1:{port}").parse().unwrap(),
         Duration::from_millis(400),
     )
     .is_ok()
+}
+
+fn sidecar_alive() -> bool {
+    port_alive(5130)
 }
 
 fn spawn_sidecar() -> Option<Child> {
@@ -40,6 +49,35 @@ fn spawn_sidecar() -> Option<Child> {
         .stderr(err)
         .spawn()
         .ok()
+}
+
+fn hub_alive() -> bool {
+    port_alive(8085)
+}
+
+fn spawn_hub() -> Option<Child> {
+    let home = std::env::var("HOME").ok()?;
+    let hub_bin = format!("{home}/Codehome/hub/hub_server");
+    let hub_dir = format!("{home}/Codehome/hub");
+    let log_dir = format!("{home}/Codehome/hub");
+    let log = std::fs::File::create(format!("{log_dir}/hub.log")).ok()?;
+    let err = log.try_clone().ok()?;
+
+    Command::new(&hub_bin)
+        .current_dir(&hub_dir)
+        .stdout(log)
+        .stderr(err)
+        .spawn()
+        .ok()
+}
+
+fn kill_hub(state: &HubState) {
+    if let Ok(mut guard) = state.0.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
 }
 
 fn kill_sidecar(state: &SidecarState) {
@@ -135,6 +173,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(SidecarState(Mutex::new(None)))
+        .manage(HubState(Mutex::new(None)))
         .setup(|app| {
             use tauri::Manager;
 
@@ -188,6 +227,21 @@ pub fn run() {
                 }
                 *app.state::<SidecarState>().0.lock().unwrap() = child;
             }
+
+            // Hub auto-start
+            if !hub_alive() {
+                let child = spawn_hub();
+                if child.is_some() {
+                    for _ in 0..20 {
+                        if hub_alive() {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(250));
+                    }
+                }
+                *app.state::<HubState>().0.lock().unwrap() = child;
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -195,6 +249,7 @@ pub fn run() {
         .run(|app_handle, event| {
             use tauri::Manager;
             if let tauri::RunEvent::Exit = event {
+                kill_hub(&app_handle.state::<HubState>());
                 kill_sidecar(&app_handle.state::<SidecarState>());
             }
         });

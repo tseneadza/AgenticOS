@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.agentcos.hub</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/tonyseneadza/Codehome/hub/hub_server</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/tonyseneadza/Codehome/hub</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/tonyseneadza/Codehome/hub/hub.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tonyseneadza/Codehome/hub/hub.log</string>
+
+  <!-- Restart automatically on crash; wait 10 s between attempts -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- Start when this agent is loaded (login / launchctl bootstrap) -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/tonyseneadza</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
