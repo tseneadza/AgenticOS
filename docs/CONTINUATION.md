@@ -1,5 +1,167 @@
 # Continuation note
 
+**2026-06-19 (Continuation 2) — Phase 2 Layout Decisions + 3-Sprint Implementation Plan Approved**
+
+## What was done this session
+
+### 1. Phase 2 Layout Interview — All 5 Questions Answered ✅
+Reviewed mockup HTML (dashboard.html) and layout alternatives (Alternative A: Sidebar-Focused) and decisively answered:
+- **Sidebar agent cards:** Status indicator 🟢/🔴 + cost display + [★ Favorites ▼] dropdown for workflow launch
+- **Main panel tabs:** Keep Queue|Logs|Memory|Approvals; add **Environment tab** (LLM model selector, API keys, feature flags)
+- **Logs display:** Logs stay in Logs tab; add **collapsible Diagnostics sidebar panel** (CPU/RAM/Net metrics)
+- **Environment variables:** Integrated into **Environment tab** (self-contained config UI, no YAML editing)
+- **Scripts & Favorites:** Sidebar Favorites dropdown + dedicated **Scripts view** (workflow launcher with scheduling + cost metrics)
+
+### 2. Comprehensive Phase 2 Implementation Plan Created ✅
+**File:** `docs/PHASE_2_IMPLEMENTATION_PLAN.md` (3-sprint roadmap, 6 weeks, ~2 weeks per sprint)
+
+**Scope:**
+- Sprint 1 (Weeks 1-2): Environment tab (LLM config, flags) + Diagnostics sidebar (collapse/expand, localStorage)
+- Sprint 2 (Weeks 3-4): Scripts view (workflow launcher) + Hub MCP integration (all 35 tools) + Favorites dropdown
+- Sprint 3 (Weeks 5-6): Integration tests (>80% coverage) + Documentation + PR review
+
+**Deliverables:**
+- 12 new files (React components, FastAPI routes, tests)
+- 6 modified files (existing components, sidecar)
+- 5 new API endpoints
+- Complete API reference + data flow diagrams
+
+### 3. Layout Decisions Document Created ✅
+**File:** `docs/PHASE_2_LAYOUT_DECISIONS.md` (detailed Q&A, mockups, rationale, acceptance criteria)
+
+**For each decision:**
+- Design mockup (ASCII diagram)
+- Rationale (why this approach)
+- Component breakdown (files to create/modify)
+- Acceptance criteria (verification)
+
+### 4. Documentation Updated ✅
+- **CHANGELOG.md:** Added Phase 2 overview entry (top of file)
+- **BRAIN2_SUMMARY.md:** Created summary for copying into Brain2 project note
+- **README in docs/:** References to new Phase 2 documents
+
+## ▶ NEXT SESSION — START HERE
+
+### Session Setup
+```bash
+# Verify setup
+cd ~/Codehome/AgenticOS
+git status
+cat docs/PHASE_2_LAYOUT_DECISIONS.md  # Review decisions
+cat docs/PHASE_2_IMPLEMENTATION_PLAN.md  # Review plan
+```
+
+### Ready to Start Sprint 1 (Environment Tab + Diagnostics)
+1. Create branch: `git checkout -b phase2-gui-sprint1`
+2. Start with Environment tab (`gui/desktop/src/components/Dashboard/Tabs/Environment.jsx`)
+3. Add config backend routes (`gui/sidecar/routes/api_config.py`)
+4. Build Diagnostics sidebar panel (`gui/desktop/src/components/Sidebar/DiagnosticsPanel.jsx`)
+5. Test localStorage persistence
+6. Update CHANGELOG.md with progress
+7. Commit weekly: `git add -A && git commit -m "Phase 2 Sprint 1: Environment tab + Diagnostics panel"`
+
+### Files to Read First
+1. `PHASE_2_LAYOUT_DECISIONS.md` — Design decisions + acceptance criteria
+2. `PHASE_2_IMPLEMENTATION_PLAN.md` — Detailed breakdown + file manifest
+3. `gui/mockups/dashboard.html` — Current design reference
+4. `gui/desktop/src/App.jsx` — View registry pattern
+5. `gui/sidecar/app.py` — Route mounting pattern
+
+### Key Decision Points (Sprint 1)
+- Config file location: `~/.agentic-os/config.yaml` ✅ (per PHASE_2_IMPLEMENTATION_PLAN.md)
+- Config schema validation: URL format + LLM connection test ✅
+- localStorage keys: `agentic-os.diagExpanded`, `agentic-os.favorites` ✅
+- Diagnostics polling: `usePoll(2s)` for real-time updates ✅
+- HITL approval: For API key changes only (PUT /api/config with sensitive data) ✅
+
+### Carry-forward
+- **Main branch:** Hub MCP (35 tools) locked in, production-ready ✅
+- **Phase 2+ decisions:** Layout complete, ready to build ✅
+- **Phase 7 work:** Launchd, adaptive polling, terminal all live ✅
+- **Phase 8 work:** Dashboard workspace complete ✅
+- **Phase 9 work:** Hub Absorption (depends on Phase 2 Hub panel) — queued ✅
+- **Phase 10 work:** Governing Agent + Authoring (depends on Phase 2 Scripts view) — queued ✅
+
+---
+
+**2026-06-19 (Continuation) — Phase 2 Branch Created + Session Continuity Skill Built**
+
+## What was done this session
+
+### 1. Committed Hub MCP Work to Main
+- ✅ Pushed Hub MCP extension commit to main branch (`git commit -m "Hub MCP Extended: 35 tools + comprehensive documentation"`)
+- Commit includes: `tools/hub_mcp.py` (28 new tools), `docs/hub-mcp-tools.md`, documentation updates
+- Main branch now has stable, production-ready Hub MCP (35 tools, dual-mode)
+
+### 2. Created phase2-gui-sidebar Branch
+- ✅ `git checkout -b phase2-gui-sidebar` — safe branch for GUI experimentation
+- Phase 2 work isolated from main; can reset/redo without affecting Hub MCP
+- Ready for Tauri React sidebar-focused layout implementation
+
+### 3. Set Up Case-by-Case Git Authorization
+- Discussed computer-use MCP for on-demand git operations
+- Pattern: User asks → I call `request_access` for Terminal → User approves → I execute git commands
+- More secure than blanket credentials; less friction than manual Terminal switching
+- Ready for next push/branch operations
+
+### 4. Built session-continuity Skill
+- ✅ Created skill for automatic session start/end management
+- **At session start:** Reads CONTINUATION.md, shows last session's work, asks "Tony, are you ready to continue work on the Osa app?"
+- **At session end:** Summarizes accomplishments, updates CONTINUATION.md with dated entry, prompts for git commit
+- Maintains single source of truth; seamless session → session handoff
+- Skill saved to outputs folder, ready to move to skills directory
+
+### 5. Phase 2 Roadmap Clarified
+- Phase 2 = Tauri GUI build using sidebar-focused layout (Alternative A)
+- Hub MCP tools available for display in sidebar panels
+- Next decision: layout interview questions on displaying logs/health/analytics/env/scripts
+
+## ▶ NEXT SESSION — START HERE
+
+### Session Continuity is Now Active
+```bash
+# When starting Osa work in the next session:
+# I will automatically read CONTINUATION.md and ask:
+# "Tony, are you ready to continue work on the Osa app?"
+
+# At session end, I will update CONTINUATION.md with:
+# - What was accomplished
+# - Files changed
+# - Pending tasks
+# - Next session action items
+```
+
+### For Phase 2 GUI Build
+1. **Option A: Conduct layout interview first** (30 min)
+   - Decide where logs, health, analytics, env vars, scripts should live in sidebar
+   - Design tabbed layout for main panel
+   - Then start React component build
+
+2. **Option B: Start building immediately** (using Alternative A prototype as reference)
+   - `gui/desktop/src/components/Panels/` for new sidebar panels
+   - Connect to Hub MCP tools via sidecar API
+   - Test with npm run tauri dev
+
+### Files to Reference
+- `Brain2/01 - Projects/Agentic OS.md` — Full project context
+- `Codehome/AgenticOS/docs/hub-mcp-tools.md` — Available Hub MCP tools
+- `Codehome/AgenticOS/gui/desktop/` — Tauri React project structure
+- `Brain2/01 - Projects/Deliverables/gui-layout-alternatives.html` — Sidebar prototype
+
+## Key files changed this session
+- None in AgenticOS repo (all work was in previous session)
+- Session-continuity skill created (in outputs folder)
+- CONTINUATION.md updated with this entry
+
+## Carry-forward
+- **Main branch:** Hub MCP locked in, fully documented, production-ready ✅
+- **phase2-gui-sidebar branch:** Ready for Phase 2 GUI work
+- **Phase 7 work:** All features remain live (launchd, adaptive polling, terminal)
+- **Phase 8+ backlog:** Unchanged (see roadmap.md)
+- **Session management:** Automated via session-continuity skill
+
+---
+
 **2026-06-19 — Hub MCP Extended: 7 tools → 35 tools + Phase 2 Layout Planning**
 
 ## What was done this session
@@ -222,3 +384,55 @@ pushed, one local pending push.**
   4. Push the pending local commit (see below), then `rm config/Soul.yaml
      config/Memory.yaml` leftovers if still present.
 - **Phase 9 (Hub absorption) remains the last roadmap build** — not started.
+
+---
+
+**2026-06-19 (01:16:51) — phase2-gui-sprint2 Branch Created**
+
+## Branch Info
+- **Branch:** phase2-gui-sprint2
+- **Created:** 2026-06-19 01:16:51
+- **Base:** main (63d7ed2)
+- **Phase:** 2
+
+## Session Setup ✅
+- [x] Branch created and checked out
+- [x] Documentation updated
+- [x] Environment ready
+- [ ] Tests verified (run: npm test && pytest)
+- [ ] Ready to start work
+
+## Ready-to-Start Checklist
+Before starting work on this branch:
+
+```bash
+# 1. Verify branch
+git branch -v
+git log --oneline -1
+
+# 2. Pull latest from main (optional)
+git pull origin main
+
+# 3. Run tests
+npm run lint
+npm test
+pytest
+
+# 4. Read documentation
+cat docs/CONTINUATION.md
+```
+
+## Next Steps
+1. Review previous CONTINUATION.md entries for context
+2. Check PHASE_2_LAYOUT_DECISIONS.md for design decisions
+3. Read PHASE_2_IMPLEMENTATION_PLAN.md for task breakdown
+4. Start with first pending task from task tracking system
+
+## Key Documentation
+- `docs/PHASE_2_LAYOUT_DECISIONS.md` — Design decisions
+- `docs/PHASE_2_IMPLEMENTATION_PLAN.md` — Implementation breakdown
+- `docs/CHANGELOG.md` — Project history
+- `docs/roadmap.md` — Phase status
+
+---
+

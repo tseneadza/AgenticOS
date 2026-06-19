@@ -4,6 +4,10 @@ import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./a
 import "./App.css";
 import "@xterm/xterm/css/xterm.css";
 
+// Phase 2 GUI Components (Environment + Diagnostics)
+import Environment from "./components/Environment";
+import DiagnosticsPanel from "./components/DiagnosticsPanel";
+
 // Adaptive polling hook.
 //   ms      — normal interval when service is available
 //   fastMs  — recovery interval when service is down (default 2 s)
@@ -1254,14 +1258,25 @@ function AgentView({ ctx }) {
   );
 }
 
+// Configuration view wrapper (Phase 2 — Environment tab)
+function ConfigurationView() {
+  return (
+    <div className="view-pad">
+      <Environment />
+    </div>
+  );
+}
+
 // Dashboard registry (FR-46) — single source of truth for the nav + native menu.
 // Order locked 2026-06-14: SysOps, Workflows, the four placeholders, then Agent
 // (⌘7). Agent is appended last so the ⌘1–6 bindings stay stable.
+// Phase 2 addition: Configuration view for LLM config + feature flags.
 const VIEWS = [
   { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
   { id: "workflows", label: "Workflows", component: WorkflowsDashboard },
   { id: "web-news", label: "Web News", placeholder: true,
     purpose: "Curated developer & AI news, summarized by the agent." },
+  { id: "config", label: "Configuration", component: ConfigurationView },
   { id: "scripts", label: "Scripts", placeholder: true,
     purpose: "Browse and run Codehome scripts — future home of the absorbed Hub (NF-4)." },
   { id: "zsh-config", label: "Zsh Config Editor", placeholder: true,
@@ -1333,6 +1348,9 @@ export default function App() {
   const decide = (id, decision) =>
     post(`/api/approvals/${id}`, { decision }).then(loadApprovals).catch(() => {});
 
+  // Phase 2: Diagnostics panel polling (2s normal, 1s when down)
+  const systemHealthData = usePoll("/api/panels/system", 2000, 1000);
+
   const active = VIEWS.find((v) => v.id === view) || VIEWS[0];
   const ActiveView = active.component;
   const ctx = { workflows, approvals, feed, agentTurns, refreshKey, runWorkflow, decide };
@@ -1356,6 +1374,12 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        {/* Phase 2: Diagnostics sidebar panel */}
+        <div className="sidebar-diagnostics">
+          <DiagnosticsPanel data={systemHealthData} />
+        </div>
+
         <div className="spacer" />
         <div className="conn">
           <span className={`dot ${connected ? "on" : "err"}`} />

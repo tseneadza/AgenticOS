@@ -18,6 +18,7 @@ from gui.sidecar import panels
 from gui.sidecar import terminal as terminal_handler
 from gui.sidecar.events import bus
 from gui.sidecar.runner import runner
+from gui.sidecar.routes import api_config
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -39,6 +40,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include configuration management routes
+app.include_router(api_config.router)
 
 
 @app.on_event("startup")

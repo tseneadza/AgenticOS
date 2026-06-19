@@ -1,3 +1,23 @@
+## 2026-06-19 — Phase 2 GUI Layout Decisions + Implementation Plan (3-sprint roadmap)
+
+- **Scope:** Enhanced Tauri GUI with Environment config tab, Diagnostics sidebar panel, Scripts view, and Hub MCP tool integration.
+- **Layout decisions completed (5 questions):**
+  - **Sidebar agent cards:** Quick status (🟢/🔴) + cost + [★ Favorites] dropdown for workflow launch
+  - **Main panel tabs:** Keep Queue|Logs|Memory|Approvals; add **Environment tab** (LLM model selector, API keys, feature flags)
+  - **Logs display:** Logs stay in Logs tab; add **collapsible Diagnostics sidebar panel** for system health (CPU/RAM/Net)
+  - **Environment variables:** Integrated into Environment tab (config UI, not CLI)
+  - **Scripts & Favorites:** Hub panel for apps; sidebar Favorites dropdown + dedicated **Scripts view** for workflow launcher
+- **Implementation plan (3 sprints, 6 weeks):**
+  - **Sprint 1 (Weeks 1-2):** Environment tab (LLM config, feature flags) + Diagnostics sidebar (collapse/expand with localStorage)
+  - **Sprint 2 (Weeks 3-4):** Scripts view (workflow list + launch) + Enhanced Hub panel (all 35 MCP tools) + Agent card favorites
+  - **Sprint 3 (Weeks 5-6):** Integration tests, docs, PR review
+- **New files (12):** Frontend components (Environment.jsx, DiagnosticsPanel.jsx, ScriptsView.jsx, hooks); Backend routes (api_config.py, api_workflows.py); Tests
+- **Modified files (6):** AgentCard.jsx, TabBar.jsx, App.jsx, Sidebar.jsx, sidecar/app.py, CHANGELOG.md
+- **New API endpoints:** GET/PUT `/api/config`, POST `/api/config/test`, GET `/api/workflows`
+- **Success criteria:** All 5 decisions answered, Environment tab working, Diagnostics collapse/expand, Favorites launch workflows, Scripts view lists workflows, Hub MCP tools wired, >80% test coverage, docs complete, PR merged.
+- **Next phases:** Phase 9 (Hub Absorption) depends on Phase 2 Hub panel ✅; Phase 10+ (Agent Authoring) depends on Phase 2 Scripts view ✅
+- **Docs:** `PHASE_2_LAYOUT_DECISIONS.md` (layout interview Q&A), `PHASE_2_IMPLEMENTATION_PLAN.md` (detailed breakdown, 3-sprint roadmap)
+
 ## 2026-06-19 — Hub MCP extended: 35 tools for app/script/analytics/env management
 
 - **New capability.** Extended the Hub MCP module (`tools/hub_mcp.py`) from 7 tools to **35 tools**, exposing all 27 Hub REST endpoints. Full coverage: app control, details, logs, health, analytics, environment variables, tags, favorites, scripts, and system operations.
@@ -672,3 +692,13 @@ All notable changes to the Agentic OS. Newest first.
 - CLI: `run`, `list`, `history`. Exit codes: 2 = constitution halt,
   3 = approval denied.
 - Verified end-to-end on 2026-06-11 against the live Brain2 vault.
+
+## 2026-06-19 — phase2-gui-sprint2 — Branch Created
+
+- **Branch:** phase2-gui-sprint2 (based on main)
+- **Phase:** 2
+- **Status:** Ready for work
+- Session setup complete with automated branch initialization
+- Full context preserved in CONTINUATION.md
+- Ready-to-start checklist prepared
+
