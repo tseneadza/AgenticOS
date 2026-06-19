@@ -26,13 +26,19 @@ CREATE TABLE IF NOT EXISTS run_history (
     cost_usd    REAL DEFAULT 0,
     detail      TEXT                    -- JSON blob: step outputs summary / error
 );
+CREATE TABLE IF NOT EXISTS briefed_docs (
+    doc_hash        TEXT PRIMARY KEY,   -- sha1 of the note's frontmatter-stripped body
+    title           TEXT,
+    path            TEXT,               -- vault-relative path last seen at
+    first_briefed_at REAL NOT NULL
+);
 """
 
 
 def _connect() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(_SCHEMA)
+    conn.executescript(_SCHEMA)
     try:  # migrate pre-cost databases
         conn.execute("ALTER TABLE run_history ADD COLUMN cost_usd REAL DEFAULT 0")
     except sqlite3.OperationalError:
@@ -86,7 +92,57 @@ def recent_runs(limit: int = 10) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def last_run_at(
+    workflow: str, statuses: tuple[str, ...] = ("completed",)
+) -> float | None:
+    """started_at of the most recent run of *workflow* in one of *statuses*.
+
+    Used as the "recent docs" watermark: "since the last time this request was
+    issued". Defaults to completed runs only, so a failed/interrupted brief
+    does not advance the window past content the user never actually saw. The
+    currently-executing run is status='running', so it is naturally excluded.
+    Returns None when there is no qualifying prior run (cold start).
+    """
+    placeholders = ",".join("?" for _ in statuses)
+    with _connect() as conn:
+        row = conn.execute(
+            f"SELECT MAX(started_at) FROM run_history "
+            f"WHERE workflow = ? AND status IN ({placeholders})",
+            (workflow, *statuses),
+        ).fetchone()
+    return float(row[0]) if row and row[0] is not None else None
+
+
 def checkpointer_conn() -> sqlite3.Connection:
     """Connection for LangGraph's SqliteSaver (separate table namespace)."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+
+def seen_doc_hashes() -> set[str]:
+    """All content hashes already surfaced in a prior (successful) briefing."""
+    with _connect() as conn:
+        rows = conn.execute("SELECT doc_hash FROM briefed_docs").fetchall()
+    return {r[0] for r in rows}
+
+
+def mark_docs_briefed(docs: list[dict]) -> int:
+    """Record docs as surfaced so they don't reappear as "new" if they later move.
+
+    Called only after a brief is successfully written. Each doc needs a 'hash';
+    docs without one (or already recorded) are ignored. Returns count inserted.
+    """
+    rows = [
+        (d["hash"], d.get("title", ""), d.get("path", ""), time.time())
+        for d in docs
+        if d.get("hash")
+    ]
+    if not rows:
+        return 0
+    with _connect() as conn:
+        cur = conn.executemany(
+            "INSERT OR IGNORE INTO briefed_docs "
+            "(doc_hash, title, path, first_briefed_at) VALUES (?,?,?,?)",
+            rows,
+        )
+        return cur.rowcount

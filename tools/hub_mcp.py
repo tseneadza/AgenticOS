@@ -294,6 +294,175 @@ def hub_manifests() -> dict:
     return {"available": True, "manifests": manifests}
 
 
+# ============================================================ App Details & Status
+def get_app_detail(app_id: str) -> dict:
+    """Get full details for a specific app from GET /api/cards/{id}."""
+    try:
+        return _get_json(f"/api/cards/{app_id}")
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc), "app_id": app_id}
+
+
+def get_app_status(app_id: str) -> dict:
+    """Get current status for an app from GET /api/cards/{id}/status."""
+    try:
+        return _get_json(f"/api/cards/{app_id}/status")
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc), "app_id": app_id}
+
+
+def get_app_scripts(app_id: str) -> dict:
+    """Get scripts available for a specific app from GET /api/cards/{id}/scripts."""
+    try:
+        scripts = _get_json(f"/api/cards/{app_id}/scripts")
+        items = scripts if isinstance(scripts, list) else scripts.get("scripts", [])
+        return {"available": True, "app_id": app_id, "scripts": items}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Hub /api/cards/%s/scripts unavailable: %s", app_id, exc)
+        return {"available": False, "app_id": app_id, "error": str(exc), "scripts": []}
+
+
+def get_port_assignments() -> dict:
+    """Get all port assignments from GET /api/ports."""
+    try:
+        data = _get_json("/api/ports")
+        ports = data if isinstance(data, list) else data.get("ports", [])
+        return {"available": True, "ports": ports}
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "error": str(exc), "ports": []}
+
+
+# ============================================================ Logs & Health
+def get_app_logs(app_id: str, limit: int = 100) -> dict:
+    """Get application logs from GET /api/cards/{id}/logs."""
+    try:
+        logs = _get_json(f"/api/cards/{app_id}/logs?limit={limit}")
+        items = logs if isinstance(logs, list) else logs.get("logs", [])
+        return {"available": True, "app_id": app_id, "logs": items}
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "app_id": app_id, "error": str(exc), "logs": []}
+
+
+def get_app_health(app_id: str) -> dict:
+    """Get health status for an app from GET /api/cards/{id}/health."""
+    try:
+        return _get_json(f"/api/cards/{app_id}/health")
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc), "app_id": app_id}
+
+
+# ============================================================ Analytics
+def get_app_analytics(app_id: str) -> dict:
+    """Get analytics for a specific app from GET /api/cards/{id}/analytics."""
+    try:
+        return _get_json(f"/api/cards/{app_id}/analytics")
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc), "app_id": app_id}
+
+
+def get_hub_analytics() -> dict:
+    """Get overall Hub analytics from GET /api/analytics."""
+    try:
+        return _get_json("/api/analytics")
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "error": str(exc)}
+
+
+# ============================================================ Environment Variables
+def get_app_env(app_id: str) -> dict:
+    """Get environment variables for an app from GET /api/cards/{id}/env."""
+    try:
+        data = _get_json(f"/api/cards/{app_id}/env")
+        env = data if isinstance(data, dict) else data.get("env", {})
+        return {"available": True, "app_id": app_id, "env": env}
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "app_id": app_id, "error": str(exc), "env": {}}
+
+
+def set_app_env(app_id: str, key: str, value: str) -> dict:
+    """Set an environment variable for an app via POST /api/cards/{id}/env."""
+    return _post_json(f"/api/cards/{app_id}/env", {key: value})
+
+
+def delete_app_env(app_id: str, key: str) -> dict:
+    """Delete an environment variable via DELETE /api/cards/{id}/env/{key}."""
+    try:
+        resp = requests.delete(f"{HUB_URL}/api/cards/{app_id}/env/{key}", timeout=10)
+        resp.raise_for_status()
+        return {"ok": True, "app_id": app_id, "key": key}
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc), "app_id": app_id, "key": key}
+
+
+# ============================================================ Tags & Filtering
+def list_tags() -> dict:
+    """Get all available tags from GET /api/tags."""
+    try:
+        tags = _get_json("/api/tags")
+        items = tags if isinstance(tags, list) else tags.get("tags", [])
+        return {"available": True, "tags": items}
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "error": str(exc), "tags": []}
+
+
+def filter_apps_by_tag(tag: str) -> dict:
+    """Get apps filtered by a specific tag via GET /api/cards?tag=<tag>."""
+    try:
+        raw = _get_json(f"/api/cards?tag={tag}")
+        items = raw if isinstance(raw, list) else raw.get("apps") or raw.get("cards", [])
+        apps = [_normalise_app(c) for c in items if isinstance(c, dict)]
+        return {"available": True, "tag": tag, "apps": apps}
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "tag": tag, "error": str(exc), "apps": []}
+
+
+# ============================================================ Favorites & Recent
+def get_favorite_apps() -> dict:
+    """Get user's favorite apps from GET /api/cards/favorites."""
+    try:
+        raw = _get_json("/api/cards/favorites")
+        items = raw if isinstance(raw, list) else raw.get("apps") or raw.get("cards", [])
+        apps = [_normalise_app(c) for c in items if isinstance(c, dict)]
+        return {"available": True, "apps": apps}
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "error": str(exc), "apps": []}
+
+
+def get_recent_apps() -> dict:
+    """Get recently used apps from GET /api/cards/recent."""
+    try:
+        raw = _get_json("/api/cards/recent")
+        items = raw if isinstance(raw, list) else raw.get("apps") or raw.get("cards", [])
+        apps = [_normalise_app(c) for c in items if isinstance(c, dict)]
+        return {"available": True, "apps": apps}
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "error": str(exc), "apps": []}
+
+
+def toggle_favorite(app_id: str, is_favorite: bool) -> dict:
+    """Add or remove an app from favorites."""
+    try:
+        if is_favorite:
+            return _post_json(f"/api/cards/{app_id}/favorite")
+        else:
+            resp = requests.delete(f"{HUB_URL}/api/cards/{app_id}/favorite", timeout=10)
+            resp.raise_for_status()
+            return {"ok": True, "app_id": app_id, "is_favorite": False}
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc), "app_id": app_id}
+
+
+# ============================================================ System Operations
+def refresh_app_discovery() -> dict:
+    """Trigger app discovery refresh via POST /api/discover."""
+    return _post_json("/api/discover")
+
+
+def stop_all_apps() -> dict:
+    """Emergency stop all running apps via POST /api/stop-all."""
+    return _post_json("/api/stop-all")
+
+
 # ============================================================ FR-19: scripts discovery
 def list_hub_scripts() -> dict:
     """FR-19: return all Hub-registered scripts from GET /api/scripts."""
@@ -348,14 +517,45 @@ def build_script_tool_registry() -> dict[str, dict]:
 # ============================================================ workflow ACTIONS dict
 # All Hub actions callable by name from hub_agent.ACTIONS (TR-11).
 ACTIONS: dict[str, Any] = {
-    "list_running_apps": list_hub_apps,           # backwards compat with morning-briefing
+    # Backwards compatibility
+    "list_running_apps": list_hub_apps,
+    # Core app control
     "list_hub_apps": list_hub_apps,
     "start_hub_app": lambda state, app_id: start_hub_app(app_id),
     "stop_hub_app": lambda state, app_id: stop_hub_app(app_id),
     "restart_hub_app": lambda state, app_id: restart_hub_app(app_id),
+    "stop_all_apps": lambda state: stop_all_apps(),
+    # App details
+    "get_app_detail": lambda state, app_id: get_app_detail(app_id),
+    "get_app_status": lambda state, app_id: get_app_status(app_id),
+    "get_app_scripts": lambda state, app_id: get_app_scripts(app_id),
+    "get_port_assignments": lambda state: get_port_assignments(),
+    # Logs & diagnostics
+    "get_app_logs": lambda state, app_id, limit=100: get_app_logs(app_id, limit),
+    "get_app_health": lambda state, app_id: get_app_health(app_id),
+    # Analytics
+    "get_app_analytics": lambda state, app_id: get_app_analytics(app_id),
+    "get_hub_analytics": lambda state: get_hub_analytics(),
+    # Environment
+    "get_app_env": lambda state, app_id: get_app_env(app_id),
+    "set_app_env": lambda state, app_id, key, value: set_app_env(app_id, key, value),
+    "delete_app_env": lambda state, app_id, key: delete_app_env(app_id, key),
+    # Tags & filtering
+    "list_tags": lambda state: list_tags(),
+    "filter_apps_by_tag": lambda state, tag: filter_apps_by_tag(tag),
+    # Favorites & recent
+    "get_favorite_apps": lambda state: get_favorite_apps(),
+    "get_recent_apps": lambda state: get_recent_apps(),
+    "toggle_favorite": lambda state, app_id, is_favorite: toggle_favorite(app_id, is_favorite),
+    # Scripts
     "list_hub_scripts": lambda state: list_hub_scripts(),
+    "run_hub_script": lambda state, script_id, args=None: run_hub_script(script_id, args),
+    # Manifests & registries
     "get_app_manifest": lambda state, app_id: get_app_manifest(app_id),
     "build_agent_tool_registry": lambda state: build_agent_tool_registry(),
+    "build_script_tool_registry": lambda state: build_script_tool_registry(),
+    # System
+    "refresh_app_discovery": lambda state: refresh_app_discovery(),
 }
 
 
@@ -377,6 +577,7 @@ def _serve_mcp() -> None:  # pragma: no cover
     @server.list_tools()
     async def _list_tools():  # noqa: ANN202
         return [
+            # ── App Control
             Tool(
                 name="list_hub_apps",
                 description="List all Hub-managed Codehome apps with current running status and ports.",
@@ -410,13 +611,162 @@ def _serve_mcp() -> None:  # pragma: no cover
                 },
             ),
             Tool(
+                name="stop_all_apps",
+                description="Emergency stop all running apps at once.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            # ── App Details & Status
+            Tool(
+                name="get_app_detail",
+                description="Get full details for a specific app (manifest, config, metadata).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"app_id": {"type": "string"}},
+                    "required": ["app_id"],
+                },
+            ),
+            Tool(
+                name="get_app_status",
+                description="Get current running status of an app (PID, port, URL).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"app_id": {"type": "string"}},
+                    "required": ["app_id"],
+                },
+            ),
+            Tool(
+                name="get_app_scripts",
+                description="Get scripts available for a specific app.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"app_id": {"type": "string"}},
+                    "required": ["app_id"],
+                },
+            ),
+            Tool(
+                name="get_port_assignments",
+                description="Get all port assignments for Hub apps and reserved system ports.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            # ── Logs & Health
+            Tool(
+                name="get_app_logs",
+                description="Get recent logs for an app (default 100 lines).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "app_id": {"type": "string"},
+                        "limit": {"type": "integer", "default": 100},
+                    },
+                    "required": ["app_id"],
+                },
+            ),
+            Tool(
+                name="get_app_health",
+                description="Get health status for an app (healthy, failure count, last check).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"app_id": {"type": "string"}},
+                    "required": ["app_id"],
+                },
+            ),
+            # ── Analytics
+            Tool(
+                name="get_app_analytics",
+                description="Get usage analytics for a specific app (start count, runtime, last used).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"app_id": {"type": "string"}},
+                    "required": ["app_id"],
+                },
+            ),
+            Tool(
+                name="get_hub_analytics",
+                description="Get overall Hub analytics (total workflows, tokens, cost, success rate).",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            # ── Environment Variables
+            Tool(
+                name="get_app_env",
+                description="Get all environment variables for an app.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"app_id": {"type": "string"}},
+                    "required": ["app_id"],
+                },
+            ),
+            Tool(
+                name="set_app_env",
+                description="Set an environment variable for an app.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "app_id": {"type": "string"},
+                        "key": {"type": "string"},
+                        "value": {"type": "string"},
+                    },
+                    "required": ["app_id", "key", "value"],
+                },
+            ),
+            Tool(
+                name="delete_app_env",
+                description="Delete an environment variable from an app.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "app_id": {"type": "string"},
+                        "key": {"type": "string"},
+                    },
+                    "required": ["app_id", "key"],
+                },
+            ),
+            # ── Tags & Filtering
+            Tool(
+                name="list_tags",
+                description="Get all available tags across all apps.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="filter_apps_by_tag",
+                description="Get apps filtered by a specific tag.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"tag": {"type": "string"}},
+                    "required": ["tag"],
+                },
+            ),
+            # ── Favorites & Recent
+            Tool(
+                name="get_favorite_apps",
+                description="Get user's favorite apps.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="get_recent_apps",
+                description="Get recently used apps.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="toggle_favorite",
+                description="Add an app to favorites or remove it.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "app_id": {"type": "string"},
+                        "is_favorite": {"type": "boolean"},
+                    },
+                    "required": ["app_id", "is_favorite"],
+                },
+            ),
+            # ── Scripts
+            Tool(
                 name="list_hub_scripts",
                 description="List all Hub-registered scripts available to run.",
                 inputSchema={"type": "object", "properties": {}},
             ),
             Tool(
                 name="run_hub_script",
-                description="Run a Hub script by its script ID.",
+                description="Run a Hub script by its script ID with optional arguments.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -426,23 +776,38 @@ def _serve_mcp() -> None:  # pragma: no cover
                     "required": ["script_id"],
                 },
             ),
+            # ── Manifests
             Tool(
                 name="get_app_manifest",
-                description=(
-                    "Get the agent capability manifest for a Hub app "
-                    "(the 'agent' block from its app.json, if declared)."
-                ),
+                description="Get the agent capability manifest for a Hub app.",
                 inputSchema={
                     "type": "object",
                     "properties": {"app_id": {"type": "string"}},
                     "required": ["app_id"],
                 },
             ),
+            Tool(
+                name="build_agent_tool_registry",
+                description="Build a registry of tools from all apps' agent blocks.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="build_script_tool_registry",
+                description="Build a registry of all Hub scripts as callable tools.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            # ── System
+            Tool(
+                name="refresh_app_discovery",
+                description="Trigger a manual app discovery refresh to find new apps.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
         ]
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict):  # noqa: ANN202
         try:
+            # ── App Control
             if name == "list_hub_apps":
                 result = list_hub_apps()
             elif name == "start_hub_app":
@@ -451,12 +816,61 @@ def _serve_mcp() -> None:  # pragma: no cover
                 result = stop_hub_app(arguments["app_id"])
             elif name == "restart_hub_app":
                 result = restart_hub_app(arguments["app_id"])
+            elif name == "stop_all_apps":
+                result = stop_all_apps()
+            # ── App Details
+            elif name == "get_app_detail":
+                result = get_app_detail(arguments["app_id"])
+            elif name == "get_app_status":
+                result = get_app_status(arguments["app_id"])
+            elif name == "get_app_scripts":
+                result = get_app_scripts(arguments["app_id"])
+            elif name == "get_port_assignments":
+                result = get_port_assignments()
+            # ── Logs & Health
+            elif name == "get_app_logs":
+                result = get_app_logs(arguments["app_id"], arguments.get("limit", 100))
+            elif name == "get_app_health":
+                result = get_app_health(arguments["app_id"])
+            # ── Analytics
+            elif name == "get_app_analytics":
+                result = get_app_analytics(arguments["app_id"])
+            elif name == "get_hub_analytics":
+                result = get_hub_analytics()
+            # ── Environment
+            elif name == "get_app_env":
+                result = get_app_env(arguments["app_id"])
+            elif name == "set_app_env":
+                result = set_app_env(arguments["app_id"], arguments["key"], arguments["value"])
+            elif name == "delete_app_env":
+                result = delete_app_env(arguments["app_id"], arguments["key"])
+            # ── Tags & Filtering
+            elif name == "list_tags":
+                result = list_tags()
+            elif name == "filter_apps_by_tag":
+                result = filter_apps_by_tag(arguments["tag"])
+            # ── Favorites & Recent
+            elif name == "get_favorite_apps":
+                result = get_favorite_apps()
+            elif name == "get_recent_apps":
+                result = get_recent_apps()
+            elif name == "toggle_favorite":
+                result = toggle_favorite(arguments["app_id"], arguments["is_favorite"])
+            # ── Scripts
             elif name == "list_hub_scripts":
                 result = list_hub_scripts()
             elif name == "run_hub_script":
                 result = run_hub_script(arguments["script_id"], arguments.get("args"))
+            # ── Manifests
             elif name == "get_app_manifest":
                 result = {"manifest": get_app_manifest(arguments["app_id"])}
+            elif name == "build_agent_tool_registry":
+                result = {"registry": build_agent_tool_registry()}
+            elif name == "build_script_tool_registry":
+                result = {"registry": build_script_tool_registry()}
+            # ── System
+            elif name == "refresh_app_discovery":
+                result = refresh_app_discovery()
             else:
                 result = {"error": f"Unknown tool: {name}"}
         except Exception as exc:  # noqa: BLE001
@@ -465,7 +879,16 @@ def _serve_mcp() -> None:  # pragma: no cover
 
     import asyncio
 
-    asyncio.run(stdio_server(server))
+    async def _main() -> None:
+        async with stdio_server(server):
+            # stdio_server manages I/O; just keep running until stdin closes
+            try:
+                # Block until stdin closes (MCP client disconnects)
+                await asyncio.Event().wait()
+            except KeyboardInterrupt:
+                pass
+
+    asyncio.run(_main())
 
 
 if __name__ == "__main__":

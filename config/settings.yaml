@@ -23,6 +23,26 @@ settings:
   # deterministic template (useful for dry runs / testing).
   allow_template_fallback: true
 
+  # Morning-briefing "recently created" window. "Recent" = documents created
+  # since the last time the briefing was issued (the watermark is the most
+  # recent COMPLETED run of recent_watermark_workflow; see core/memory.last_run_at).
+  briefing:
+    # Cold start only: when there is no prior completed briefing run, look back
+    # this many hours instead.
+    recent_fallback_hours: 24
+    # Which workflow's last run defines "since last request". Default scopes the
+    # window to the briefing itself; set to another workflow to share a marker.
+    recent_watermark_workflow: "morning-briefing"
+    # Cap the number of new docs surfaced in one brief.
+    recent_max_items: 30
+    # Top-level vault folders (and any dotfolders) excluded from the scan.
+    recent_exclude_folders:
+      - "06 - Archive"
+      - "Templates"
+      - ".obsidian"
+      - ".git"
+      - ".trash"
+
   # USD per million tokens — verify against https://www.anthropic.com/pricing
   # Unknown models fall back to the most expensive entry here (conservative).
   # Local (Ollama) models are priced 0 so they never consume the daily cap.
@@ -70,3 +90,50 @@ settings:
         context_window: 131072
         supports_tools: true
         cost_per_mtok: {input: 0, output: 0}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Adding more models (zero code). Append entries to agent.models above with
+  # the right `provider`. Adapters live in core/llm.py; register_provider() can
+  # add brand-new ones from a plugin. Set the referenced API-key env vars in
+  # your shell / launchd before selecting the model.
+  #
+  # One adapter — provider: openai_compatible — covers every OpenAI-protocol
+  # endpoint; only base_url + api_key_env change. Examples:
+  #
+  #   - id: "gpt-4o"
+  #     provider: "openai_compatible"
+  #     label: "GPT-4o (OpenAI)"
+  #     api_key_env: "OPENAI_API_KEY"
+  #     # base_url omitted ⇒ api.openai.com default
+  #     context_window: 128000
+  #     cost_per_mtok: {input: 2.50, output: 10.00}
+  #
+  #   - id: "llama-3.3-70b-versatile"
+  #     provider: "openai_compatible"
+  #     label: "Llama 3.3 70B (Groq)"
+  #     base_url: "https://api.groq.com/openai/v1"
+  #     api_key_env: "GROQ_API_KEY"
+  #     cost_per_mtok: {input: 0.59, output: 0.79}
+  #
+  #   - id: "deepseek/deepseek-chat"
+  #     provider: "openai_compatible"
+  #     label: "DeepSeek V3 (OpenRouter)"
+  #     base_url: "https://openrouter.ai/api/v1"
+  #     api_key_env: "OPENROUTER_API_KEY"
+  #
+  #   - id: "local-model"                 # self-hosted vLLM / LM Studio
+  #     provider: "openai_compatible"
+  #     label: "Local OpenAI-compatible server"
+  #     base_url: "http://localhost:1234/v1"
+  #     # no api_key_env ⇒ a placeholder key is sent; priced 0 below
+  #     cost_per_mtok: {input: 0, output: 0}
+  #
+  #   - id: "gemini-2.5-flash"
+  #     provider: "google"
+  #     label: "Gemini 2.5 Flash"
+  #     api_key_env: "GOOGLE_API_KEY"
+  #     cost_per_mtok: {input: 0.30, output: 2.50}
+  #
+  # `extra: {temperature: 0.2, top_p: 0.9}` on any entry passes straight to the
+  # underlying LangChain constructor.
+  # ─────────────────────────────────────────────────────────────────────────

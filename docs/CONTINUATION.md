@@ -1,5 +1,99 @@
 # Continuation note
 
+**2026-06-19 — Hub MCP Extended: 7 tools → 35 tools + Phase 2 Layout Planning**
+
+## What was done this session
+
+### 1. Hub API Audit Complete
+Verified all 27 Hub REST endpoints against ENHANCEMENTS_PRD.md and FIXES_PRD.md.
+Result: ✅ No missing endpoints. Hub API is production-ready for MCP wrapper.
+Deliverable: `HUB_API_AUDIT.md` (filed in Brain2 deliverables).
+
+### 2. GUI Wireframes: 3 Layout Alternatives
+Created interactive wireframe comparison of 3 Agentic OS GUI layouts:
+- **Alternative A: Sidebar-Focused** ⭐ (RECOMMENDED) — Agent status cards + tabbed content
+- Alternative B: Dashboard Grid — 6-panel dashboard view
+- Alternative C: Terminal-Primary — CLI-focused with large terminal
+Recommendation: Use Alternative A for Phase 1; add B/C as secondary views in Phase 2+.
+Deliverable: `gui-layout-alternatives.html` (interactive prototype).
+
+### 3. SysOps Dashboard Created
+Built persistent Cowork artifact showing live Agentic OS service status:
+- Sidecar (:5130), Hub (:8085), app status
+- launchd agent state + auto-restart status
+- System health (CPU, memory, uptime)
+- Usage telemetry (cost, workflows, tokens, success rate)
+- Auto-refreshes every 30 seconds
+Live in Cowork sidebar; ready for ongoing monitoring.
+
+### 4. Hub MCP Extended: 7 → 35 Tools ⭐ (THIS SESSION)
+Expanded `tools/hub_mcp.py` with 28 new tools covering all Hub endpoints:
+- **Logs & Health:** `get_app_logs()`, `get_app_health()`
+- **Analytics:** `get_app_analytics()`, `get_hub_analytics()`
+- **Environment:** `get_app_env()`, `set_app_env()`, `delete_app_env()`
+- **Tags & Filtering:** `list_tags()`, `filter_apps_by_tag()`
+- **Favorites & Recent:** `get_favorite_apps()`, `get_recent_apps()`, `toggle_favorite()`
+- **Details & Status:** `get_app_detail()`, `get_app_status()`, `get_app_scripts()`, `get_port_assignments()`
+- **System:** `stop_all_apps()`, `refresh_app_discovery()`, registry builders
+- **Dual-mode:** Works as Python imports (workflows) + MCP server (Tauri GUI)
+- All functions in ACTIONS dict for LangGraph; all tools in MCP server
+Deliverables: `hub_mcp.py` (extended), `HUB_MCP_EXTENDED.md`, `docs/hub-mcp-tools.md` (reference)
+
+### 5. Documentation Updated
+- Created `docs/hub-mcp-tools.md` — complete reference guide (35 tools, usage, error handling)
+- Updated `docs/README.md` — added hub-mcp-tools link to doc map
+- Updated `docs/CHANGELOG.md` — 2026-06-19 entry documenting all 28 new tools
+- Updated Brain2 Agentic OS.md — progress log entry
+- Updated Brain2 session continuation — documented work + Phase 2 next steps
+
+## ▶ NEXT SESSION — START HERE
+
+### Must do first
+```bash
+# 1. Confirm Hub MCP works (already dual-mode, no build needed)
+cd ~/Codehome/AgenticOS
+python -m tools.hub_mcp  # Should start stdio MCP server with 35 tools
+
+# 2. Start Phase 2: Tauri GUI with Sidebar Layout
+# First: Interview on display strategy (see "Phase 2 Layout Interview" below)
+# Then: Build React components using sidebar-focused prototype as reference
+
+# 3. Register Hub MCP in config/tools.yaml (when Phase 2 is ready)
+# tools:
+#   hub_mcp:
+#     command: python
+#     args: ["-m", "tools.hub_mcp"]
+
+# 4. Commit this session's work
+cd ~/Codehome/AgenticOS
+git add tools/hub_mcp.py tools/HUB_MCP_EXTENDED.md docs/
+git commit -m "Hub MCP extended (35 tools), docs updated, Phase 2 ready"
+git push
+```
+
+### Phase 2 Layout Interview — Answer these before building GUI
+1. **Sidebar Agent Cards** — Display quick stats? Favorite toggle? Recent apps below?
+2. **Main Panel Tabs** — Keep current (Queue|Logs|Memory|Approvals)? Add new ones? Merge?
+3. **Logs Display** — Separate "Diagnostics" tab (logs + health)? Or stay in Memory?
+4. **Environment Variables** — Where to access (config tab, popup, sidebar)?
+5. **Scripts & Favorites** — Dropdown on cards? Separate section? Filter bar?
+
+### Carry-forward
+- **All Phase 7 work** (expandable panels, menu bar, terminal) remains live and tested.
+- **Phase 8+ feature backlog** unchanged (see roadmap.md).
+- **Hub MCP is production-ready** — no further changes unless Phase 2 reveals gaps.
+
+## Key files changed this session
+- `tools/hub_mcp.py` — Extended with 28 new tools (7 → 35), MCP server updated
+- `tools/HUB_MCP_EXTENDED.md` — Summary of new tools (NEW)
+- `docs/hub-mcp-tools.md` — Complete reference guide (NEW)
+- `docs/README.md` — Added hub-mcp-tools link
+- `docs/CHANGELOG.md` — 2026-06-19 entry
+- Brain2 `01 - Projects/Agentic OS.md` — Progress log updated
+- Brain2 `07 - Claude Sessions/2026-06-18...Session.md` — Continuation notes
+
+---
+
 **2026-06-17 (4) — Process supervision + adaptive polling session.**
 
 ## What was done this session

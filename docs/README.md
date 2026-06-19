@@ -14,6 +14,7 @@ to operate and extend it.
 | [workflows.md](workflows.md) | Write or modify a workflow, or add a new agent action |
 | [constitution.md](constitution.md) | Understand or tune the safety model (blocked ops, approvals, limits) |
 | [state-and-memory.md](state-and-memory.md) | Understand SQLite state, checkpoints, and run recovery |
+| [hub-mcp-tools.md](hub-mcp-tools.md) | Use the 35 Hub integration tools (app control, logs, analytics, scripts, etc.) |
 | [roadmap.md](roadmap.md) | See phase status and what's coming next |
 | [CHANGELOG.md](CHANGELOG.md) | See what changed and when |
 

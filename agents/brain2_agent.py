@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import os
 import re
 from pathlib import Path
 
@@ -23,6 +25,89 @@ def _frontmatter(text: str) -> dict:
         return yaml.safe_load(match.group(1)) or {}
     except yaml.YAMLError:
         return {}
+
+
+def _doc_hash(text: str) -> str:
+    """Stable content identity for a note, ignoring any frontmatter block.
+
+    The raw-note processor prepends `--- ... ---` frontmatter when it files a
+    note, so hashing the body only lets a raw note and its filed copy resolve
+    to the same identity.
+    """
+    m = re.match(r"^---\n.*?\n---\n?", text, re.DOTALL)
+    body = text[m.end():] if m else text
+    body = re.sub(r"\s+", " ", body).strip()
+    return hashlib.sha1(body.encode("utf-8")).hexdigest()
+
+
+def _recent_docs(since_ts: float, seen: set[str] | None = None) -> list[dict]:
+    """Vault `.md` files created at or after *since_ts*, newest first.
+
+    "Created" uses the filesystem birth time (st_birthtime on macOS/APFS),
+    falling back to mtime where birth time is unavailable. Auto-generated
+    briefing/session outputs and the vault index are skipped so the brief
+    never lists itself. Docs whose content hash is in *seen* (already surfaced
+    in a prior brief) or duplicated within this batch (e.g. a raw note and its
+    filed copy) are dropped, keeping the newest instance.
+    """
+    seen = seen or set()
+    cfg = CONFIG.get("briefing", {})
+    exclude = set(
+        cfg.get(
+            "recent_exclude_folders",
+            ["06 - Archive", "Templates", ".obsidian", ".git", ".trash"],
+        )
+    )
+    max_items = int(cfg.get("recent_max_items", 30))
+
+    candidates: list[dict] = []
+    for root, dirs, files in os.walk(VAULT):
+        # Prune excluded + hidden directories in-place so we don't descend them.
+        dirs[:] = [d for d in dirs if d not in exclude and not d.startswith(".")]
+        rel_root = Path(root).relative_to(VAULT)
+        top = rel_root.parts[0] if rel_root.parts else ""
+        if top in exclude:
+            continue
+        for fn in files:
+            if not fn.endswith(".md") or fn == "index.md":
+                continue
+            if fn.endswith("Morning Briefing.md") or fn.endswith("Session Report.md"):
+                continue
+            path = Path(root) / fn
+            try:
+                st = path.stat()
+                created = getattr(st, "st_birthtime", st.st_mtime)
+                if created < since_ts:
+                    continue
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            candidates.append(
+                {
+                    "title": fn[:-3],
+                    "path": str(path.relative_to(VAULT)),
+                    "folder": "" if str(rel_root) == "." else str(rel_root),
+                    "created": dt.datetime.fromtimestamp(created).isoformat(
+                        timespec="seconds"
+                    ),
+                    "hash": _doc_hash(text),
+                    "_ts": created,
+                }
+            )
+
+    candidates.sort(key=lambda d: d["_ts"], reverse=True)
+    out: list[dict] = []
+    batch: set[str] = set()
+    for d in candidates:
+        h = d["hash"]
+        if h in seen or h in batch:
+            continue
+        batch.add(h)
+        d.pop("_ts", None)
+        out.append(d)
+        if len(out) >= max_items:
+            break
+    return out
 
 
 def read_focus_and_queue(state: dict) -> dict:
@@ -59,11 +144,28 @@ def read_focus_and_queue(state: dict) -> dict:
                 if line.strip().startswith("- [ ]"):
                     open_tasks.append(line.strip()[5:].strip())
 
+    # "Recently created" = docs created since the last completed briefing run
+    # (cold start: fall back to a fixed look-back window). See settings.briefing.
+    from core import memory as _mem
+
+    brief_cfg = CONFIG.get("briefing", {})
+    watermark_wf = brief_cfg.get("recent_watermark_workflow", "morning-briefing")
+    fallback_hours = float(brief_cfg.get("recent_fallback_hours", 24))
+    since_ts = _mem.last_run_at(watermark_wf)
+    cold_start = since_ts is None
+    if since_ts is None:
+        since_ts = dt.datetime.now().timestamp() - fallback_hours * 3600
+    recent = _recent_docs(since_ts, _mem.seen_doc_hashes())
+
     return {
         "projects": projects,
         "raw_note_count": len(raw_notes),
         "raw_notes": raw_notes,
         "open_tasks": open_tasks[:20],
+        "recent_docs": recent,
+        "recent_doc_count": len(recent),
+        "recent_since": dt.datetime.fromtimestamp(since_ts).isoformat(timespec="seconds"),
+        "recent_cold_start": cold_start,
         "scanned_at": dt.datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -74,7 +176,15 @@ def write_to_reflections(state: dict) -> dict:
     today = dt.date.today().isoformat()
     target = VAULT / "04 - Reflections" / f"{today} - Morning Briefing.md"
     written = fs.write_file(str(target), brief)
-    return {"written_to": written}
+    # Remember which docs we just surfaced so they don't reappear as "new" if
+    # they later move folders (e.g. raw-note processing rewrites the file with
+    # a fresh creation timestamp). Done here, post-write, so a failed brief
+    # never burns a doc's one-and-only appearance.
+    from core import memory as _mem
+
+    surfaced = state["outputs"].get("read_vault", {}).get("recent_docs", [])
+    marked = _mem.mark_docs_briefed(surfaced)
+    return {"written_to": written, "docs_marked_briefed": marked}
 
 
 def write_test_note(state: dict) -> dict:

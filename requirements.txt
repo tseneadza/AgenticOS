@@ -14,3 +14,8 @@ iterm2>=2.6              # Phase 4 FR-08: iTerm2 Python API (macOS only)
 langchain-core>=0.3
 langchain-anthropic>=0.3
 langchain-ollama>=0.2   # talks to a local Ollama service on :11434 (optional)
+
+# Optional provider packages (install only the backends you actually use).
+# The adapters in core/llm.py import these lazily, so the OS runs without them.
+# langchain-openai>=0.2        # provider: openai_compatible (OpenAI, Groq, OpenRouter, DeepSeek, Mistral, xAI, vLLM, LM Studio, …)
+# langchain-google-genai>=2.0  # provider: google (Gemini)

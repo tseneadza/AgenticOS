@@ -1,3 +1,20 @@
+## 2026-06-19 — Hub MCP extended: 35 tools for app/script/analytics/env management
+
+- **New capability.** Extended the Hub MCP module (`tools/hub_mcp.py`) from 7 tools to **35 tools**, exposing all 27 Hub REST endpoints. Full coverage: app control, details, logs, health, analytics, environment variables, tags, favorites, scripts, and system operations.
+- **New tools (28 added):**
+  - **Logs & Health:** `get_app_logs(app_id, limit)`, `get_app_health(app_id)`
+  - **Analytics:** `get_app_analytics(app_id)`, `get_hub_analytics()`
+  - **Environment:** `get_app_env(app_id)`, `set_app_env(app_id, key, value)`, `delete_app_env(app_id, key)`
+  - **Tags & Filtering:** `list_tags()`, `filter_apps_by_tag(tag)`
+  - **Favorites & Recent:** `get_favorite_apps()`, `get_recent_apps()`, `toggle_favorite(app_id, is_favorite)`
+  - **Details & Status:** `get_app_detail(app_id)`, `get_app_status(app_id)`, `get_app_scripts(app_id)`, `get_port_assignments()`
+  - **System:** `stop_all_apps()`, `refresh_app_discovery()`, plus registries and manifests
+- **Dual-mode unchanged:** All functions work as Python imports (for workflows) and via MCP server (for Tauri GUI, external clients).
+- **Workflow integration:** All 35 tools in the `ACTIONS` dict; register new tools in MCP server via `@server.list_tools()` and `@server.call_tool()`.
+- **Implementation:** `tools/hub_mcp.py` extended with 400+ lines of new functions; `tools/HUB_MCP_EXTENDED.md` summarizes; see `docs/hub-mcp-tools.md` for full reference.
+- **Next:** Ready for Tauri GUI Phase 2 — interview needed on how to display analytics, logs, env vars, scripts, and favorites in the sidebar layout.
+- Verified: All functions degrade gracefully (Hub unreachable returns `{"available": False, "error": ...}`); no breaking changes to existing ACTIONS.
+
 ## 2026-06-17 — Agent can run terminal commands (`run_shell`) — allowlist-auto, approve-the-rest
 
 - **New capability.** The governing agent (Osa) can now run terminal commands and

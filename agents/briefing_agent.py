@@ -25,8 +25,10 @@ _SYSTEM = (
     "You are the briefing agent of a personal Agentic OS. Compose a concise, "
     "well-structured morning briefing in Markdown from the JSON context "
     "provided. Sections: Today's Focus (from active projects + open tasks), "
-    "Inbox (raw note queue), Codehome Status. Keep it under 300 words, "
-    "actionable, no filler. Start with a single H1 title line."
+    "New Since Last Brief (from vault.recent_docs — documents created since the "
+    "last briefing; group or list them by folder, and if the list is empty say "
+    "there's nothing new), Inbox (raw note queue), Codehome Status. Keep it "
+    "under 300 words, actionable, no filler. Start with a single H1 title line."
 )
 
 
@@ -43,6 +45,21 @@ def _template_brief(vault: dict, hub: dict) -> str:
         lines.append("")
         lines.append("Open tasks:")
         lines.extend(f"- [ ] {t}" for t in vault["open_tasks"][:5])
+
+    lines.append("")
+    lines.append("## New Since Last Brief")
+    recent = vault.get("recent_docs", [])
+    if recent:
+        since = vault.get("recent_since", "")
+        window = " (first run — last 24h)" if vault.get("recent_cold_start") else ""
+        lines.append(f"*{len(recent)} doc(s) created since {since}{window}:*")
+        for d in recent[:15]:
+            folder = f" — `{d['folder']}`" if d.get("folder") else ""
+            lines.append(f"- {d['title']}{folder}")
+        if len(recent) > 15:
+            lines.append(f"- …and {len(recent) - 15} more")
+    else:
+        lines.append("- Nothing new since the last briefing.")
 
     lines.append("")
     lines.append("## Inbox")

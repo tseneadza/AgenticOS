@@ -31,11 +31,6 @@ import yaml
 
 _SETTINGS_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
 
-# Provider adapter registry (populated lower in this module). Declared up here so
-# ModelInfo.is_local can reference _LOCAL_PROVIDERS at call time.
-_PROVIDERS: dict = {}
-_LOCAL_PROVIDERS: set[str] = set()
-
 
 def _settings() -> dict:
     return yaml.safe_load(_SETTINGS_PATH.read_text())["settings"]
@@ -47,18 +42,15 @@ def _settings() -> dict:
 @dataclass(frozen=True)
 class ModelInfo:
     id: str
-    provider: str  # "anthropic" | "ollama" | "openai_compatible" | "google" | custom
+    provider: str  # "anthropic" | "ollama"
     label: str
     context_window: int = 0
     supports_tools: bool = True
     cost_per_mtok: dict = field(default_factory=lambda: {"input": 0.0, "output": 0.0})
-    base_url: str | None = None       # provider endpoint (openai_compatible / gateways)
-    api_key_env: str | None = None    # env var holding this model's API key
-    extra: dict = field(default_factory=dict)  # passthrough kwargs to the LC ctor
 
     @property
     def is_local(self) -> bool:
-        return self.provider in _LOCAL_PROVIDERS
+        return self.provider == "ollama"
 
 
 def _agent_cfg() -> dict:
@@ -77,9 +69,6 @@ def registry() -> list[ModelInfo]:
                 context_window=int(m.get("context_window", 0)),
                 supports_tools=bool(m.get("supports_tools", True)),
                 cost_per_mtok=m.get("cost_per_mtok", {"input": 0.0, "output": 0.0}),
-                base_url=m.get("base_url"),
-                api_key_env=m.get("api_key_env"),
-                extra=m.get("extra", {}) or {},
             )
         )
     return out
@@ -391,15 +380,15 @@ def is_available(model_id: str) -> bool:
     """
     info = get_model_info(model_id)
     provider = info.provider if info else "anthropic"
-    adapter = get_provider(provider)
-    if adapter is None:
-        return False
-    if info is None:
-        info = ModelInfo(id=model_id, provider=provider, label=model_id)
-    try:
-        return bool(adapter.available(info))
-    except Exception:
-        return False
+    if provider == "anthropic":
+        return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    if provider == "ollama":
+        if model_id not in _ollama_installed_ids():
+            return False
+        size = int(_discovered_meta.get(model_id, {}).get("size_bytes", 0))
+        fits, _ = _ram_fit(size)
+        return fits
+    return False
 
 
 def _ram_fit(size_bytes: int) -> tuple[bool, str | None]:
@@ -425,6 +414,7 @@ def list_models(*, ensure_ollama: bool = True) -> dict:
         ensure_ollama_running()
     discovered = discover_ollama(force=ensure_ollama)
     up = ollama_up()
+    has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     ram = total_ram_bytes()
 
     def _row(info: ModelInfo, *, installed: bool, available: bool,
@@ -465,10 +455,9 @@ def list_models(*, ensure_ollama: bool = True) -> dict:
                 out.append(_row(info, installed=True, available=fits,
                                 size=size, fits=fits, reason=reason))
         else:
-            avail = is_available(info.id)
-            out.append(_row(info, installed=True, available=avail,
+            out.append(_row(info, installed=True, available=has_key,
                             size=0, fits=True,
-                            reason=None if avail else "no_api_key"))
+                            reason=None if has_key else "no_api_key"))
     # 2. dynamically discovered locals not in the curated registry (only when the
     #    service is up — a stale cache must not look runnable while Ollama is off).
     if up:
@@ -514,141 +503,34 @@ def cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# Provider adapters (pluggable)
-# --------------------------------------------------------------------------- #
-# Adding a *provider* = register one ProviderAdapter (here or from a plugin via
-# register_provider()). Adding a *model* for an existing provider = one entry in
-# settings.yaml > agent.models, no code change. The "openai_compatible" adapter
-# alone covers OpenAI, Groq, Together, OpenRouter, DeepSeek, Mistral, xAI,
-# Fireworks, Perplexity, and local vLLM / LM Studio servers — they all speak the
-# same /v1/chat/completions protocol; only base_url + api_key_env differ.
-@dataclass(frozen=True)
-class ProviderAdapter:
-    name: str
-    local: bool
-    build: Any      # (ModelInfo, **kwargs) -> LangChain chat model
-    available: Any  # (ModelInfo) -> bool
-
-
-def register_provider(adapter: "ProviderAdapter") -> None:
-    """Register (or override) a provider adapter. Lets a plugin add a brand-new
-    backend without editing this module."""
-    _PROVIDERS[adapter.name] = adapter
-    (_LOCAL_PROVIDERS.add if adapter.local else _LOCAL_PROVIDERS.discard)(adapter.name)
-
-
-def get_provider(name: str) -> "ProviderAdapter | None":
-    return _PROVIDERS.get(name)
-
-
-def provider_names() -> list[str]:
-    return sorted(_PROVIDERS)
-
-
-def _api_key(info: ModelInfo, default_env: str | None = None) -> str | None:
-    env = info.api_key_env or default_env
-    return os.environ.get(env) if env else None
-
-
-# --- anthropic (cloud) ----------------------------------------------------- #
-def _anthropic_build(info: ModelInfo, **kwargs: Any):
-    from langchain_anthropic import ChatAnthropic
-    # Pin endpoint + key and strip ambient ANTHROPIC_* routing vars so the cloud
-    # client always reaches the real API (Open issue #2).
-    kwargs.setdefault("base_url", info.base_url or anthropic_base_url())
-    key = _api_key(info, "ANTHROPIC_API_KEY")
-    if key:
-        kwargs.setdefault("api_key", key)
-    kwargs = {**info.extra, **kwargs}
-    with _isolated_anthropic_env():
-        return ChatAnthropic(model=info.id, **kwargs)
-
-
-def _anthropic_available(info: ModelInfo) -> bool:
-    return bool(_api_key(info, "ANTHROPIC_API_KEY"))
-
-
-# --- ollama (local) -------------------------------------------------------- #
-def _ollama_build(info: ModelInfo, **kwargs: Any):
-    from langchain_ollama import ChatOllama
-    kwargs = {**info.extra, **kwargs}
-    return ChatOllama(model=info.id, base_url=info.base_url or ollama_base_url(), **kwargs)
-
-
-def _ollama_available(info: ModelInfo) -> bool:
-    if info.id not in _ollama_installed_ids():
-        return False
-    size = int(_discovered_meta.get(info.id, {}).get("size_bytes", 0))
-    fits, _ = _ram_fit(size)
-    return fits
-
-
-# --- openai-compatible (OpenAI, Groq, Together, OpenRouter, DeepSeek, Mistral,
-#     xAI, Fireworks, Perplexity, vLLM, LM Studio, …) ---------------------- #
-def _openai_build(info: ModelInfo, **kwargs: Any):
-    from langchain_openai import ChatOpenAI
-    if info.base_url:
-        kwargs.setdefault("base_url", info.base_url)
-    key = _api_key(info, "OPENAI_API_KEY")
-    # Local OpenAI-compatible servers usually need no real key.
-    kwargs.setdefault("api_key", key or "not-needed")
-    kwargs = {**info.extra, **kwargs}
-    return ChatOpenAI(model=info.id, **kwargs)
-
-
-def _openai_available(info: ModelInfo) -> bool:
-    # Reachable if a key is present, or a base_url is configured (self-hosted
-    # endpoints that do not require a key).
-    return bool(_api_key(info, "OPENAI_API_KEY")) or bool(info.base_url)
-
-
-# --- google gemini (cloud) ------------------------------------------------- #
-def _google_build(info: ModelInfo, **kwargs: Any):
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    key = _api_key(info, "GOOGLE_API_KEY")
-    if key:
-        kwargs.setdefault("google_api_key", key)
-    kwargs = {**info.extra, **kwargs}
-    return ChatGoogleGenerativeAI(model=info.id, **kwargs)
-
-
-def _google_available(info: ModelInfo) -> bool:
-    return bool(_api_key(info, "GOOGLE_API_KEY"))
-
-
-for _adapter in (
-    ProviderAdapter("anthropic", False, _anthropic_build, _anthropic_available),
-    ProviderAdapter("ollama", True, _ollama_build, _ollama_available),
-    ProviderAdapter("openai_compatible", False, _openai_build, _openai_available),
-    ProviderAdapter("google", False, _google_build, _google_available),
-):
-    register_provider(_adapter)
-
-
-# --------------------------------------------------------------------------- #
 # Model construction + completion
 # --------------------------------------------------------------------------- #
 def get_chat_model(model_id: str | None = None, **kwargs: Any):
     """Return a LangChain chat model for ``model_id`` (or the active model).
 
-    Dispatches through the provider adapter registry, so any registered backend
-    (anthropic, ollama, openai_compatible, google, or a plugin-registered one)
-    is constructed uniformly. LangChain imports are lazy inside each adapter, so
-    this module loads even when a given provider's package isn't installed.
+    ChatAnthropic for cloud, ChatOllama for local. LangChain imports are lazy
+    so this module loads even when those packages aren't installed.
     """
     model_id = model_id or active_model()
     info = get_model_info(model_id)
     provider = info.provider if info else "anthropic"
-    adapter = get_provider(provider)
-    if adapter is None:
-        raise ValueError(
-            f"Unknown provider for model {model_id!r}: {provider!r}. "
-            f"Known providers: {', '.join(provider_names())}. "
-            f"Add one with core.llm.register_provider()."
-        )
-    if info is None:
-        info = ModelInfo(id=model_id, provider=provider, label=model_id)
-    return adapter.build(info, **kwargs)
+
+    if provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+
+        # Pin the endpoint + key explicitly and build with ambient ANTHROPIC_*
+        # routing vars stripped, so the cloud client always reaches the real API
+        # (Open issue #2).
+        kwargs.setdefault("base_url", anthropic_base_url())
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            kwargs.setdefault("api_key", os.environ["ANTHROPIC_API_KEY"])
+        with _isolated_anthropic_env():
+            return ChatAnthropic(model=model_id, **kwargs)
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+
+        return ChatOllama(model=model_id, base_url=ollama_base_url(), **kwargs)
+    raise ValueError(f"Unknown provider for model '{model_id}': {provider}")
 
 
 @dataclass
