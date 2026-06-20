@@ -4,9 +4,11 @@ import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./a
 import "./App.css";
 import "@xterm/xterm/css/xterm.css";
 
-// Phase 2 GUI Components (Environment + Diagnostics)
+// Phase 2 GUI Components (Environment + Diagnostics + Scripts)
 import Environment from "./components/Environment";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
+import ScriptsView from "./views/ScriptsView";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Adaptive polling hook.
 //   ms      — normal interval when service is available
@@ -1258,27 +1260,17 @@ function AgentView({ ctx }) {
   );
 }
 
-// Configuration view wrapper (Phase 2 — Environment tab)
-function ConfigurationView() {
-  return (
-    <div className="view-pad">
-      <Environment />
-    </div>
-  );
-}
 
 // Dashboard registry (FR-46) — single source of truth for the nav + native menu.
 // Order locked 2026-06-14: SysOps, Workflows, the four placeholders, then Agent
 // (⌘7). Agent is appended last so the ⌘1–6 bindings stay stable.
-// Phase 2 addition: Configuration view for LLM config + feature flags.
+// Phase 2 update: Scripts view now has tabs (Scripts | Queue | Logs | Memory | Environment)
 const VIEWS = [
   { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
   { id: "workflows", label: "Workflows", component: WorkflowsDashboard },
   { id: "web-news", label: "Web News", placeholder: true,
     purpose: "Curated developer & AI news, summarized by the agent." },
-  { id: "config", label: "Configuration", component: ConfigurationView },
-  { id: "scripts", label: "Scripts", placeholder: true,
-    purpose: "Browse and run Codehome scripts — future home of the absorbed Hub (NF-4)." },
+  { id: "scripts", label: "Scripts", component: ScriptsView },
   { id: "zsh-config", label: "Zsh Config Editor", placeholder: true,
     purpose: "Edit and version your zsh configuration with safe rollbacks." },
   { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
@@ -1299,8 +1291,9 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [view, setView] = useState(() => {
     let saved = localStorage.getItem(VIEW_KEY);
-    if (saved === "dashboard") saved = "sysops";      // FR-47 migration
+    if (saved === "dashboard") saved = "sysops";      // FR-47 migration (old dashboard → sysops)
     if (saved === "events") saved = "workflows";      // Events merged into Workflows dashboard
+    if (saved === "config") saved = "scripts";        // Phase 2 migration: old config → scripts tabs
     return VIEWS.some((v) => v.id === saved) ? saved : "sysops";
   });
 
@@ -1359,7 +1352,7 @@ export default function App() {
     <div className="shell">
       {/* FR-36: sidebar is navigation only */}
       <aside className="sidebar">
-        <div className="brand">AGENTIC OS<small>orchestration layer · v0.3</small></div>
+        <div className="brand">OSA<small>agentic os · v0.4</small></div>
         <nav className="nav">
           {VIEWS.map((v) => (
             <button
@@ -1394,7 +1387,9 @@ export default function App() {
         </div>
         {active.placeholder
           ? <ComingSoon dashboard={active} />
-          : <ActiveView ctx={ctx} />}
+          : <ErrorBoundary key={active.id} label={active.label}>
+              <ActiveView ctx={ctx} />
+            </ErrorBoundary>}
         <div className="statusbar">
           <span>AG-UI {connected ? "● live" : "○ reconnecting"}</span>
           <span>events {feed.length}</span>
