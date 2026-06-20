@@ -9,7 +9,7 @@ Handles:
 Config is persisted to ~/.agentic-os/config.yaml
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 import os
 import yaml
 from pathlib import Path
@@ -29,7 +29,7 @@ DEFAULT_CONFIG = {
     'llm': {
         'activeModel': 'ollama',
         'ollama': {
-            'host': 'http://localhost:11434'
+            'host': 'http://localhost:12434'
         },
         'anthropic': {
             'baseUrl': 'https://api.anthropic.com/v1',
@@ -96,7 +96,7 @@ async def test_llm_connection(config: dict) -> dict:
         active_model = config.get('llm', {}).get('activeModel')
 
         if active_model == 'ollama':
-            host = config['llm']['ollama'].get('host', 'http://localhost:11434')
+            host = config['llm']['ollama'].get('host', 'http://localhost:12434')
             test_url = f"{host}/api/tags"
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(test_url)
@@ -226,7 +226,7 @@ async def put_config(payload: dict):
 
 
 @router.post("/api/config/test")
-async def post_config_test(payload: dict):
+async def post_config_test(payload: dict = Body(...)):
     """
     Test connection to the LLM endpoint.
 

@@ -41,7 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include configuration management routes
+# Include route handlers
 app.include_router(api_config.router)
 
 
@@ -195,7 +195,26 @@ async def _start_scheduler() -> None:
 # ------------------------------------------------------------- workflows
 @app.get("/api/workflows")
 def list_workflows() -> dict:
+    """Return all workflows with metadata: name, description, schedule, steps, cost, run count, last run."""
+    from core import memory
+
     workflows = orchestrator.load_workflows()
+    all_runs = memory.recent_runs(limit=1000)
+
+    # Build per-workflow statistics
+    wf_stats = {}
+    for run in all_runs:
+        if run["workflow"] not in wf_stats:
+            wf_stats[run["workflow"]] = {
+                "cost_total": 0,
+                "run_count": 0,
+                "last_run": run.get("finished_at") or run.get("started_at"),
+            }
+        wf_stats[run["workflow"]]["cost_total"] += run.get("cost_usd", 0)
+        wf_stats[run["workflow"]]["run_count"] += 1
+        if not wf_stats[run["workflow"]]["last_run"] or run.get("finished_at", 0) > wf_stats[run["workflow"]]["last_run"]:
+            wf_stats[run["workflow"]]["last_run"] = run.get("finished_at") or run.get("started_at")
+
     return {
         "workflows": [
             {
@@ -203,6 +222,9 @@ def list_workflows() -> dict:
                 "description": wf.get("description", ""),
                 "schedule": wf.get("schedule"),
                 "steps": [s["id"] for s in wf.get("steps", [])],
+                "costAvg": wf_stats.get(name, {}).get("cost_total", 0) / max(wf_stats.get(name, {}).get("run_count", 1), 1),
+                "runCount": wf_stats.get(name, {}).get("run_count", 0),
+                "lastRun": wf_stats.get(name, {}).get("last_run"),
             }
             for name, wf in workflows.items()
         ]

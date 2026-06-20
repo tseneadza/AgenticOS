@@ -47,7 +47,7 @@ class TestGetConfig:
         assert 'llm' in data
         assert 'flags' in data
         assert data['llm']['activeModel'] == 'ollama'
-        assert data['llm']['ollama']['host'] == 'http://localhost:11434'
+        assert data['llm']['ollama']['host'] == 'http://localhost:12434'
 
     def test_get_config_obfuscates_api_key(self, client):
         """GET /api/config obfuscates Anthropic API key."""
@@ -55,7 +55,7 @@ class TestGetConfig:
         config_payload = {
             'llm': {
                 'activeModel': 'anthropic',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {
                     'baseUrl': 'https://api.anthropic.com/v1',
                     'apiKey': 'sk-ant-test-key-12345'
@@ -96,7 +96,7 @@ class TestPutConfig:
         config_payload = {
             'llm': {
                 'activeModel': 'ollama',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {
                     'baseUrl': 'https://api.anthropic.com/v1',
                     'apiKey': ''
@@ -123,7 +123,7 @@ class TestPutConfig:
         config_payload = {
             'llm': {
                 'activeModel': 'anthropic',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {
                     'baseUrl': 'https://api.anthropic.com/v1',
                     'apiKey': 'sk-ant-test-key'
@@ -150,7 +150,7 @@ class TestPutConfig:
         config_payload = {
             'llm': {
                 'activeModel': 'invalid_model',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {'baseUrl': '', 'apiKey': ''}
             },
             'flags': {}
@@ -180,7 +180,7 @@ class TestPutConfig:
         config_payload = {
             'llm': {
                 'activeModel': 'anthropic',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {
                     'baseUrl': 'https://api.anthropic.com/v1',
                     'apiKey': ''  # Missing key
@@ -197,7 +197,7 @@ class TestPutConfig:
         config_payload = {
             'llm': {
                 'activeModel': 'ollama',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {'baseUrl': '', 'apiKey': ''}
             },
             'flags': {}
@@ -218,7 +218,7 @@ class TestPutConfig:
         config_payload = {
             'llm': {
                 'activeModel': 'anthropic',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {
                     'baseUrl': 'not-a-url',  # Invalid
                     'apiKey': 'sk-ant-test'
@@ -239,7 +239,7 @@ class TestPostConfigTest:
         config_payload = {
             'llm': {
                 'activeModel': 'ollama',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {'baseUrl': '', 'apiKey': ''}
             }
         }
@@ -257,7 +257,7 @@ class TestPostConfigTest:
         config_payload = {
             'llm': {
                 'activeModel': 'ollama',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {'baseUrl': '', 'apiKey': ''}
             }
         }
@@ -356,7 +356,7 @@ class TestConfigFilePersistence:
         config_payload = {
             'llm': {
                 'activeModel': 'ollama',
-                'ollama': {'host': 'http://localhost:11434'},
+                'ollama': {'host': 'http://localhost:12434'},
                 'anthropic': {'baseUrl': '', 'apiKey': 'sensitive-key'}
             },
             'flags': {}

@@ -1,3 +1,27 @@
+## 2026-06-19 — v0.4: Scripts Audit System + Codehome Script Discovery + Osa Branding
+
+- **Branding:** Updated sidebar to show "OSA" as primary name (agentic os · v0.4) — makes it clear the app can be addressed as Osa
+
+- **Backend API:** New `/api/scripts` endpoint for discovering and auditing all scripts in ~/Codehome
+  - Recursive filesystem scanning with auto-detection of script types (bash, python, node, ruby, go, rust)
+  - Metadata extraction: modified date, size, executable status, file path
+  - Organized by app (top-level folder in Codehome)
+  - Optional `.scripts-metadata.json` for custom descriptions
+- **Frontend:** ScriptsView component (500+ lines) with tabbed interface
+  - Workflows tab: Browse workflows with usage instructions and metrics
+  - All Scripts tab: Two-panel layout (app list | script details)
+  - Search/filter functionality for both tabs
+  - Error handling and loading states
+  - localStorage persistence (active tab, selection, expanded apps)
+- **Styling:** 600+ lines of CSS for responsive layout and components
+- **Bug Fixes:**
+  - Fixed Ollama Host port: 11434 → 12434 (backend + frontend + tests)
+  - Fixed date parsing: Unix timestamp * 1000 for milliseconds
+  - Added error state tracking for API failures
+  - Improved error handling in config test endpoint
+- **Tests Updated:** Port references updated across test suite
+- **Ready for:** Dev server restart and ALL SCRIPTS tab verification
+
 ## 2026-06-19 — Phase 2 GUI Layout Decisions + Implementation Plan (3-sprint roadmap)
 
 - **Scope:** Enhanced Tauri GUI with Environment config tab, Diagnostics sidebar panel, Scripts view, and Hub MCP tool integration.

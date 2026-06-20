@@ -18,7 +18,7 @@ describe('Environment Component', () => {
     get.mockResolvedValue({
       llm: {
         activeModel: 'ollama',
-        ollama: { host: 'http://localhost:11434' },
+        ollama: { host: 'http://localhost:12434' },
         anthropic: { baseUrl: 'https://api.anthropic.com/v1', apiKey: '' }
       },
       flags: {
@@ -51,7 +51,7 @@ describe('Environment Component', () => {
   it('renders Ollama settings when Ollama is selected', async () => {
     render(<Environment />);
     await waitFor(() => {
-      expect(screen.getByDisplayValue('http://localhost:11434')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('http://localhost:12434')).toBeInTheDocument();
     });
   });
 
@@ -143,7 +143,7 @@ describe('Environment Component', () => {
       expect(screen.getByLabelText('Ollama (Local)')).toBeInTheDocument();
     });
 
-    const hostInput = screen.getByDisplayValue('http://localhost:11434');
+    const hostInput = screen.getByDisplayValue('http://localhost:12434');
     await user.clear(hostInput);
     await user.type(hostInput, 'http://localhost:9999');
 
@@ -160,7 +160,7 @@ describe('Environment Component', () => {
       expect(screen.getByLabelText('Ollama (Local)')).toBeInTheDocument();
     });
 
-    const hostInput = screen.getByDisplayValue('http://localhost:11434');
+    const hostInput = screen.getByDisplayValue('http://localhost:12434');
     await user.clear(hostInput);
     await user.type(hostInput, 'http://localhost:9999');
 
@@ -168,7 +168,7 @@ describe('Environment Component', () => {
     await user.click(cancelButton);
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('http://localhost:11434')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('http://localhost:12434')).toBeInTheDocument();
     });
   });
 

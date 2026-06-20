@@ -488,3 +488,78 @@ cat docs/CONTINUATION.md
 
 ---
 
+
+---
+
+**2026-06-19 — Hub API Explorer Shipped + Scripts View Decision**
+
+## What was done this session
+
+### 1. Hub API Explorer built and wired into the GUI ✅
+New nav panel (`hub-api` slot) built as a self-contained React component.
+
+**Component:** `gui/desktop/src/components/HubApiExplorer.jsx`  
+**Wired into:** `gui/desktop/src/App.jsx` — import + VIEWS entry between "Obsidian Viewer" and "Agent"
+
+Features:
+- All 30 Hub endpoints listed and grouped (Cards, Logs & Env, Scripts, Analytics, Discovery, Jupyter, System)
+- Explorer tab: click endpoint → param inputs + ▶ Run button + live curl preview
+- Call Log tab: running history of all requests (method, path, status, latency, timestamp)
+- Hub health dot polling `GET /health` every 5s (green/yellow/red)
+- Fully theme-consistent using existing CSS variables
+
+### 2. Scripts View Design Decision ✅
+Agreed: the **Scripts view** (currently a placeholder in VIEWS) will use the **same pattern as Hub API Explorer** — a browseable, runnable list panel with a detail/run pane on the right.
+
+Specifically:
+- Left panel: list of all Hub-registered scripts, grouped (by card or category)
+- Right panel: script detail — description, params/args input, ▶ Run button, output stream
+- Backend: already available via `GET /api/scripts`, `GET /api/cards/{id}/scripts`, `POST /api/scripts/run`
+- The Scripts placeholder in VIEWS (`id: "scripts"`) is ready to be replaced with a real component
+
+**Session note filed:** `Brain2/01 - Projects/Agentic OS/Deliverables/HUB_API_EXPLORER_SESSION.md`
+
+## ▶ NEXT SESSION — START HERE
+
+### Immediate next task: Scripts View
+Replace the `scripts` placeholder in VIEWS with a real `ScriptsExplorer` component modelled on `HubApiExplorer.jsx`.
+
+```bash
+# Files to create/modify:
+# 1. NEW: gui/desktop/src/components/ScriptsExplorer.jsx
+#    - Fetch /api/scripts and /api/cards/{id}/scripts on mount
+#    - Left panel: grouped script list (by card)
+#    - Right panel: script detail + args input + Run + output stream
+#    - POST to /api/scripts/run to execute
+
+# 2. MODIFY: gui/desktop/src/App.jsx
+#    - Import ScriptsExplorer
+#    - Replace placeholder { id:"scripts", placeholder:true } with { id:"scripts", component: ScriptsExplorer }
+
+# Key difference from HubApiExplorer:
+# - Endpoints are static (defined in the file)
+# - Scripts are DYNAMIC (fetched live from the Hub at runtime)
+# - Output should stream if possible (SSE or poll)
+```
+
+### Also planned (in order)
+1. **ScriptsExplorer** — as above (next build)
+2. **Auto-gen script** — `hub/scripts/gen_api_explorer.py` to generate the ENDPOINTS array in HubApiExplorer.jsx from `hub/cmd/server/main.go` route registrations
+3. **Tool Call Visualizer** — live feed of Hub API calls made during workflow runs, shown as a timeline under the active LangGraph node
+
+### Adding new Hub API endpoints
+All Hub endpoints live in the `ENDPOINTS` array at the top of `HubApiExplorer.jsx`.
+One object per route — no other file changes needed:
+```js
+{ group:"Cards", method:"POST", path:"/cards/{id}/clone", desc:"Clone a card", params:[
+  { name:"id",   _in:"path", type:"string", required:true },
+  { name:"body", _in:"body", type:"json",   required:false, hint:'{"name":"my-clone"}' },
+]},
+```
+New group name = new collapsible section, automatically.
+
+## Key files changed this session
+- `gui/desktop/src/components/HubApiExplorer.jsx` — NEW
+- `gui/desktop/src/App.jsx` — import + VIEWS entry added
+- `Brain2/01 - Projects/Agentic OS/Deliverables/HUB_API_EXPLORER_SESSION.md` — NEW session note
+- `docs/CONTINUATION.md` — this entry

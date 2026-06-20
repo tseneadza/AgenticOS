@@ -29,3 +29,7 @@ agent_farm_reports/
 
 # ── macOS ──────────────────────────────────────────────
 .DS_Store
+-e 
+# SQLite WAL temp files
+data/state.db-shm
+data/state.db-wal

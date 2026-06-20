@@ -16,7 +16,7 @@ export default function Environment() {
   const [config, setConfig] = useState({
     llm: {
       activeModel: 'ollama',
-      ollama: { host: 'http://localhost:11434' },
+      ollama: { host: 'http://localhost:12434' },
       anthropic: { baseUrl: 'https://api.anthropic.com/v1', apiKey: '' }
     },
     flags: {
@@ -154,9 +154,9 @@ export default function Environment() {
                   ollama: { ...config.llm.ollama, host: e.target.value }
                 }
               })}
-              placeholder="http://localhost:11434"
+              placeholder="http://localhost:12434"
             />
-            <span className="env-hint">Default: http://localhost:11434</span>
+            <span className="env-hint">Default: http://localhost:12434</span>
           </div>
         )}
 
