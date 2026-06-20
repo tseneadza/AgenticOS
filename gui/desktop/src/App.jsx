@@ -4,10 +4,8 @@ import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./a
 import "./App.css";
 import "@xterm/xterm/css/xterm.css";
 
-// Phase 2 GUI Components (Environment + Diagnostics + Scripts)
-import Environment from "./components/Environment";
+// Phase 2 GUI Components (Diagnostics + ErrorBoundary)
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
-import ScriptsView from "./views/ScriptsView";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 // Adaptive polling hook.
@@ -1264,13 +1262,15 @@ function AgentView({ ctx }) {
 // Dashboard registry (FR-46) — single source of truth for the nav + native menu.
 // Order locked 2026-06-14: SysOps, Workflows, the four placeholders, then Agent
 // (⌘7). Agent is appended last so the ⌘1–6 bindings stay stable.
-// Phase 2 update: Scripts view now has tabs (Scripts | Queue | Logs | Memory | Environment)
+// Scripts view reset to a placeholder (2026-06-20): the first implementation
+// duplicated information shown elsewhere; the design is being reconsidered.
 const VIEWS = [
   { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
   { id: "workflows", label: "Workflows", component: WorkflowsDashboard },
   { id: "web-news", label: "Web News", placeholder: true,
     purpose: "Curated developer & AI news, summarized by the agent." },
-  { id: "scripts", label: "Scripts", component: ScriptsView },
+  { id: "scripts", label: "Scripts", placeholder: true,
+    purpose: "Browse and run Codehome scripts — design under reconsideration (NF-4)." },
   { id: "zsh-config", label: "Zsh Config Editor", placeholder: true,
     purpose: "Edit and version your zsh configuration with safe rollbacks." },
   { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
