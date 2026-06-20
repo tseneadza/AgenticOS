@@ -1,0 +1,46 @@
+{
+  "id": "agenticos",
+  "name": "Agentic OS",
+  "description": "LangGraph-based agentic operating system orchestrating multi-step workflows against Brain2, Hub, and Claude API.",
+  "version": "1.0.0",
+  "type": "desktop",
+  "icon": "🤖",
+  "category": "infrastructure",
+  "tags": ["agentic", "ai", "orchestration", "brain2", "langraph"],
+  "scripts": [
+    {
+      "name": "agentic-gui.sh",
+      "path": "scripts/agentic-gui.sh",
+      "description": "Manage the Agentic OS desktop stack — install, start, stop, restart, status",
+      "type": "shell",
+      "examples": [
+        "agentic-gui.sh install",
+        "agentic-gui.sh start",
+        "agentic-gui.sh stop",
+        "agentic-gui.sh restart",
+        "agentic-gui.sh status"
+      ]
+    },
+    {
+      "name": "setup-branch.sh",
+      "path": "scripts/setup-branch.sh",
+      "description": "Provision a new AgenticOS feature branch with standard structure",
+      "type": "shell"
+    },
+    {
+      "name": "diagnose_cloud.py",
+      "path": "scripts/diagnose_cloud.py",
+      "description": "Diagnose cloud provider connection errors — walks TLS/proxy/DNS layers to find the real cause",
+      "type": "python",
+      "examples": [
+        "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/diagnose_cloud.py"
+      ]
+    },
+    {
+      "name": "diagnose_tools.py",
+      "path": "scripts/diagnose_tools.py",
+      "description": "Inspect registered tool availability and connectivity in the AgenticOS tool registry",
+      "type": "python"
+    }
+  ]
+}
