@@ -19,6 +19,7 @@ from gui.sidecar import terminal as terminal_handler
 from gui.sidecar.events import bus
 from gui.sidecar.runner import runner
 from gui.sidecar.routes import api_config
+from gui.sidecar.routes import api_tasks
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -43,6 +44,7 @@ app.add_middleware(
 
 # Include route handlers
 app.include_router(api_config.router)
+app.include_router(api_tasks.router)
 
 
 @app.on_event("startup")
