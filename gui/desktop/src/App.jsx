@@ -9,6 +9,7 @@ import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import HubApiExplorer from "./components/HubApiExplorer";
 import ToolCallVisualizer from "./components/ToolCallVisualizer";
+import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
 
 // Adaptive polling hook.
@@ -1268,8 +1269,7 @@ function AgentView({ ctx }) {
 const VIEWS = [
   { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
   { id: "workflows", label: "Workflows", component: WorkflowsDashboard },
-  { id: "web-news", label: "Web News", placeholder: true,
-    purpose: "Curated developer & AI news, summarized by the agent." },
+  { id: "web-news", label: "Web News", component: WebNewsView },
   
   { id: "scripts", label: "Scripts", component: ScriptsExplorer },
   { id: "zsh-config", label: "Zsh Config Editor", placeholder: true,

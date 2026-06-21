@@ -692,3 +692,204 @@ def run_steps(run_id: str) -> dict:
         })
 
     return {"run_id": run_id, "steps": steps}
+
+
+# ------------------------------------------------------------- Web News RSS (FR-WN)
+import xml.etree.ElementTree as _ET
+import hashlib as _hashlib
+import time as _time
+from urllib.request import urlopen as _urlopen, Request as _Request
+
+# In-memory cache: url -> (fetched_at, items[])
+_rss_cache: dict = {}
+_RSS_TTL = 900  # 15 minutes
+
+def _fetch_rss(url: str) -> list[dict]:
+    """Fetch and parse an RSS/Atom feed. Returns list of {title, link, summary, published, domain}."""
+    now = _time.time()
+    if url in _rss_cache:
+        cached_at, items = _rss_cache[url]
+        if now - cached_at < _RSS_TTL:
+            return items
+
+    try:
+        req = _Request(url, headers={"User-Agent": "AgenticOS/1.0 RSS Reader"})
+        with _urlopen(req, timeout=8) as resp:
+            raw = resp.read()
+        root = _ET.fromstring(raw)
+    except Exception as e:
+        raise HTTPException(502, f"RSS fetch failed for {url}: {e}")
+
+    ns = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "dc": "http://purl.org/dc/elements/1.1/",
+        "content": "http://purl.org/rss/1.0/modules/content/",
+    }
+
+    items = []
+    domain = url.split("/")[2].replace("www.", "")
+
+    # RSS 2.0
+    for item in root.findall(".//item"):
+        def _t(tag, el=item):
+            node = el.find(tag)
+            return node.text.strip() if node is not None and node.text else ""
+
+        title = _t("title")
+        link = _t("link") or _t("guid")
+        summary = _t("description") or _t("dc:description", ) or ""
+        # strip HTML tags cheaply
+        import re as _re
+        summary = _re.sub(r"<[^>]+>", "", summary)[:400]
+        pub = _t("pubDate") or _t("dc:date")
+
+        if title and link:
+            items.append({
+                "id": _hashlib.md5(link.encode()).hexdigest()[:12],
+                "title": title,
+                "link": link,
+                "summary": summary,
+                "published": pub,
+                "domain": domain,
+            })
+
+    # Atom
+    if not items:
+        for entry in root.findall("atom:entry", ns):
+            def _ta(tag, el=entry):
+                node = el.find(tag, ns)
+                return node.text.strip() if node is not None and node.text else ""
+            title = _ta("atom:title")
+            link_el = entry.find("atom:link", ns)
+            link = link_el.get("href", "") if link_el is not None else ""
+            summary = _ta("atom:summary") or _ta("atom:content")
+            import re as _re
+            summary = _re.sub(r"<[^>]+>", "", summary)[:400]
+            pub = _ta("atom:published") or _ta("atom:updated")
+            if title and link:
+                items.append({
+                    "id": _hashlib.md5(link.encode()).hexdigest()[:12],
+                    "title": title,
+                    "link": link,
+                    "summary": summary,
+                    "published": pub,
+                    "domain": domain,
+                })
+
+    _rss_cache[url] = (now, items[:60])
+    return items[:60]
+
+
+@app.get("/api/news/feeds")
+def news_feeds() -> dict:
+    """Return the hardcoded feed catalogue grouped by domain."""
+    return {"feeds": _NEWS_FEEDS}
+
+
+@app.post("/api/news/fetch")
+def news_fetch(body: dict) -> dict:
+    """Fetch one or more RSS feed URLs and return merged, deduplicated items.
+
+    Body: { "urls": ["https://..."], "keywords": ["quantum", "llm", ...] }
+    Returns filtered items sorted newest-first (best-effort; pub date parsing is fuzzy).
+    """
+    import re as _re
+
+    urls = body.get("urls", [])
+    keywords = [k.lower() for k in body.get("keywords", [])]
+
+    if not urls:
+        raise HTTPException(400, "urls list required")
+
+    all_items = []
+    seen_ids = set()
+    errors = []
+
+    for url in urls[:20]:  # cap to prevent abuse
+        try:
+            items = _fetch_rss(url)
+            for item in items:
+                if item["id"] not in seen_ids:
+                    seen_ids.add(item["id"])
+                    all_items.append(item)
+        except HTTPException as e:
+            errors.append({"url": url, "error": e.detail})
+
+    # keyword pre-filter (OR logic — keep if any keyword matches title/summary)
+    if keywords:
+        def _matches(item):
+            text = (item["title"] + " " + item["summary"]).lower()
+            return any(kw in text for kw in keywords)
+        all_items = [i for i in all_items if _matches(i)]
+
+    return {
+        "items": all_items,
+        "total": len(all_items),
+        "errors": errors,
+        "cached_until_s": _RSS_TTL,
+    }
+
+
+# Feed catalogue — grouped by topic domain
+_NEWS_FEEDS = [
+  # Physics & Space
+  {"id":"sciencenews-physics", "label":"Science News – Physics", "domain":"Physics & Space",
+   "url":"https://www.sciencenews.org/topic/physics/feed"},
+  {"id":"quanta-physics", "label":"Quanta Magazine", "domain":"Physics & Space",
+   "url":"https://www.quantamagazine.org/feed/"},
+  {"id":"sciencedaily-space", "label":"ScienceDaily – Space", "domain":"Physics & Space",
+   "url":"https://www.sciencedaily.com/rss/space_time.xml"},
+  {"id":"arxiv-physics", "label":"arXiv – Physics (new)", "domain":"Physics & Space",
+   "url":"https://rss.arxiv.org/rss/physics"},
+  {"id":"arxiv-hep", "label":"arXiv – HEP", "domain":"Physics & Space",
+   "url":"https://rss.arxiv.org/rss/hep-ph"},
+  # Biology & Life Sciences
+  {"id":"sciencedaily-biology", "label":"ScienceDaily – Biology", "domain":"Biology & Life Sciences",
+   "url":"https://www.sciencedaily.com/rss/plants_animals/biology.xml"},
+  {"id":"sciencenews-life", "label":"Science News – Life", "domain":"Biology & Life Sciences",
+   "url":"https://www.sciencenews.org/topic/life/feed"},
+  {"id":"scitechdaily-bio", "label":"SciTechDaily – Biology", "domain":"Biology & Life Sciences",
+   "url":"https://scitechdaily.com/feed/"},
+  # AI & Machine Learning
+  {"id":"arxiv-ai", "label":"arXiv – AI", "domain":"AI & Machine Learning",
+   "url":"https://rss.arxiv.org/rss/cs.AI"},
+  {"id":"arxiv-ml", "label":"arXiv – ML", "domain":"AI & Machine Learning",
+   "url":"https://rss.arxiv.org/rss/cs.LG"},
+  {"id":"sciencedaily-ai", "label":"ScienceDaily – AI", "domain":"AI & Machine Learning",
+   "url":"https://www.sciencedaily.com/rss/computers_math/artificial_intelligence.xml"},
+  # Neuroscience
+  {"id":"sciencedaily-neuro", "label":"ScienceDaily – Neuroscience", "domain":"Neuroscience",
+   "url":"https://www.sciencedaily.com/rss/mind_brain/neuroscience.xml"},
+  {"id":"arxiv-neuro", "label":"arXiv – Neurons & Cognition", "domain":"Neuroscience",
+   "url":"https://rss.arxiv.org/rss/q-bio.NC"},
+  {"id":"sciencenews-brain", "label":"Science News – Brain", "domain":"Neuroscience",
+   "url":"https://www.sciencenews.org/topic/brain-behavior/feed"},
+  # Mathematics
+  {"id":"quanta-math", "label":"Quanta – Math", "domain":"Mathematics",
+   "url":"https://www.quantamagazine.org/mathematics/feed/"},
+  {"id":"arxiv-math", "label":"arXiv – Mathematics", "domain":"Mathematics",
+   "url":"https://rss.arxiv.org/rss/math"},
+  {"id":"sciencedaily-math", "label":"ScienceDaily – Math", "domain":"Mathematics",
+   "url":"https://www.sciencedaily.com/rss/computers_math/mathematics.xml"},
+  # Engineering & Technology
+  {"id":"sciencedaily-eng", "label":"ScienceDaily – Engineering", "domain":"Engineering & Technology",
+   "url":"https://www.sciencedaily.com/rss/matter_energy/engineering.xml"},
+  {"id":"arxiv-cs-sys", "label":"arXiv – Systems", "domain":"Engineering & Technology",
+   "url":"https://rss.arxiv.org/rss/cs.SY"},
+  {"id":"newscientist", "label":"New Scientist", "domain":"Engineering & Technology",
+   "url":"https://www.newscientist.com/feed/home/"},
+  # Chemistry & Materials
+  {"id":"chemworld", "label":"Chemistry World", "domain":"Chemistry & Materials",
+   "url":"https://www.chemistryworld.com/rss"},
+  {"id":"sciencedaily-chem", "label":"ScienceDaily – Chemistry", "domain":"Chemistry & Materials",
+   "url":"https://www.sciencedaily.com/rss/matter_energy/chemistry.xml"},
+  {"id":"arxiv-condmat", "label":"arXiv – Condensed Matter", "domain":"Chemistry & Materials",
+   "url":"https://rss.arxiv.org/rss/cond-mat"},
+  # Climate & Earth Science
+  {"id":"sciencedaily-earth", "label":"ScienceDaily – Earth", "domain":"Climate & Earth Science",
+   "url":"https://www.sciencedaily.com/rss/earth_climate/earth_science.xml"},
+  {"id":"sciencedaily-climate", "label":"ScienceDaily – Climate", "domain":"Climate & Earth Science",
+   "url":"https://www.sciencedaily.com/rss/earth_climate/global_warming.xml"},
+  {"id":"quanta-earth", "label":"Quanta – Earth Science", "domain":"Climate & Earth Science",
+   "url":"https://www.quantamagazine.org/earth-science/feed/"},
+]
