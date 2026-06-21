@@ -214,7 +214,7 @@ def list_workflows() -> dict:
             }
         wf_stats[run["workflow"]]["cost_total"] += run.get("cost_usd", 0)
         wf_stats[run["workflow"]]["run_count"] += 1
-        if not wf_stats[run["workflow"]]["last_run"] or run.get("finished_at", 0) > wf_stats[run["workflow"]]["last_run"]:
+        if not wf_stats[run["workflow"]]["last_run"] or (run.get("finished_at") or 0) > (wf_stats[run["workflow"]]["last_run"] or 0):
             wf_stats[run["workflow"]]["last_run"] = run.get("finished_at") or run.get("started_at")
 
     return {

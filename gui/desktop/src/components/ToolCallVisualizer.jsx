@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const SIDECAR = "http://localhost:8000";
+const SIDECAR = "http://localhost:5130";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
