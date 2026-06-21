@@ -604,3 +604,91 @@ def main() -> None:  # noqa: C901
 
 if __name__ == "__main__":
     main()
+
+
+# ------------------------------------------------------------- run steps (FR-TCV)
+@app.get("/api/runs/{run_id}/steps")
+def run_steps(run_id: str) -> dict:
+    """Return decoded step timeline for a given run_id (= thread_id in LangGraph).
+
+    Reads the `writes` table from SQLite, decodes ormsgpack values, and returns
+    a list of steps in execution order.  Used by the Tool Call Visualizer GUI panel.
+    """
+    import sqlite3
+    import ormsgpack
+    import json as _json
+    from pathlib import Path as _Path
+
+    db_path = _Path(__file__).resolve().parents[2] / "data" / "state.db"
+    con = sqlite3.connect(str(db_path))
+    con.row_factory = sqlite3.Row
+
+    rows = con.execute(
+        "SELECT task_id, channel, type, value FROM writes WHERE thread_id=? ORDER BY rowid",
+        (run_id,),
+    ).fetchall()
+    con.close()
+
+    if not rows:
+        raise HTTPException(404, f"No steps found for run_id={run_id!r}")
+
+    # Group by task_id so each task becomes one step object
+    from collections import OrderedDict
+    tasks: OrderedDict[str, dict] = OrderedDict()
+
+    for row in rows:
+        tid = row["task_id"]
+        channel = row["channel"]
+        typ = row["type"]
+        raw = row["value"]
+
+        if tid not in tasks:
+            tasks[tid] = {"task_id": tid, "channels": {}}
+
+        if typ == "msgpack" and raw and len(raw) > 1:
+            try:
+                data = ormsgpack.unpackb(raw)
+                tasks[tid]["channels"][channel] = data
+            except Exception:
+                tasks[tid]["channels"][channel] = f"<decode error: {raw[:40]!r}>"
+        elif typ == "null":
+            # branch routing edge — record the branch target
+            tasks[tid]["channels"][channel] = None
+
+    # Flatten into a clean step list
+    steps = []
+    for task in tasks.values():
+        channels = task["channels"]
+
+        # Derive step name from 'outputs' dict key or branch edge
+        step_name = None
+        output_data = None
+        branch_to = None
+        tokens = None
+        cost = None
+
+        if "outputs" in channels and isinstance(channels["outputs"], dict):
+            keys = list(channels["outputs"].keys())
+            step_name = keys[0] if keys else "unknown"
+            output_data = channels["outputs"].get(step_name)
+
+        if "tokens_used" in channels:
+            tokens = channels["tokens_used"]
+
+        if "cost_usd" in channels:
+            cost = channels["cost_usd"]
+
+        for ch in channels:
+            if ch.startswith("branch:to:"):
+                branch_to = ch.replace("branch:to:", "")
+
+        steps.append({
+            "task_id": task["task_id"],
+            "step": step_name,
+            "branch_to": branch_to,
+            "tokens": tokens,
+            "cost_usd": cost,
+            "output": output_data,
+        })
+
+    return {"run_id": run_id, "steps": steps}

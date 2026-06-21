@@ -563,3 +563,62 @@ New group name = new collapsible section, automatically.
 - `gui/desktop/src/App.jsx` — import + VIEWS entry added
 - `Brain2/01 - Projects/Agentic OS/Deliverables/HUB_API_EXPLORER_SESSION.md` — NEW session note
 - `docs/CONTINUATION.md` — this entry
+
+---
+
+**2026-06-21 — Tool Call Visualizer Shipped**
+
+## What was done this session
+
+### 1. `/api/runs/{run_id}/steps` backend endpoint ✅
+New sidecar FastAPI endpoint appended to `gui/sidecar/app.py`.
+
+- Reads the `writes` table from `data/state.db` (LangGraph's SQLite checkpoint store)
+- Groups rows by `task_id`, decodes `ormsgpack` values
+- Extracts step name (from `outputs` dict key), `branch_to` (from `branch:to:*` channel), `tokens_used`, `cost_usd`, and the full `output` payload
+- Returns `{ run_id, steps: [...] }` — one entry per LangGraph node executed
+- Returns 404 if no writes found for the given run_id
+- Verified against live `state.db` — morning-briefing runs decode to 5 clean steps (read_vault → check_hub → generate_brief → write_brief)
+
+### 2. `ToolCallVisualizer.jsx` GUI component ✅
+New component at `gui/desktop/src/components/ToolCallVisualizer.jsx`.
+
+**Layout:** same left-list / right-detail split as HubApiExplorer and ScriptsExplorer.
+
+**Left panel:**
+- Polls `/api/runs?limit=50` every 4 s
+- Workflow filter input
+- Aggregate totals bar (total tokens + total cost across 50 most recent runs)
+- Active runs section (yellow badge, faster 2 s refresh for running workflows)
+- Full run history list with status dot, workflow name, duration, tokens, cost
+
+**Right panel (step timeline):**
+- Vertical node-connector timeline (numbered circles + connecting line)
+- Each step shows: step name, branch_to edge, token count, cost
+- Click to expand → `JsonTree` collapsible explorer of the step's output payload
+- Auto-refreshes every 2 s while the selected run is still active
+- Empty state with ⏱ prompt when no run selected
+
+**Wired into App.jsx:**
+- Import added alongside HubApiExplorer, ScriptsExplorer
+- VIEWS entry: `{ id: "tool-viz", label: "Run Visualizer", component: ToolCallVisualizer }`
+- Placed between Hub API and Agent nav slots
+- Build: ✅ `vite build` — 39 modules, 716 ms, no warnings
+
+## ▶ NEXT SESSION — START HERE
+
+### Immediate candidates (pick one)
+1. **Web News view** — replace `web-news` placeholder; curated dev/AI news via RSS/Hacker News fetched + summarised by the briefing agent, rendered in the panel
+2. **Obsidian Viewer** — replace `obsidian` placeholder; read Brain2 vault index, render note list with full-text search and markdown preview  
+3. **auto-gen script** — `hub/scripts/gen_api_explorer.py` to auto-generate the `ENDPOINTS` array in `HubApiExplorer.jsx` from `hub/cmd/server/main.go` route registrations
+
+### Key architecture notes
+- `ToolCallVisualizer` step data comes from LangGraph `writes` table — **only workflows run via `core/orchestrator.run_workflow()` appear here** (sidecar-only lightweight runs show fewer/no steps)
+- The `task_id` is the LangGraph internal node execution UUID, not the run_id
+- The `branch:to:*` null-type channel is LangGraph's conditional edge routing mechanism
+
+## Key files changed this session
+- `gui/sidecar/app.py` — `/api/runs/{run_id}/steps` endpoint appended
+- `gui/desktop/src/components/ToolCallVisualizer.jsx` — NEW
+- `gui/desktop/src/App.jsx` — import + VIEWS entry added
+- `docs/CONTINUATION.md` — this entry

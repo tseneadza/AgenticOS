@@ -8,6 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import HubApiExplorer from "./components/HubApiExplorer";
+import ToolCallVisualizer from "./components/ToolCallVisualizer";
 import ScriptsExplorer from "./components/ScriptsExplorer";
 
 // Adaptive polling hook.
@@ -1276,6 +1277,7 @@ const VIEWS = [
   { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
     purpose: "Read and search the Brain2 Obsidian vault inside the app." },
   { id: "hub-api", label: "Hub API", component: HubApiExplorer },
+  { id: "tool-viz", label: "Run Visualizer", component: ToolCallVisualizer },
   { id: "agent", label: "Agent", component: AgentView, badge: "approvals" },
 ];
 
