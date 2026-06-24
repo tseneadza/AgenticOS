@@ -1,5 +1,62 @@
 # Continuation note
 
+**2026-06-23 — App icon polish + Scripts view reverted to placeholder + ErrorBoundary**
+
+## What was done this session (branch: phase2-gui-sprint2, all pushed to origin)
+
+### 1. App icon fixed + redesigned
+- Build was broken: `tauri.conf.json` → `bundle.icon` references `icon.icns` and
+  `icon.ico`, but both (and ~50 other icon files) had been deleted on disk.
+- Regenerated the **full** icon set from `gui/desktop/src-tauri/icons/icon.png`
+  (the Tauri CLI binary is macOS-only and won't run in the Linux sandbox, so used
+  Pillow/ImageMagick to reproduce its output: multi-res `.icns` 16→1024, 7-size
+  `.ico`, all sized PNGs + Windows/Android/iOS variants).
+- Added macOS-style **rounded corners** (~22.5% radius, transparent outside) baked
+  into `icon.png`, then redesigned so the **"OSA" wordmark fits inside** the white
+  outline (rebuilt at 1024px, Poppins-Bold, centered with margins).
+- Consolidated icon docs into `gui/desktop/ICON_SETUP.md` (canonical
+  `npm run tauri icon` workflow); removed redundant `ICON_*.md` + one-off scripts;
+  corrected the Icon handling rule in `CLAUDE.md`.
+- Commits: icon regen → rounded corners → OSA redesign (all on remote).
+
+### 2. Fixed Scripts view black-screen crash (commit 5b297ee)
+- Root cause: `ScriptsTab` did `workflows.find(selectedWf).name` without guarding
+  undefined. `selectedWf` is restored from localStorage but the (filtered) list is
+  empty until `/api/workflows` responds → `wf` undefined → throw during render.
+  No error boundary existed, so it unmounted the whole app (black window, no exit),
+  and the persisted selection made it recur on every remount.
+- Fixes: guarded the undefined workflow (render empty state); added
+  `gui/desktop/src/components/ErrorBoundary.jsx` and wrapped the active view in
+  `App.jsx` (keyed by view id, recoverable "Try again").
+
+### 3. Reverted Scripts view to a placeholder (commit b6d9808)
+- The first Scripts implementation duplicated info shown elsewhere → design being
+  reconsidered. `scripts` VIEW entry → `placeholder: true`.
+- Removed: `views/ScriptsView.jsx` (+ `ScriptsView.css`), the whole
+  `components/Dashboard/` tab scaffolding, and the `/api/scripts` backend route
+  (`gui/sidecar/routes/api_scripts.py` + its mount in `gui/sidecar/app.py`).
+- **Preserved** for a future redesign: `components/Environment.jsx` + its test,
+  `DiagnosticsPanel`, and the new `ErrorBoundary`.
+
+## ▶ NEXT SESSION — START HERE
+- NOTE: branch `phase2-gui-sprint2` advanced past my commits via other sessions
+  (HEAD ~`8f88bde`: Web News view, MySQL task system, Tool Call Visualizer,
+  HubApiExplorer/ScriptsExplorer views). Re-check `git log --oneline -12` first.
+- The **Scripts view is intentionally a placeholder** — redesign it from scratch
+  (avoid duplicating SysOps/Workflows data). Note other sessions re-added
+  `ScriptsExplorer`/`HubApiExplorer` (commit 2cd718c) — reconcile before rebuilding.
+- Uncommitted working-tree leftover: the `/api/workflows` metadata enhancement
+  (`costAvg`/`runCount`/`lastRun`) in `app.py` — kept (harmless/useful); decide
+  whether to keep when redesigning Scripts.
+- Verify build: `cd gui/desktop && rm -rf src-tauri/target && npm run tauri dev`;
+  click Scripts → should show the ComingSoon placeholder, no black screen.
+
+## Security note
+- A GitHub PAT was pasted in chat this session and used inline for one push (not
+  saved to repo config/files). **Rotate/revoke that token.**
+
+---
+
 **2026-06-19 (Continuation 2) — Phase 2 Layout Decisions + 3-Sprint Implementation Plan Approved**
 
 ## What was done this session
