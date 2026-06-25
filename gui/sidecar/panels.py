@@ -6,9 +6,7 @@ down) never breaks the whole dashboard.
 """
 from __future__ import annotations
 
-import datetime as dt
 import os
-import sqlite3
 import time
 from pathlib import Path
 
@@ -89,32 +87,28 @@ def system_health() -> dict:
 
 # ----------------------------------------------------------------- FR-29
 def agent_activity() -> dict:
-    midnight = dt.datetime.combine(dt.date.today(), dt.time.min).timestamp()
-    month_start = dt.datetime(dt.date.today().year, dt.date.today().month, 1).timestamp()
-    with sqlite3.connect(memory.DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            """SELECT
-                 COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd END), 0)  AS cost_today,
-                 COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd END), 0)  AS cost_month,
-                 SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END)               AS runs_today,
-                 COALESCE(SUM(tokens_used), 0)                                  AS tokens_total,
-                 AVG(CASE WHEN finished_at IS NOT NULL
-                          THEN finished_at - started_at END)                    AS avg_duration_s,
-                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)          AS completed,
-                 SUM(CASE WHEN status IN ('completed','failed','interrupted')
-                          THEN 1 ELSE 0 END)                                    AS finished
-               FROM run_history""",
-            (midnight, month_start, midnight),
-        ).fetchone()
-    finished = row["finished"] or 0
+    # Run telemetry now comes from MySQL via memory.activity_stats()
+    # (Category A of docs/mysql-migration-plan.md). MySQL aggregates can come
+    # back as Decimal, so coerce to plain int/float for clean JSON.
+    row = memory.activity_stats()
+
+    def _f(key: str) -> float:
+        v = row.get(key)
+        return float(v) if v is not None else 0.0
+
+    def _i(key: str) -> int:
+        v = row.get(key)
+        return int(v) if v is not None else 0
+
+    finished = _i("finished")
+    avg = row.get("avg_duration_s")
     return {
-        "cost_today_usd": round(row["cost_today"], 4),
-        "cost_month_usd": round(row["cost_month"], 4),
-        "runs_today": row["runs_today"] or 0,
-        "tokens_total": row["tokens_total"],
-        "success_rate": round(100 * (row["completed"] or 0) / finished, 1) if finished else None,
-        "avg_duration_s": round(row["avg_duration_s"], 1) if row["avg_duration_s"] else None,
+        "cost_today_usd": round(_f("cost_today"), 4),
+        "cost_month_usd": round(_f("cost_month"), 4),
+        "runs_today": _i("runs_today"),
+        "tokens_total": _i("tokens_total"),
+        "success_rate": round(100 * _i("completed") / finished, 1) if finished else None,
+        "avg_duration_s": round(float(avg), 1) if avg is not None else None,
         "recent_runs": memory.recent_runs(limit=15),
     }
 

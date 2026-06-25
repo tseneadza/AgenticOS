@@ -2,8 +2,8 @@
 
 Each workflow step becomes a graph node. Nodes with requires_approval: true
 call langgraph's interrupt(), pausing the run until the CLI resumes it with
-the user's decision. State is checkpointed to SQLite (FR-05), so interrupted
-runs are recoverable.
+the user's decision. State is checkpointed to MySQL (FR-05) via
+langgraph-checkpoint-mysql, so interrupted runs are recoverable.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
 import yaml
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
@@ -87,7 +87,7 @@ def _make_node(step: dict, constitution: Constitution):
     return node
 
 
-def build_graph(workflow_name: str, checkpointer: SqliteSaver):
+def build_graph(workflow_name: str, checkpointer: BaseCheckpointSaver):
     workflows = load_workflows()
     if workflow_name not in workflows:
         raise ValueError(
@@ -117,7 +117,7 @@ def run_workflow(workflow_name: str, *, thread_id: str | None = None) -> dict:
     config = {"configurable": {"thread_id": thread_id}}
 
     conn = memory.checkpointer_conn()
-    saver = SqliteSaver(conn)
+    saver = memory.get_checkpointer(conn)
     app = build_graph(workflow_name, saver)
     try:
         result = app.invoke({"outputs": {}, "tokens_used": 0, "cost_usd": 0.0}, config)

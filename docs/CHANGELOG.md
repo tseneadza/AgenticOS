@@ -1,3 +1,111 @@
+## 2026-06-24 — SQLite → MySQL migration: Phases 3–6 (checkpointer + cleanup)
+
+- **LangGraph checkpointer is now MySQL** via `langgraph-checkpoint-mysql`'s
+  `PyMySQLSaver` (Phase 3). `core/memory.py` `checkpointer_conn()` returns an
+  **autocommit PyMySQL** connection and a new `get_checkpointer()` builds the
+  saver and runs `setup()` once per process (creates the `checkpoint_*` tables
+  in schema `AgenticOS`). `core/orchestrator.py` and `gui/sidecar/runner.py`
+  swapped `SqliteSaver` → `memory.get_checkpointer(conn)`; `build_graph()` type
+  hint is now `BaseCheckpointSaver`. **No SQLite remains** — `data/state.db` is
+  no longer created or read.
+- **`/api/runs/{id}/steps` rewritten** (Phase 4): instead of decoding the raw
+  SQLite `writes` table with `ormsgpack`, it reads the run's checkpoints through
+  the saver's public `list()` API (already-deserialized `(task_id, channel,
+  value)` writes) and aggregates them in execution order. The Tool Call
+  Visualizer's step contract (`task_id/step/branch_to/tokens/cost_usd/output`)
+  is unchanged.
+- **Cleanup** (Phase 5): `requirements.txt` drops `langgraph-checkpoint-sqlite`,
+  adds `langgraph-checkpoint-mysql[pymysql]` + `PyMySQL` (MySQL ≥ 8.0.19 / MariaDB
+  ≥ 10.7.1 required). Updated `docs/state-and-memory.md`, `docs/architecture.md`,
+  `README.md`, and `.gitignore`.
+- **Data migration** (Phase 6): new `scripts/migrate_state_db_to_mysql.py`
+  one-time copies any leftover `run_history` / `briefed_docs` rows from
+  `data/state.db` into MySQL (checkpoints are disposable — not migrated).
+- **Collation fix:** the `AgenticOS` database defaults to `utf8mb4_unicode_ci`,
+  so `setup()` created the `checkpoint_*` tables with that collation, but the
+  saver's `JSON_TABLE` comparisons use `utf8mb4_0900_ai_ci` — MySQL raised 1267
+  "Illegal mix of collations". `get_checkpointer()` now runs `ALTER TABLE ...
+  CONVERT TO ... utf8mb4_0900_ai_ci` on the three checkpoint tables after
+  `setup()` (idempotent, once per process; self-heals existing tables).
+- **Live-verified** on MySQL 9.4.0: `approval-demo` workflow ran to completion
+  through the checkpointer. Still TODO before commit: confirm the Run Visualizer
+  (`/api/runs/{id}/steps`) + Agent Activity read back cleanly, confirm no new
+  `data/state.db`, optional `scripts/migrate_state_db_to_mysql.py` data copy.
+
+## 2026-06-23 — SQLite → MySQL migration: Phase 1 (run history)
+
+- Plan written: `docs/mysql-migration-plan.md` (inventory of all SQLite usage,
+  two categories, phased approach; checkpointer to use `langgraph-checkpoint-mysql`).
+- **`core/memory.py` run history + briefing dedupe now live in MySQL** (schema
+  `AgenticOS`, tables `run_history` + `briefed_docs`), mirroring tasks_db/news_db.
+  Public function signatures unchanged, so `orchestrator`, `runner`, the briefing
+  agent, and `/api/runs` need no edits. Added `ensure_schema()` + `activity_stats()`.
+- `panels.agent_activity()` reads telemetry via `memory.activity_stats()` instead
+  of a direct `sqlite3` query (removed `sqlite3`/`datetime` imports there).
+- The LangGraph checkpointer (`memory.checkpointer_conn`, orchestrator/runner
+  `SqliteSaver`, `/api/runs/{id}/steps`) **still uses SQLite** — that's Phase 3.
+- Carry-forward: existing `data/state.db` run rows aren't auto-copied (one-time
+  migration is Phase 6); `brain2_agent.collect_session_summary` imports a `Memory`
+  class that has never existed in memory.py (pre-existing latent bug).
+
+## 2026-06-23 — API Explorer covers the sidecar + API-registration rule
+
+- **API Explorer is now multi-server.** `HubApiExplorer.jsx` gained a per-entry
+  `server` field; sidecar routes (`:5130`) and Hub routes (`:8085`) both resolve
+  to the right base. Added a second health dot (Hub + Sidecar) and renamed the
+  view "Codehome API Explorer".
+- **Registered the sidecar News API** in the Explorer: `/api/news/categories`,
+  `/api/news/feeds` (CRUD), `/api/news/fetch`, `/api/news/rank`, `/api/health`.
+- **New governance:** `docs/api-registry.md` + a CLAUDE.md rule require every
+  new Codehome/sidecar/Hub endpoint to be registered in the Explorer in the same
+  change; documents the recommended `/openapi.json` auto-discovery for the
+  sidecar so it stops drifting.
+
+## 2026-06-23 — "Rank with AI" fixed (server-side via core.llm)
+
+- The Web News **Rank with AI** button called `api.anthropic.com` directly from
+  the webview (no key, CORS-blocked) — it always failed ("Load failed").
+- New `POST /api/news/rank` in `app.py` scores articles through
+  `core.llm.complete()` — the unified provider layer the governing agent uses —
+  so it honors the app's **active model** (local Ollama or cloud). Returns a
+  `scores` array aligned to the posted order + model/provider/cost. Tolerant
+  JSON extraction (handles code fences / surrounding prose from local models).
+- `WebNewsView.rankWithAI` now POSTs to the sidecar (no API key in the
+  frontend) and the button has a tooltip explaining what it does.
+- **Verify:** restart the sidecar; ensure the active model is runnable (cloud
+  needs `ANTHROPIC_API_KEY`; local needs Ollama up).
+
+## 2026-06-23 — Web News feeds moved to MySQL (schema `AgenticOS`) + management UI
+
+- **Feeds + categories are no longer hardcoded.** Migrated the catalogue out of
+  `app.py` (`_NEWS_FEEDS`) and `WebNewsView.jsx` (`DOMAIN_COLORS`) into MySQL.
+- **New schema `AgenticOS`** (case-insensitive == existing `agenticos`), tables
+  `news_categories` + `news_feeds`, self-bootstrapping: `news_db.ensure_schema()`
+  creates the DB/tables and seeds the 8 categories + 26 feeds on first run.
+- **New files:** `gui/sidecar/routes/news_db.py` (MySQL data layer, mirrors
+  `tasks_db.py`) and `routes/api_news.py` (CRUD: `GET/POST/PATCH/DELETE`
+  `/api/news/categories` and `/api/news/feeds`). Router mounted in `app.py`;
+  schema bootstrapped on startup (best-effort; 503 + frontend fallback if MySQL down).
+- **Frontend now data-driven:** `WebNewsView` fetches categories (colors) + feeds
+  from the API with a built-in `DEFAULT_CATEGORIES` fallback, and the ⚙ Settings
+  drawer gained **Manage Feeds** (add / enable-disable / delete) and **Manage
+  Categories** (add with color picker / delete) sections.
+- **Verify:** ensure MySQL is running with creds in `~/.agentic-os/.env`, restart
+  the sidecar (auto-creates + seeds), then `npm run tauri dev`.
+
+## 2026-06-23 — Web News view polish + GUI frontend conventions
+
+- **WebNews redesign (`gui/desktop/src/components/WebNewsView.jsx`):**
+  - Fixed silent style bug — component used undefined `var(--fg)` / `var(--fg-muted)`; switched to theme tokens `--text` / `--text-dim`, restoring visual hierarchy.
+  - Domain-colored card stripes, hover lift, refined toolbar pills/buttons, skeleton loading, relative timestamps, scoped `<style>` for real hover/transitions.
+  - Article thumbnails (right-aligned, `loading=lazy`, `referrerPolicy=no-referrer`, hide-on-error).
+  - "Show more" now gated on measured DOM overflow (not char count); expanded state renders unclamped `pre-wrap` text.
+- **Sidecar RSS (`gui/sidecar/app.py`):**
+  - New `_extract_image` helper (media:content/thumbnail, enclosure, Atom enclosure link, embedded `<img>`); each item now returns an `image` field.
+  - Summary cap raised `[:400]` → `[:2000]` so "show more" reveals full abstracts.
+- **Docs:** Added `docs/gui-frontend-conventions.md` (theme tokens, RSS rules, overflow gating, edit-verification) and a GUI/frontend rule section in `CLAUDE.md`.
+- **Verify:** restart sidecar to clear the 15-min feed cache, then `cd gui/desktop && npm run tauri dev`.
+
 ## 2026-06-19 — v0.4: Scripts Audit System + Codehome Script Discovery + Osa Branding
 
 - **Branding:** Updated sidebar to show "OSA" as primary name (agentic os · v0.4) — makes it clear the app can be addressed as Osa

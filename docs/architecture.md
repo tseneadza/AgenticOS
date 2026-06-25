@@ -28,8 +28,8 @@ network calls are localhost (Hub) and the Claude API.
               + run log    │          │ execution
                 ┌──────────▼───┐  ┌───▼──────────────────────────┐
                 │ core/memory  │  │ agents/                      │
-                │ SQLite       │  │  brain2 │ hub │ briefing     │
-                │ (state.db)   │  └───┬─────────┬────────┬───────┘
+                │ MySQL        │  │  brain2 │ hub │ briefing     │
+                │ (AgenticOS)  │  └───┬─────────┬────────┬───────┘
                 └──────────────┘      │         │        │
                                 ┌─────▼───┐ ┌───▼────┐ ┌─▼─────────┐
                                 │ tools/  │ │ Hub    │ │ Claude    │
@@ -51,7 +51,7 @@ Maps constitution violations to exit code 2 and user denials to exit code 3.
 
 **`core/orchestrator.py`** — the heart. Loads `config/workflows.yaml`,
 builds a linear `StateGraph` with one node per step, compiles it with a
-SQLite checkpointer, and runs it. Steps marked `requires_approval: true`
+MySQL checkpointer (`langgraph-checkpoint-mysql`), and runs it. Steps marked `requires_approval: true`
 call LangGraph's `interrupt()`; the CLI loop catches `__interrupt__` in
 the result, prompts the user, and resumes with `Command(resume=...)`.
 `AGENT_REGISTRY` maps agent names in YAML to each agent module's
@@ -62,9 +62,10 @@ nothing more.
 (see [constitution.md](constitution.md)). Not advisory: raises exceptions
 that halt the run.
 
-**`core/memory.py`** — SQLite access (see
-[state-and-memory.md](state-and-memory.md)). Run history table + the
-connection used by LangGraph's `SqliteSaver` checkpointer.
+**`core/memory.py`** — MySQL access (schema `AgenticOS`; see
+[state-and-memory.md](state-and-memory.md)). Run-history / briefed-docs tables
+plus `get_checkpointer()`, which hands LangGraph a `PyMySQLSaver` on an
+autocommit connection. No SQLite remains.
 
 **`agents/*`** — plain Python functions with signature
 `action(state: dict) -> dict`. They receive prior step outputs under
@@ -108,11 +109,11 @@ Graph state is a `TypedDict` with two reduced channels:
 
 | Decision | Why | Trade-off |
 |----------|-----|-----------|
-| LangGraph as engine | Native interrupt/resume (HITL), SQLite checkpointing, no framework lock-in beyond graph wiring | Dependency on a fast-moving library; pin versions |
+| LangGraph as engine | Native interrupt/resume (HITL), MySQL checkpointing via langgraph-checkpoint-mysql, no framework lock-in beyond graph wiring | Dependency on a fast-moving library; pin versions; MySQL ≥ 8.0.19 required |
 | Linear graphs only (Phase 1) | Every current workflow is sequential; simpler to reason about | Parallel branches (e.g. research subagents) deferred to Phase 4 |
 | Direct file ops, MCP-shaped seam | Avoids npx/PATH fragility under launchd during MVP; known deviation from PRD TR-03 | Must swap in real MCP client in Phase 2 (`tools/filesystem_tool.py` only) |
 | Template fallback for briefs | Pipeline testable end-to-end with zero token spend | Two code paths in briefing agent to maintain |
-| Single SQLite file for all state | No infrastructure; portable; matches TR-05 | Concurrent runs would contend; fine for a single-user CLI |
+| Single MySQL schema for all state | One datastore shared with tasks/news/keno; handles concurrent runs cleanly | Runs now require MySQL up (no offline SQLite fallback) |
 | Constitution as data (YAML) | New constraint = config edit, no code change (TR-06/07) | Substring matching for blocked ops is blunt; revisit if false positives appear |
 
 ## Integration points

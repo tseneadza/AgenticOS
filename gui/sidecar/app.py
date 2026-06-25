@@ -631,49 +631,37 @@ if __name__ == "__main__":
 def run_steps(run_id: str) -> dict:
     """Return decoded step timeline for a given run_id (= thread_id in LangGraph).
 
-    Reads the `writes` table from SQLite, decodes ormsgpack values, and returns
-    a list of steps in execution order.  Used by the Tool Call Visualizer GUI panel.
+    Reads the run's checkpoint writes from MySQL via the langgraph-checkpoint-mysql
+    saver's public `list()` API (which returns already-deserialized
+    `(task_id, channel, value)` writes), then returns a list of steps in
+    execution order.  Used by the Tool Call Visualizer GUI panel.
     """
-    import sqlite3
-    import ormsgpack
-    import json as _json
-    from pathlib import Path as _Path
+    from collections import OrderedDict
 
-    db_path = _Path(__file__).resolve().parents[2] / "data" / "state.db"
-    con = sqlite3.connect(str(db_path))
-    con.row_factory = sqlite3.Row
+    from core import memory
 
-    rows = con.execute(
-        "SELECT task_id, channel, type, value FROM writes WHERE thread_id=? ORDER BY rowid",
-        (run_id,),
-    ).fetchall()
-    con.close()
+    # Pull every checkpoint for this thread, then walk them oldest-first so the
+    # writes accumulate in execution order. `pending_writes` is a list of
+    # (task_id, channel, value) tuples, already deserialized by the saver — no
+    # manual blob/ormsgpack decoding needed (that was the SQLite-era approach).
+    conn = memory.checkpointer_conn()
+    try:
+        saver = memory.get_checkpointer(conn)
+        config = {"configurable": {"thread_id": run_id}}
+        tuples = list(saver.list(config))
+    finally:
+        conn.close()
 
-    if not rows:
+    if not tuples:
         raise HTTPException(404, f"No steps found for run_id={run_id!r}")
 
     # Group by task_id so each task becomes one step object
-    from collections import OrderedDict
     tasks: OrderedDict[str, dict] = OrderedDict()
 
-    for row in rows:
-        tid = row["task_id"]
-        channel = row["channel"]
-        typ = row["type"]
-        raw = row["value"]
-
-        if tid not in tasks:
-            tasks[tid] = {"task_id": tid, "channels": {}}
-
-        if typ == "msgpack" and raw and len(raw) > 1:
-            try:
-                data = ormsgpack.unpackb(raw)
-                tasks[tid]["channels"][channel] = data
-            except Exception:
-                tasks[tid]["channels"][channel] = f"<decode error: {raw[:40]!r}>"
-        elif typ == "null":
-            # branch routing edge — record the branch target
-            tasks[tid]["channels"][channel] = None
+    for ct in reversed(tuples):  # reversed(): newest-first -> execution order
+        for tid, channel, value in (ct.pending_writes or []):
+            task = tasks.setdefault(tid, {"task_id": tid, "channels": {}})
+            task["channels"][channel] = value
 
     # Flatten into a clean step list
     steps = []

@@ -1,6 +1,10 @@
 langgraph>=0.4
 mcp>=1.0
-langgraph-checkpoint-sqlite>=2.0
+# LangGraph checkpointer — MySQL (all state lives in the AgenticOS schema).
+# The [pymysql] extra pulls the pure-Python PyMySQL driver the saver uses;
+# requires MySQL >= 8.0.19 (or MariaDB >= 10.7.1).
+langgraph-checkpoint-mysql[pymysql]>=2.0
+PyMySQL>=1.1
 anthropic>=0.40
 pyyaml>=6.0
 requests>=2.31

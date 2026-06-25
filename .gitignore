@@ -5,6 +5,9 @@ __pycache__/
 .ruff_cache/
 
 # ── Runtime data / logs ────────────────────────────────
+# state.db is retired — all run/checkpoint state now lives in MySQL. The
+# entries below are kept only so any leftover local SQLite file from before
+# the migration is never accidentally committed.
 data/state.db
 data/logs/
 

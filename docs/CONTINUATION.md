@@ -1,5 +1,165 @@
 # Continuation note
 
+**2026-06-24 (PM) — SQLite→MySQL Phases 3–6: checkpointer fully on MySQL (ALL UNCOMMITTED)**
+
+## ⚠ Read these FIRST (next session)
+- `docs/mysql-migration-plan.md` — the phase list (Phases 1–6 are now all DONE in code).
+- `docs/CHANGELOG.md` — top entry (2026-06-24, Phases 3–6) details everything below.
+- **NOTHING is committed.** The whole migration (this session + the earlier
+  Phase 1/2 entry below) is still a dirty working tree.
+
+## What was completed this session (code-complete, compile-verified, NOT live-tested)
+- **Phase 3 — checkpointer is MySQL.** `core/memory.py`: `checkpointer_conn()`
+  now returns an **autocommit PyMySQL** connection; new `get_checkpointer(conn)`
+  builds a `PyMySQLSaver` (`langgraph.checkpoint.mysql.pymysql`) and runs
+  `setup()` once per process. `core/orchestrator.py` + `gui/sidecar/runner.py`
+  swapped `SqliteSaver` → `memory.get_checkpointer(conn)`; `build_graph()` hint
+  is now `BaseCheckpointSaver`. Removed `import sqlite3` and `DATA_DIR/DB_PATH`.
+- **Phase 4 — `/api/runs/{id}/steps` rewritten** (`gui/sidecar/app.py`): reads
+  checkpoints via the saver's public `list()` (deserialized `pending_writes`),
+  aggregates by `task_id` in execution order. UI step contract unchanged. The
+  old SQLite/`ormsgpack` decode is gone.
+- **Phase 5 — cleanup.** `requirements.txt`: dropped `langgraph-checkpoint-sqlite`,
+  added `langgraph-checkpoint-mysql[pymysql]` + `PyMySQL`. Updated
+  `docs/state-and-memory.md`, `docs/architecture.md`, `README.md`, `.gitignore`.
+- **Phase 6 — data migration.** NEW `scripts/migrate_state_db_to_mysql.py`
+  (idempotent INSERT IGNORE copy of leftover `run_history`/`briefed_docs` from
+  `data/state.db`; `--dry-run` / `--delete-after`). Checkpoints not migrated.
+- **Verified** by `py_compile` of edited regions + a functional test of the
+  steps aggregation (execution order, tokens, branch_to, 404 path) + sqlglot
+  MySQL-dialect parse. NOT live-run against the user's MySQL (sandbox can't reach it).
+
+## ▶ NEXT SESSION — START HERE (live verification + commit)
+1. **Version precheck (Phase 0):** `SELECT VERSION();` must be ≥ 8.0.19 (MySQL)
+   or ≥ 10.7.1 (MariaDB) — required by `langgraph-checkpoint-mysql`. If lower,
+   the checkpointer won't work and we fall back to plan option 2 (SQLite for the
+   checkpointer only).
+2. **Install deps:** `./.venv/bin/pip install -r requirements.txt`.
+3. **Run a workflow incl. an HITL interrupt + resume** (CLI: `./.venv/bin/python
+   main.py run <wf>`; or via the GUI Approval Queue). Confirm it completes and is
+   resumable.
+4. **Verify readers:** `/api/runs`, the Tool Call Visualizer (`/api/runs/{id}/steps`),
+   and Agent Activity all populate from MySQL; confirm NO new `data/state.db` appears.
+5. **Optional data copy:** `./.venv/bin/python scripts/migrate_state_db_to_mysql.py`
+   (then `--delete-after` once confirmed) to bring old state.db rows across.
+6. **Commit.** Suggested: one commit for the checkpointer migration (Phases 3–6).
+
+## Carry-forward gotchas (unchanged)
+- `agents/brain2_agent.py` `collect_session_summary()` imports a `Memory` class
+  that never existed in `memory.py` — pre-existing latent ImportError, untouched.
+- MySQL creds: `~/.agentic-os/.env` (`MYSQL_DB=agenticos`; case-insensitive on macOS).
+- After this migration, runs REQUIRE MySQL up (no offline SQLite fallback).
+
+---
+
+**2026-06-24 — Web News overhaul + feeds→MySQL + Rank-with-AI fix + multi-server API Explorer + SQLite→MySQL Phase 1**
+
+## ⚠ Read these FIRST (next session)
+- `docs/mysql-migration-plan.md` — the SQLite→MySQL plan + phase list (source of truth for what's next).
+- `docs/CHANGELOG.md` — top 4 entries detail everything below.
+- `docs/gui-frontend-conventions.md` and the two new `CLAUDE.md` rule sections
+  (GUI/frontend; API registration).
+- **NOTHING this session is committed** — the entire working tree is dirty.
+  Decide a commit strategy first. Suggested logical commits: (1) WebNews UI
+  polish, (2) feeds→MySQL + management UI, (3) Rank-with-AI server-side fix,
+  (4) multi-server API Explorer + docs, (5) memory.py SQLite→MySQL.
+
+## What was completed this session (ALL UNCOMMITTED)
+### Web News view — `gui/desktop/src/components/WebNewsView.jsx`
+- Fixed silent style bug: component used undefined `var(--fg)`/`var(--fg-muted)`
+  → switched to theme tokens `--text`/`--text-dim`.
+- Cards: domain-color left stripe, hover lift, **thumbnails** (right; lazy;
+  `referrerPolicy=no-referrer`; hide-on-error), relative timestamps, scoped
+  `<style>` for hover + skeleton loaders.
+- **"Show more"** gated on measured DOM overflow (`useLayoutEffect`+ref), not
+  char length; expanded renders unclamped `pre-wrap`.
+- **Collapsible category sections** (localStorage `agentic-os.webnews.collapsed`)
+  + collapse/expand-all. **All categories always shown** incl. empty/"off"
+  (empty-state messages; `off` tag for domains not in `prefs.domains`).
+- Categories/colors now **data-driven from the API** with `DEFAULT_CATEGORIES`
+  fallback. ⚙ Settings drawer gained **Manage Feeds** + **Manage Categories**.
+
+### Sidecar RSS — `gui/sidecar/app.py`
+- `_extract_image()` (media:content/thumbnail, enclosure, atom link, embedded
+  `<img>`); each item has an `image` field; image grabbed BEFORE HTML strip.
+- Summary cap `[:400]` → `[:2000]`.
+- **NEW `POST /api/news/rank`** → `core.llm.complete()` (active local/cloud model).
+  Replaces the old broken direct-to-Anthropic browser call ("Load failed").
+
+### Feeds → MySQL (schema `AgenticOS`)
+- NEW `gui/sidecar/routes/news_db.py` (categories + feeds, self-seeding) and
+  `routes/api_news.py` (CRUD). Mounted + schema bootstrapped in `app.py`;
+  removed hardcoded `_NEWS_FEEDS` + the old `/api/news/feeds`.
+- Seed = 8 categories + **30 feeds** (added 4 astrophysics: aa_high, phys.org
+  astro, astrophiz, MIT astro). ⚠ Seeding only runs on an EMPTY table — the
+  user's DB was already seeded earlier, so seed edits don't re-add; new feeds
+  go via the ⚙ UI or `POST /api/news/feeds`.
+
+### API Explorer — `gui/desktop/src/components/HubApiExplorer.jsx`
+- Now **multi-server**: per-entry `server` field (`sidecar`→:5130, hub→:8085).
+  Registered all `/api/news/*` + `/api/health`; added a 2nd health dot; renamed
+  "Codehome API Explorer".
+- NEW `docs/api-registry.md` + CLAUDE.md **API registration rule**: every new
+  Codehome/sidecar/Hub endpoint MUST be added to `ENDPOINTS` in the same change.
+
+### SQLite→MySQL migration — plan-Phase 1 AND plan-Phase 2 DONE
+- `core/memory.py`: `run_history` + `briefed_docs` now **MySQL** (schema
+  `AgenticOS`); public signatures unchanged; added `ensure_schema()` +
+  `activity_stats()`. `checkpointer_conn()` is **STILL SQLite** (that's Phase 3).
+- `gui/sidecar/panels.py`: `agent_activity()` now uses `memory.activity_stats()`
+  (removed `sqlite3`/`datetime` imports).
+- Verified: `py_compile` on all changed files + `sqlglot` MySQL-dialect parse of
+  every statement PASSED. **NOT yet live-verified** against the user's MySQL
+  (the smoke test below was still pending when we stopped).
+
+## ▶ NEXT SESSION — START HERE
+1. **Confirm Phase 1 live** — run the smoke test (below) on the Mac; expect a run
+   row + an activity dict, then "cleaned up".
+2. **Phase numbering note:** plan-Phase 1 (memory.py) AND plan-Phase 2 (panels
+   reader) are BOTH already done. The next outstanding work — what Tony called
+   "Phase 2" — is actually **Phase 3** in `docs/mysql-migration-plan.md`:
+   migrate the LangGraph checkpointer to MySQL via **`langgraph-checkpoint-mysql`**
+   (approach already approved).
+   - **First:** `SELECT VERSION();` must be ≥ 8.0.19 (package requirement).
+   - Phase 3 files: `core/memory.py` `checkpointer_conn()` → MySQL (`pymysql`,
+     `autocommit=True`) or a `get_checkpointer()` returning `PyMySQLSaver`;
+     `core/orchestrator.py` + `gui/sidecar/runner.py` swap
+     `SqliteSaver`→`PyMySQLSaver` + call `saver.setup()`; `requirements.txt`
+     add `langgraph-checkpoint-mysql[pymysql]` (+ `PyMySQL`).
+   - Phase 4: rewrite `gui/sidecar/app.py` `/api/runs/{id}/steps` (it currently
+     decodes the raw SQLite `writes` table with `ormsgpack`) to read the MySQL
+     checkpoint tables; verify the Run Visualizer still shows clean steps.
+   - Phase 5: drop `langgraph-checkpoint-sqlite` from `requirements.txt`; update
+     `docs/state-and-memory.md`, `architecture.md`, `README.md`, `.gitignore`.
+   - Phase 6: optional one-time copy of existing `data/state.db` run rows into
+     MySQL; full end-to-end verification (incl. an HITL interrupt + resume).
+
+## Verify / smoke test (run on the Mac)
+```bash
+cd ~/Codehome/AgenticOS && ./.venv/bin/python - <<'PY'
+from core import memory
+memory.ensure_schema(); rid = memory.start_run("smoke-test")
+memory.finish_run(rid,"completed",tokens_used=123,cost_usd=0.0042,detail={"steps":["a","b"]})
+print(memory.recent_runs(3)); print(memory.activity_stats())
+import core.memory as m; c=m._db(); cur=c.cursor(); cur.execute("DELETE FROM run_history WHERE run_id=%s",(rid,)); c.commit(); c.close()
+PY
+```
+- Rebuild GUI (WebNews/Explorer hot-reload): `cd gui/desktop && npm run tauri dev`
+- Restart sidecar for Python changes (app.py/news_db/api_news/memory/panels):
+  `~/Codehome/AgenticOS/scripts/agentic-gui.sh restart`
+
+## Known issues / carry-forward
+- `agents/brain2_agent.py:335` `collect_session_summary()` does
+  `from core.memory import Memory; Memory()` — but `memory.py` has never had a
+  `Memory` class (only module fns). Pre-existing latent ImportError; fix with a
+  small `Memory` compat class delegating to the module functions (offered, not done).
+- MySQL creds: `~/.agentic-os/.env` (`MYSQL_DB=agenticos`; on macOS that's the
+  SAME schema as `AgenticOS` — case-insensitive).
+- Rank with AI needs the active model runnable (cloud: `ANTHROPIC_API_KEY`;
+  local: Ollama up).
+
+---
+
 **2026-06-23 — App icon polish + Scripts view reverted to placeholder + ErrorBoundary**
 
 ## What was done this session (branch: phase2-gui-sprint2, all pushed to origin)

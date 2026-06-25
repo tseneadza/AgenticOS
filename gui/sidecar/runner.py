@@ -14,7 +14,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from core import memory, orchestrator
@@ -109,7 +108,7 @@ class WorkflowRunner:
         bus.publish("RUN_STARTED", run_id=handle.run_id, workflow=handle.workflow)
         config = {"configurable": {"thread_id": handle.run_id}}
         conn = memory.checkpointer_conn()
-        saver = SqliteSaver(conn)
+        saver = memory.get_checkpointer(conn)
         tokens_total = 0
         cost_total = 0.0
         steps_done: list[str] = []

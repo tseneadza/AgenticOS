@@ -24,8 +24,8 @@ cd gui/desktop && npm run tauri dev        # Tauri v2 + React app
 ## What it does
 
 - **Orchestrates workflows** — LangGraph executes multi-step, config-driven
-  workflows (`config/workflows.yaml`) with SQLite checkpointing for
-  recoverable runs.
+  workflows (`config/workflows.yaml`) with MySQL checkpointing
+  (`langgraph-checkpoint-mysql`) for recoverable runs.
 - **Stays within guardrails** — every action passes through the Constitution
   (`config/constitution.yaml`): blocked-pattern checks, allowlists, and
   token/cost budgets, with human-in-the-loop approval gates.
@@ -107,7 +107,7 @@ Full docs live in [`docs/`](docs/README.md):
 - [Architecture](docs/architecture.md) — components, data flow, key decisions
 - [Workflows reference](docs/workflows.md) — YAML format, adding workflows and agent actions
 - [Constitution](docs/constitution.md) — the safety model and how to tune it
-- [State & memory](docs/state-and-memory.md) — SQLite, checkpoints, recovery
+- [State & memory](docs/state-and-memory.md) — MySQL (AgenticOS schema), checkpoints, recovery
 - [Roadmap](docs/roadmap.md) — phase status • [Changelog](docs/CHANGELOG.md) — what changed, when
 
 **Documentation policy:** docs are updated in the same change that alters
@@ -128,5 +128,5 @@ gui/sidecar/             FastAPI sidecar — panels API, AG-UI WebSocket, PTY te
 gui/desktop/             Tauri v2 + React app — dashboard registry, expandable panels, native menu
 gui/mockups/             design mockups that informed the GUI
 docs/                    documentation (start at docs/README.md)
-data/                    state.db (gitignored)
+data/                    logs (run/checkpoint state lives in MySQL, schema AgenticOS)
 ```
