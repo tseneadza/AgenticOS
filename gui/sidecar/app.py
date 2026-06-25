@@ -753,6 +753,11 @@ def _extract_image(el, raw_html: str = "") -> str:
 
 def _fetch_rss(url: str) -> list[dict]:
     """Fetch and parse an RSS/Atom feed. Returns list of {title, link, summary, published, domain}."""
+    # Normalise: add https:// if scheme is missing (guards against bare-hostname URLs
+    # stored by users who omit the protocol when adding feeds in the Settings panel).
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
     now = _time.time()
     if url in _rss_cache:
         cached_at, items = _rss_cache[url]
