@@ -41,6 +41,17 @@
       "path": "scripts/diagnose_tools.py",
       "description": "Inspect registered tool availability and connectivity in the AgenticOS tool registry",
       "type": "python"
+    },
+    {
+      "name": "migrate_state_db_to_mysql.py",
+      "path": "scripts/migrate_state_db_to_mysql.py",
+      "description": "One-time, idempotent copy of leftover SQLite run_history/briefed_docs rows into the AgenticOS MySQL schema (LangGraph checkpoints are disposable and not migrated)",
+      "type": "python",
+      "examples": [
+        "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py --dry-run",
+        "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py",
+        "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py --delete-after"
+      ]
     }
   ]
 }
