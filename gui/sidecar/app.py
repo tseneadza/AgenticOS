@@ -751,6 +751,68 @@ def _extract_image(el, raw_html: str = "") -> str:
     return ""
 
 
+
+# ---- og:image fallback enrichment (FR-WN images) --------------------------
+# Many feeds (e.g. ScienceDaily) ship no image in their RSS. When an item has
+# no feed-level image, fetch the article page once and pull its og:image /
+# twitter:image. Results are cached (positive + negative). arXiv is skipped
+# because its og:image is just the arXiv logo (noise on every card).
+import concurrent.futures as _futures
+from urllib.parse import urljoin as _urljoin, urlparse as _urlparse
+
+_og_cache: dict = {}
+_OG_TTL = 6 * 3600
+_OG_SKIP_HOSTS = ("arxiv.org",)
+_OG_LOGO_HINTS = ("logo", "/static/", "default-", "placeholder", "sprite", "favicon")
+_OG_MAX_PER_FEED = 30
+_OG_RE = _re_img.compile(
+    r'<meta[^>]+(?:property|name)=["\'](?:og:image|og:image:url|og:image:secure_url|twitter:image|twitter:image:src)["\'][^>]+content=["\']([^"\']+)'
+    r'|<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\'](?:og:image|og:image:url|og:image:secure_url|twitter:image|twitter:image:src)["\']',
+    _re_img.I,
+)
+
+def _og_image(article_url: str) -> str:
+    """Return an article page's og:image (absolute URL) or "". Cached for _OG_TTL."""
+    if not article_url:
+        return ""
+    host = (_urlparse(article_url).hostname or "").replace("www.", "")
+    if any(host == h or host.endswith("." + h) for h in _OG_SKIP_HOSTS):
+        return ""
+    now = _time.time()
+    hit = _og_cache.get(article_url)
+    if hit and now - hit[0] < _OG_TTL:
+        return hit[1]
+    img = ""
+    try:
+        req = _Request(article_url, headers={"User-Agent": "Mozilla/5.0 AgenticOS RSS Reader"})
+        with _urlopen(req, timeout=6) as resp:
+            html = resp.read(200_000).decode("utf-8", "replace")  # <head> is enough
+        m = _OG_RE.search(html)
+        if m:
+            cand = _urljoin(article_url, (m.group(1) or m.group(2) or "").strip())
+            low = cand.lower()
+            if cand.startswith("http") and not any(h in low for h in _OG_LOGO_HINTS):
+                img = cand
+    except Exception:
+        img = ""
+    _og_cache[article_url] = (now, img)
+    return img
+
+def _enrich_images(items: list) -> None:
+    """Fill missing item['image'] via og:image, in parallel. Mutates in place."""
+    todo = [it for it in items if not it.get("image") and it.get("link")][:_OG_MAX_PER_FEED]
+    if not todo:
+        return
+    try:
+        with _futures.ThreadPoolExecutor(max_workers=12) as ex:
+            results = list(ex.map(lambda i: _og_image(i["link"]), todo))
+        for it, img in zip(todo, results):
+            if img:
+                it["image"] = img
+    except Exception:
+        pass
+
+
 def _fetch_rss(url: str) -> list[dict]:
     """Fetch and parse an RSS/Atom feed. Returns list of {title, link, summary, published, domain}."""
     # Normalise: add https:// if scheme is missing (guards against bare-hostname URLs
@@ -841,8 +903,10 @@ def _fetch_rss(url: str) -> list[dict]:
                     "domain": domain,
                 })
 
-    _rss_cache[url] = (now, items[:60])
-    return items[:60]
+    items = items[:60]
+    _enrich_images(items)
+    _rss_cache[url] = (now, items)
+    return items
 
 
 # NOTE: GET /api/news/feeds is now served by routes/api_news.py (MySQL-backed,
@@ -854,13 +918,17 @@ def _fetch_rss(url: str) -> list[dict]:
 def news_fetch(body: dict) -> dict:
     """Fetch one or more RSS feed URLs and return merged, deduplicated items.
 
-    Body: { "urls": ["https://..."], "keywords": ["quantum", "llm", ...] }
+    Body: { "urls": ["https://..."], "keywords": ["quantum", "llm", ...],
+            "feed_map": {"url": {"domain": ..., "label": ...}} (optional) }
     Returns filtered items sorted newest-first (best-effort; pub date parsing is fuzzy).
+    Each item includes `feed_url` so the frontend can enrich domain/label without
+    ambiguity when multiple feeds share the same hostname.
     """
     import re as _re
 
     urls = body.get("urls", [])
     keywords = [k.lower() for k in body.get("keywords", [])]
+    feed_map = body.get("feed_map", {})  # url -> {domain, label}
 
     if not urls:
         raise HTTPException(400, "urls list required")
@@ -869,13 +937,20 @@ def news_fetch(body: dict) -> dict:
     seen_ids = set()
     errors = []
 
-    for url in urls[:20]:  # cap to prevent abuse
+    for url in urls[:40]:  # cap to prevent abuse
         try:
             items = _fetch_rss(url)
             for item in items:
                 if item["id"] not in seen_ids:
                     seen_ids.add(item["id"])
-                    all_items.append(item)
+                    # Tag each item with its source feed URL so the frontend can
+                    # do unambiguous enrichment even when feeds share a hostname.
+                    enriched_item = dict(item)
+                    enriched_item["feed_url"] = url
+                    if url in feed_map:
+                        enriched_item["domain_label"] = feed_map[url].get("domain", item["domain"])
+                        enriched_item["source_label"] = feed_map[url].get("label", item["domain"])
+                    all_items.append(enriched_item)
         except HTTPException as e:
             errors.append({"url": url, "error": e.detail})
 

@@ -97,6 +97,18 @@ const STYLE_CSS = `
   object-fit: cover; border-radius: 6px;
   border: 1px solid var(--border-soft); background: var(--bg-inset);
 }
+.wnv-thumb-top {
+  width: 100%; height: 132px; flex-shrink: 0;
+  object-fit: cover; border-radius: 6px;
+  border: 1px solid var(--border-soft); background: var(--bg-inset);
+  margin-bottom: 10px;
+}
+.wnv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--wnv-col, 320px), 1fr));
+  gap: 10px; align-items: start; margin-bottom: 8px;
+}
+.wnv-grid .wnv-card { margin-bottom: 0; }
 .wnv-cat { transition: background 0.12s ease, border-color 0.12s ease; }
 .wnv-cat:hover { border-color: var(--text-dim); background: var(--bg-panel); }
 `;
@@ -138,6 +150,12 @@ function loadCollapsed() {
 function saveCollapsed(set) {
   try { localStorage.setItem(LS_COLLAPSED, JSON.stringify([...set])); } catch {}
 }
+
+const LS_VIEW = "agentic-os.webnews.view";
+function loadView() { try { return localStorage.getItem(LS_VIEW) || "list"; } catch { return "list"; } }
+const LS_DENSITY = "agentic-os.webnews.density";
+const DENSITY_PX = { compact: 340, cozy: 440, comfy: 560 };
+function loadDensity() { try { return localStorage.getItem(LS_DENSITY) || "cozy"; } catch { return "cozy"; } }
 
 // relative "time ago" from an ISO-ish published string
 function timeAgo(published) {
@@ -195,12 +213,13 @@ function ScoreBadge({ score }) {
   );
 }
 
-function ArticleCard({ item, ranked, colors = DOMAIN_COLORS }) {
+function ArticleCard({ item, ranked, colors = DOMAIN_COLORS, layout = "list" }) {
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
   const [imgOk, setImgOk] = useState(Boolean(item.image));
   const summaryRef = useRef(null);
   const color = colors[item.domain_label] || colors[item.domain] || "var(--border-soft)";
+  const grid = layout === "grid";
 
   // Only show the toggle when the clamped summary actually overflows 2 lines.
   useLayoutEffect(() => {
@@ -209,10 +228,28 @@ function ArticleCard({ item, ranked, colors = DOMAIN_COLORS }) {
     setOverflowing(el.scrollHeight > el.clientHeight + 2);
   }, [item.summary, expanded]);
 
+  const thumb = item.image && imgOk ? (
+    <img
+      className={grid ? "wnv-thumb-top" : "wnv-thumb"}
+      src={item.image}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setImgOk(false)}
+    />
+  ) : null;
+
   return (
-    <div className="wnv-card" style={{ borderLeftColor: color }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+    <div
+      className="wnv-card"
+      style={grid
+        ? { borderLeftColor: color, display: "flex", flexDirection: "column" }
+        : { borderLeftColor: color }}
+    >
+      {grid && thumb}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: grid ? 8 : 10 }}>
         {ranked && <ScoreBadge score={item._score} />}
+        {!grid && thumb}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5, flexWrap: "wrap" }}>
             <DomainBadge domain={item.domain_label || item.domain} small colors={colors} />
@@ -237,7 +274,7 @@ function ArticleCard({ item, ranked, colors = DOMAIN_COLORS }) {
                 margin: "6px 0 0", fontSize: 11.5, color: "var(--text-dim)",
                 lineHeight: 1.6,
                 display: "-webkit-box",
-                WebkitLineClamp: 2,
+                WebkitLineClamp: grid ? 3 : 2,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
               }}>
@@ -267,16 +304,6 @@ function ArticleCard({ item, ranked, colors = DOMAIN_COLORS }) {
             </p>
           )}
         </div>
-        {item.image && imgOk && (
-          <img
-            className="wnv-thumb"
-            src={item.image}
-            alt=""
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={() => setImgOk(false)}
-          />
-        )}
       </div>
     </div>
   );
@@ -507,6 +534,8 @@ export default function WebNewsView() {
   const [domainFilter, setDomainFilter] = useState("all");
   const [search, setSearch]       = useState("");
   const [collapsed, setCollapsed] = useState(loadCollapsed);
+  const [viewMode, setViewMode]   = useState(loadView);
+  const [density, setDensity]     = useState(loadDensity);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const abortRef = useRef(null);
 
@@ -535,22 +564,33 @@ export default function WebNewsView() {
     setRanked(false);
     setItems([]);
     try {
+      // Build feed_map: url -> {domain, label} so the sidecar can tag each
+      // article at source — avoids ambiguity when multiple feeds share a hostname
+      // (e.g. Quanta has feeds for Physics, Math, and Earth Science).
+      const feedMap = {};
+      feeds.forEach(f => { feedMap[f.url] = { domain: f.domain, label: f.label }; });
+
+      // Fetch WITHOUT keywords — keyword filtering happens client-side below
+      // so categories with niche content (e.g. Mathematics) aren't silently
+      // wiped out by biology/AI keywords.
       const res = await fetch(`${SIDECAR}/api/news/fetch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls: feeds.map(f => f.url), keywords: p.keywords }),
+        body: JSON.stringify({ urls: feeds.map(f => f.url), keywords: [], feed_map: feedMap }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      // Tag each item with its domain label from feed catalogue
-      const urlToDomain = {};
-      const urlToLabel = {};
-      feeds.forEach(f => { urlToDomain[f.url] = f.domain; urlToLabel[f.url] = f.label; });
+      // Enrich: sidecar now returns domain_label/source_label when feed_map is
+      // provided. Fall back to feed_url lookup for any items missing them.
+      const urlToFeed = {};
+      feeds.forEach(f => { urlToFeed[f.url] = f; });
 
-      // items come back with domain = hostname; enrich with domain label
       const enriched = (data.items || []).map(item => {
-        const feed = feeds.find(f => f.url.includes(item.domain) || item.domain.includes(f.url.split("/")[2]?.replace("www.", "")));
+        // Prefer server-side enrichment (authoritative, avoids hostname ambiguity)
+        if (item.domain_label) return item;
+        // Fallback: look up by feed_url tag
+        const feed = item.feed_url ? urlToFeed[item.feed_url] : null;
         return {
           ...item,
           domain_label: feed?.domain || item.domain,
@@ -558,7 +598,30 @@ export default function WebNewsView() {
         };
       });
 
-      setItems(enriched);
+      // Client-side keyword filter: apply globally, but if a category would be
+      // left with zero results, keep its articles unfiltered so it's never blank.
+      const keywords = p.keywords.map(k => k.toLowerCase());
+      let filtered = enriched;
+      if (keywords.length) {
+        const matches = (item) => {
+          const text = (item.title + " " + (item.summary || "")).toLowerCase();
+          return keywords.some(kw => text.includes(kw));
+        };
+        // Per-category fallback: if filtering empties a category, keep all its items
+        const byCategory = {};
+        enriched.forEach(item => {
+          const cat = item.domain_label || item.domain;
+          (byCategory[cat] = byCategory[cat] || []).push(item);
+        });
+        filtered = enriched.filter(item => {
+          if (matches(item)) return true;
+          // Keep unfiltered if this item's category would otherwise be empty
+          const cat = item.domain_label || item.domain;
+          return !byCategory[cat].some(matches);
+        });
+      }
+
+      setItems(filtered);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -749,6 +812,35 @@ export default function WebNewsView() {
             </div>
           )}
 
+          {/* view toggle: list / grid */}
+          <div style={{ display: "flex", gap: 0, border: "1px solid var(--border-soft)", borderRadius: 6, overflow: "hidden" }}>
+            {["list", "grid"].map(v => (
+              <button key={v} onClick={() => { setViewMode(v); try { localStorage.setItem(LS_VIEW, v); } catch {} }}
+                title={v === "grid" ? "Grid view — responsive columns" : "List view"}
+                style={{
+                  all: "unset", cursor: "pointer", padding: "5px 10px",
+                  background: viewMode === v ? "var(--accent)" : "var(--bg-panel)",
+                  color: viewMode === v ? "#1b1b19" : "var(--text-dim)",
+                  fontFamily: "var(--mono)", fontSize: 10, fontWeight: viewMode === v ? 700 : 400,
+                }}>
+                {v === "grid" ? "▦ Grid" : "▤ List"}
+              </button>
+            ))}
+          </div>
+
+          {/* density (grid only) — cycles column width → more/fewer columns */}
+          {viewMode === "grid" && (
+            <button className="wnv-btn"
+              title="Card width — more (smaller) or fewer (larger) columns for the window width"
+              onClick={() => {
+                const order = ["compact", "cozy", "comfy"];
+                const next = order[(order.indexOf(density) + 1) % order.length];
+                setDensity(next); try { localStorage.setItem(LS_DENSITY, next); } catch {}
+              }}>
+              {density === "compact" ? "▦ compact" : density === "comfy" ? "▦ wide" : "▦ cozy"}
+            </button>
+          )}
+
           {/* action buttons */}
           <button onClick={() => fetchNews()} disabled={loading} className="wnv-btn">
             {loading ? "Loading…" : "↻ Refresh"}
@@ -882,8 +974,14 @@ export default function WebNewsView() {
                   <div style={{ padding: "2px 4px 10px 13px", fontSize: 11, fontFamily: "var(--mono)", fontStyle: "italic", color: "var(--text-dim)" }}>
                     {emptyMsg}
                   </div>
+                ) : viewMode === "grid" ? (
+                  <div className="wnv-grid" style={{ "--wnv-col": (DENSITY_PX[density] || 320) + "px" }}>
+                    {arts.map(item => (
+                      <ArticleCard key={item.id} item={item} ranked={ranked} colors={colors} layout="grid" />
+                    ))}
+                  </div>
                 ) : arts.map(item => (
-                  <ArticleCard key={item.id} item={item} ranked={ranked} colors={colors} />
+                  <ArticleCard key={item.id} item={item} ranked={ranked} colors={colors} layout="list" />
                 )))}
               </div>
             );
