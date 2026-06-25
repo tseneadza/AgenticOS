@@ -1,5 +1,38 @@
 # Continuation note
 
+**2026-06-24 (late) — Migration pushed, PR #1 open, migrate script registered in Hub Scripts view**
+
+## ✅ State now
+- Branch `phase2-gui-sprint2` pushed; working tree clean, even with origin. Latest commits:
+  - `3698469` chore(hub): register `migrate_state_db_to_mysql.py` in `app.json` manifest.
+  - `d501142` docs: continuation note.
+  - `2e4ae4a` feat(state): SQLite→MySQL migration (run history + LangGraph checkpointer + collation fix). Live-verified on MySQL 9.4.0.
+  - `52eaeef` feat(news): Web News overhaul, feeds→MySQL, Rank-with-AI, multi-server API Explorer.
+- **PR #1 open:** https://github.com/tseneadza/AgenticOS/pull/1 (`phase2-gui-sprint2` → `main`).
+- **Scripts view note:** the Codehome Hub builds its script catalog from each app's
+  `app.json` `scripts[]` manifest (NOT a directory scan). Registered the migration
+  script there; after `POST http://localhost:8085/api/discover` it now shows in the
+  desktop **Scripts** view (Data group, runnable). Reopen the Scripts view to see it.
+
+## ▶ NEXT SESSION — START HERE (finish verifying, then merge PR #1)
+1. **GUI read-back check** (the remaining manual gap): run sidecar + GUI, open a
+   completed run in the **Tool Call Visualizer** (`/api/runs/{id}/steps`) and the
+   **Agent Activity** panel — confirm both populate cleanly from MySQL.
+2. **No-SQLite-regression check:** after a run, verify NO new `data/state.db` appears.
+3. **Optional data copy:** run `scripts/migrate_state_db_to_mysql.py` (now in the
+   Scripts view, or CLI with `--delete-after`) to bring any old rows into MySQL.
+4. **Merge PR #1** once 1–2 look good.
+
+## Carry-forward gotchas
+- `agents/brain2_agent.py` `collect_session_summary()` imports a `Memory` class that
+  never existed in `memory.py` — pre-existing latent ImportError, untouched.
+- MySQL creds: `~/.agentic-os/.env` (`MYSQL_DB=agenticos`; case-insensitive on macOS).
+- Runs now REQUIRE MySQL up (no offline SQLite fallback); MySQL ≥ 8.0.19 needed (on 9.4.0).
+- To add a script to the desktop Scripts view: add it to `app.json` `scripts[]`, then
+  `POST /api/discover` to the Hub (:8085). `--flags` aren't reachable from the Run button.
+
+---
+
 **2026-06-24 (evening) — Migration COMMITTED + PUSHED, PR #1 open**
 
 ## ✅ State now
