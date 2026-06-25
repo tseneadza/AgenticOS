@@ -1,5 +1,31 @@
 # Continuation note
 
+**2026-06-25 (latest) — og:image enrichment + grid view committed, MySQL verified, working tree clean**
+
+## ✅ State now
+- Branch `main`, even with `origin/main`. Working tree **clean**.
+- Latest commit: `2a68320` feat(news): og:image enrichment, grid/list view toggle,
+  client-side keyword filter, feed_map tagging.
+- **Sidecar healthy** on MySQL (`/api/health` 200, 5 runs returned from `/api/runs`).
+- **No SQLite regression** — no `data/state.db`, only `data/state.db.bak` (gitignored).
+- PR #1 (`phase2-gui-sprint2` → `main`) was merged previously; those branches can
+  be cleaned up.
+
+## ▶ NEXT SESSION — START HERE
+1. **Optional data copy:** `./.venv/bin/python scripts/migrate_state_db_to_mysql.py`
+   to bring old 49/11 rows from `data/state.db.bak` into MySQL.
+2. **Clean up stale branches:** `phase2-gui-sprint2`, `phase2-gui-sprint1`,
+   `phase2-gui-sidebar` (all merged).
+3. **Next feature work** — pick from roadmap or project notes.
+
+## Carry-forward gotchas (unchanged)
+- `agents/brain2_agent.py` `collect_session_summary()` imports a `Memory` class
+  that never existed in `memory.py` — pre-existing latent ImportError, untouched.
+- MySQL creds: `~/.agentic-os/.env` (`MYSQL_DB=agenticos`; case-insensitive on macOS).
+- Runs REQUIRE MySQL up (no offline SQLite fallback). MySQL ≥ 8.0.19 (on 9.4.0).
+
+---
+
 **2026-06-24 (latest) — state.db preserved as .bak, sidecar on new code, migrate script made non-destructive**
 
 ## ✅ State now
