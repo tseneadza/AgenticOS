@@ -1,5 +1,41 @@
 # Continuation note
 
+**2026-06-24 (latest) — state.db preserved as .bak, sidecar on new code, migrate script made non-destructive**
+
+## ✅ State now
+- **`data/state.db` retired safely:** renamed to `data/state.db.bak` (680K; 49
+  run_history + 11 briefed_docs rows preserved), consolidated out of WAL into a
+  clean single file. Gitignored (`data/state.db.bak*`), never committed.
+- **Sidecar restarted onto the new MySQL code** (launchd `com.agentcos.sidecar`,
+  pid changed; `/api/health` 200). The OLD running sidecar was still using
+  `SqliteSaver` and recreated `state.db` sidecar files — fixed by the restart.
+  Verified no new `data/state.db` main file reappears.
+- **`scripts/migrate_state_db_to_mysql.py` is now NON-DESTRUCTIVE:** it never
+  deletes; reads `data/state.db` or the `.bak`; `--delete-after` replaced by
+  `--archive` (renames a live `state.db` -> `.bak`, timestamping an existing
+  one). `app.json` example + this note updated accordingly.
+- Data copy itself still NOT run yet (optional) — the 49/11 rows are only in the
+  `.bak`, not yet in MySQL. Run the script (no flag) to copy them when ready.
+
+## ▶ NEXT SESSION — START HERE
+1. **GUI read-back check:** open a completed run in the **Tool Call Visualizer**
+   and the **Agent Activity** panel — confirm both read cleanly from MySQL.
+2. **Optional data copy:** `./.venv/bin/python scripts/migrate_state_db_to_mysql.py`
+   (reads `data/state.db.bak`) to bring the 49/11 old rows into MySQL.
+3. **Commit/push** any pending changes, then **merge PR #1**.
+
+## Carry-forward gotchas
+- `agents/brain2_agent.py` `collect_session_summary()` imports a `Memory` class that
+  never existed in `memory.py` — pre-existing latent ImportError, untouched.
+- MySQL creds: `~/.agentic-os/.env` (`MYSQL_DB=agenticos`; case-insensitive on macOS).
+- Runs now REQUIRE MySQL up; MySQL ≥ 8.0.19 (on 9.4.0).
+- If anything ever recreates `data/state.db`, a stale sidecar is running old code —
+  restart it: `launchctl kickstart -k gui/$(id -u)/com.agentcos.sidecar`.
+- Adding a script to the desktop Scripts view: add to `app.json` `scripts[]`, then
+  `POST http://localhost:8085/api/discover`.
+
+---
+
 **2026-06-24 (late) — Migration pushed, PR #1 open, migrate script registered in Hub Scripts view**
 
 ## ✅ State now

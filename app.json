@@ -50,7 +50,7 @@
       "examples": [
         "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py --dry-run",
         "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py",
-        "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py --delete-after"
+        "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py --archive"
       ]
     }
   ]
