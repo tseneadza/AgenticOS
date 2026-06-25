@@ -1,5 +1,38 @@
 # Continuation note
 
+**2026-06-24 (evening) — Migration COMMITTED + PUSHED, PR #1 open**
+
+## ✅ State now
+- All prior uncommitted work is **committed and pushed** to
+  `origin/phase2-gui-sprint2` as two logical commits:
+  - `52eaeef` feat(news): Web News overhaul, feeds→MySQL, server-side
+    Rank-with-AI, multi-server API Explorer.
+  - `2e4ae4a` feat(state): SQLite→MySQL migration (run history + LangGraph
+    checkpointer, incl. the collation fix). Live-verified on MySQL 9.4.0.
+- **PR #1 open:** https://github.com/tseneadza/AgenticOS/pull/1
+  (`phase2-gui-sprint2` → `main`, 18 commits = all of Phase 2 Sprint 2).
+- Working tree clean, branch even with origin.
+
+## ▶ NEXT SESSION — START HERE (finish verifying, then merge)
+1. **GUI read-back check** (the one manual gap): run the sidecar + GUI, open a
+   completed run in the **Tool Call Visualizer** (`/api/runs/{id}/steps`) and the
+   **Agent Activity** panel — confirm both populate cleanly from MySQL.
+2. **Confirm no SQLite regressions:** after a run, verify NO new `data/state.db`
+   is created (all state should be in the `AgenticOS` schema).
+3. **Optional one-time data copy:** `./.venv/bin/python
+   scripts/migrate_state_db_to_mysql.py` (then `--delete-after`) to bring any old
+   `run_history` / `briefed_docs` rows from a leftover `data/state.db` into MySQL.
+4. **Merge PR #1** once 1–2 look good.
+
+## Carry-forward gotchas (unchanged)
+- `agents/brain2_agent.py` `collect_session_summary()` imports a `Memory` class
+  that never existed in `memory.py` — pre-existing latent ImportError, untouched.
+- MySQL creds: `~/.agentic-os/.env` (`MYSQL_DB=agenticos`; case-insensitive on macOS).
+- Runs now REQUIRE MySQL up (no offline SQLite fallback). MySQL ≥ 8.0.19 needed
+  for the checkpointer (you're on 9.4.0).
+
+---
+
 **2026-06-24 (PM) — SQLite→MySQL Phases 3–6: checkpointer fully on MySQL (ALL UNCOMMITTED)**
 
 ## ⚠ Read these FIRST (next session)
