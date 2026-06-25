@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 
 const HUB = "http://localhost:8085/api";
+const SIDECAR = "http://localhost:5130";  // FastAPI sidecar (full paths include /api)
 
 const ENDPOINTS = [
   { group:"Cards", method:"GET",    path:"/cards",                    desc:"List all registered project cards", params:[] },
@@ -34,6 +35,19 @@ const ENDPOINTS = [
   { group:"Jupyter", method:"GET",  path:"/jupyter/status",      desc:"Jupyter running status", params:[] },
   { group:"Jupyter", method:"POST", path:"/jupyter/stop",        desc:"Stop Jupyter server", params:[] },
   { group:"System", method:"GET", path:"/health", desc:"Hub server health (root level)", params:[], rootPath:true },
+
+  // ── Sidecar API (FastAPI @ :5130) ──────────────────────────────────────────
+  { group:"News (Sidecar)", server:"sidecar", method:"GET",    path:"/api/news/categories",      desc:"List feed categories (id, name, color)", params:[] },
+  { group:"News (Sidecar)", server:"sidecar", method:"POST",   path:"/api/news/categories",      desc:"Create a category", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"name":"Robotics","color":"#7fb069"}'}] },
+  { group:"News (Sidecar)", server:"sidecar", method:"PATCH",  path:"/api/news/categories/{id}", desc:"Update a category", params:[{name:"id",_in:"path",type:"string",required:true},{name:"body",_in:"body",type:"json",required:true,hint:'{"color":"#d97b4f"}'}] },
+  { group:"News (Sidecar)", server:"sidecar", method:"DELETE", path:"/api/news/categories/{id}", desc:"Delete a category (and its feeds)", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"News (Sidecar)", server:"sidecar", method:"GET",    path:"/api/news/feeds",           desc:"List feeds (joined to category)", params:[{name:"enabled_only",_in:"query",type:"boolean",required:false,hint:"true"},{name:"category_id",_in:"query",type:"string",required:false}] },
+  { group:"News (Sidecar)", server:"sidecar", method:"POST",   path:"/api/news/feeds",           desc:"Create a feed", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"label":"New Scientist","url":"https://...","category_id":"physics-space"}'}] },
+  { group:"News (Sidecar)", server:"sidecar", method:"PATCH",  path:"/api/news/feeds/{id}",      desc:"Update a feed (enable/disable, recategorize)", params:[{name:"id",_in:"path",type:"string",required:true},{name:"body",_in:"body",type:"json",required:true,hint:'{"enabled":false}'}] },
+  { group:"News (Sidecar)", server:"sidecar", method:"DELETE", path:"/api/news/feeds/{id}",      desc:"Delete a feed", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"News (Sidecar)", server:"sidecar", method:"POST",   path:"/api/news/fetch",           desc:"Fetch + keyword-filter RSS items", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"urls":["https://..."],"keywords":["quantum"]}'}] },
+  { group:"News (Sidecar)", server:"sidecar", method:"POST",   path:"/api/news/rank",            desc:"AI-rank articles via the app's active model", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"articles":[{"title":"…"}],"domains":[],"keywords":[]}'}] },
+  { group:"System", server:"sidecar", method:"GET", path:"/api/health", desc:"Sidecar health", params:[] },
 ];
 
 const GROUPS = [...new Set(ENDPOINTS.map(e => e.group))];
@@ -51,7 +65,8 @@ function buildUrl(ep, paramValues) {
   });
   const qp = ep.params.filter(p => p._in === "query" && paramValues[p.name]);
   const qs = qp.map(p => `${p.name}=${encodeURIComponent(paramValues[p.name])}`).join("&");
-  const base = ep.rootPath ? "http://localhost:8085" : HUB;
+  const base = ep.server === "sidecar" ? SIDECAR
+             : ep.rootPath ? "http://localhost:8085" : HUB;
   return base + path + (qs ? "?" + qs : "");
 }
 
@@ -74,6 +89,8 @@ export default function HubApiExplorer() {
   const [callLog, setCallLog]       = useState([]);
   const [hubColor, setHubColor]     = useState("#e0b84c");
   const [hubLabel, setHubLabel]     = useState("localhost:8085");
+  const [sidecarColor, setSidecarColor] = useState("#e0b84c");
+  const [sidecarLabel, setSidecarLabel] = useState("localhost:5130");
   const [copied, setCopied]         = useState(false);
 
   useEffect(() => {
@@ -85,6 +102,22 @@ export default function HubApiExplorer() {
       } catch {
         setHubColor("#d9534f");
         setHubLabel("localhost:8085 · offline");
+      }
+    };
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const r = await fetch("http://localhost:5130/api/health", { signal: AbortSignal.timeout(2000) });
+        setSidecarColor(r.ok ? "#7fb069" : "#e0b84c");
+        setSidecarLabel(r.ok ? "localhost:5130 · online" : `localhost:5130 · ${r.status}`);
+      } catch {
+        setSidecarColor("#d9534f");
+        setSidecarLabel("localhost:5130 · offline");
       }
     };
     check();
@@ -124,7 +157,8 @@ export default function HubApiExplorer() {
       setCallLog(prev => [{ method: ep.method, path: ep.path, status: res.status, dur, ok: res.ok, ts: new Date() }, ...prev].slice(0, 50));
     } catch (e) {
       const dur = Date.now() - start;
-      setResponse({ status: 0, text: `Network error: ${e.message}\n\n(Is Hub running at localhost:8085?)`, ok: false, dur });
+      const where = ep.server === "sidecar" ? "the sidecar at localhost:5130" : "Hub at localhost:8085";
+      setResponse({ status: 0, text: `Network error: ${e.message}\n\n(Is ${where} running?)`, ok: false, dur });
       setCallLog(prev => [{ method: ep.method, path: ep.path, status: 0, dur, ok: false, ts: new Date() }, ...prev].slice(0, 50));
     }
     setLoading(false);
@@ -153,7 +187,7 @@ export default function HubApiExplorer() {
 
       {/* ── sub-topbar ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", background: "var(--bg-inset)", flexShrink: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, letterSpacing: .4 }}>Hub <span style={{ color: "var(--accent)" }}>API Explorer</span></div>
+        <div style={{ fontWeight: 700, fontSize: 13, letterSpacing: .4 }}>Codehome <span style={{ color: "var(--accent)" }}>API Explorer</span></div>
         <div style={{ display: "flex", marginLeft: 12 }}>
           {["explorer", "calllog"].map((t, i) => (
             <button key={t} onClick={() => setTab(t)} style={{
@@ -169,9 +203,15 @@ export default function HubApiExplorer() {
             </button>
           ))}
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-dim)" }}>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", background: hubColor }} />
-          <span>{hubLabel}</span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: "var(--text-dim)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: hubColor }} />
+            <span>Hub {hubLabel}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: sidecarColor }} />
+            <span>Sidecar {sidecarLabel}</span>
+          </div>
         </div>
       </div>
 

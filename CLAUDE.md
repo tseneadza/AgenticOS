@@ -73,3 +73,43 @@ repo must follow this cycle:
    - All five files in `tauri.conf.json` → `bundle.icon` must exist or the build fails
 
 4. **See:** `gui/desktop/ICON_SETUP.md` for detailed icon instructions
+
+## GUI / frontend rule (NO SILENT STYLE BUGS)
+
+**Before building or editing any React view/component in `gui/desktop/`,
+read `docs/gui-frontend-conventions.md`.** Key rules, each learned the hard way:
+
+1. **Use only the theme tokens defined in `gui/desktop/src/App.css` `:root`**
+   (`--text`, `--text-dim`, `--bg`, `--bg-panel`, `--bg-inset`, `--border`,
+   `--border-soft`, `--accent`, `--green`, `--red`, `--yellow`, `--mono`).
+   There is NO `--fg` / `--fg-muted`. Undefined CSS vars fail **silently** and
+   wreck the visual hierarchy with no error — grep any pasted component for
+   `var(--` and confirm every token exists.
+2. **RSS/feed work**: the feed catalogue + categories live in **MySQL** (schema
+   `AgenticOS`, tables `news_feeds` / `news_categories`) via
+   `routes/news_db.py` + `routes/api_news.py`, managed in the ⚙ Settings drawer.
+   They are NOT hardcoded — `news_db._SEED_*` only seeds an empty DB on first
+   run. In `_fetch_rss` (`app.py`): extract images BEFORE stripping HTML; don't
+   over-truncate summaries (cap `[:2000]`); restart the sidecar to clear the
+   15-min feed cache (and to pick up any Python change).
+3. **"Show more" toggles**: gate on measured DOM overflow, not `text.length > N`.
+4. **Verify edits persisted** — read the region back after editing a large file;
+   a tool reporting success is not proof the change is on disk.
+5. The Tauri build can't run from the assistant sandbox — hand Tony the exact
+   `npm run tauri dev` / sidecar-restart command and verify by reading diffs.
+
+## API registration rule (Codehome → AgenticOS)
+
+**Every HTTP endpoint must appear in the in-app API Explorer**
+(`gui/desktop/src/components/HubApiExplorer.jsx`). When you add, rename, or
+remove a route — a sidecar route in `gui/sidecar/` (FastAPI @ :5130) or a Hub
+endpoint (@ :8085) — you MUST update that file's `ENDPOINTS` array in the SAME
+change. A shipped endpoint missing from the Explorer is incomplete.
+
+- Sidecar entries: `server: "sidecar"`, full path including `/api`
+  (e.g. `/api/news/rank`).
+- Hub entries: omit `server`, path relative to `/api` (e.g. `/cards`);
+  use `rootPath: true` for Hub root paths like `/health`.
+- Full contract, checklist, and the recommended auto-discovery approach
+  (Explorer reads the sidecar's `/openapi.json`) are in
+  `docs/api-registry.md`. Read it before adding any API.

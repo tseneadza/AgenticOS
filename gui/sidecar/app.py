@@ -20,6 +20,7 @@ from gui.sidecar.events import bus
 from gui.sidecar.runner import runner
 from gui.sidecar.routes import api_config
 from gui.sidecar.routes import api_tasks
+from gui.sidecar.routes import api_news
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -45,6 +46,25 @@ app.add_middleware(
 # Include route handlers
 app.include_router(api_config.router)
 app.include_router(api_tasks.router)
+app.include_router(api_news.router)
+
+
+@app.on_event("startup")
+async def _ensure_news_schema() -> None:
+    """Self-bootstrap the AgenticOS news schema (database + tables + seed).
+
+    Best-effort: if MySQL is down the news routes return 503 and the view
+    falls back to its built-in defaults, so a missing DB never blocks startup.
+    """
+    import logging
+    try:
+        from gui.sidecar.routes import news_db
+        if news_db.is_available():
+            news_db.ensure_schema()
+    except Exception:  # noqa: BLE001
+        logging.getLogger("agentcos.news_db").warning(
+            "News schema bootstrap skipped", exc_info=True
+        )
 
 
 @app.on_event("startup")
@@ -704,6 +724,45 @@ from urllib.request import urlopen as _urlopen, Request as _Request
 _rss_cache: dict = {}
 _RSS_TTL = 900  # 15 minutes
 
+# Namespaces / patterns used for image extraction
+import re as _re_img
+_MEDIA_NS = "http://search.yahoo.com/mrss/"
+_ATOM_NS = "http://www.w3.org/2005/Atom"
+_CONTENT_NS = "http://purl.org/rss/1.0/modules/content/"
+_IMG_RE = _re_img.compile(r'<img[^>]+src=["\']([^"\']+)["\']', _re_img.I)
+
+
+def _extract_image(el, raw_html: str = "") -> str:
+    """Best-effort image URL for an RSS/Atom <item>/<entry> element.
+
+    Checks Media RSS (media:content / media:thumbnail), RSS <enclosure>,
+    Atom enclosure <link>, then falls back to the first <img> embedded in
+    content:encoded / description HTML.
+    """
+    # Media RSS: <media:content url=.. /> or <media:thumbnail url=.. />
+    for tag in (f"{{{_MEDIA_NS}}}content", f"{{{_MEDIA_NS}}}thumbnail"):
+        for node in el.findall(tag):
+            url = node.get("url")
+            typ = node.get("type", "")
+            medium = node.get("medium", "")
+            if url and (medium == "image" or typ.startswith("image") or not typ):
+                return url
+    # RSS 2.0 enclosure
+    for enc in el.findall("enclosure"):
+        if enc.get("type", "").startswith("image") and enc.get("url"):
+            return enc.get("url")
+    # Atom enclosure link
+    for link_el in el.findall(f"{{{_ATOM_NS}}}link"):
+        if link_el.get("rel") == "enclosure" and link_el.get("type", "").startswith("image") and link_el.get("href"):
+            return link_el.get("href")
+    # Fallback: first <img> inside embedded HTML
+    if raw_html:
+        m = _IMG_RE.search(raw_html)
+        if m:
+            return m.group(1)
+    return ""
+
+
 def _fetch_rss(url: str) -> list[dict]:
     """Fetch and parse an RSS/Atom feed. Returns list of {title, link, summary, published, domain}."""
     now = _time.time()
@@ -737,10 +796,18 @@ def _fetch_rss(url: str) -> list[dict]:
 
         title = _t("title")
         link = _t("link") or _t("guid")
+        # Capture raw HTML (content:encoded preferred, else description) for image scraping
+        _content_node = item.find(f"{{{_CONTENT_NS}}}encoded")
+        _desc_node = item.find("description")
+        raw_html = (
+            (_content_node.text if _content_node is not None and _content_node.text else "")
+            or (_desc_node.text if _desc_node is not None and _desc_node.text else "")
+        )
         summary = _t("description") or _t("dc:description", ) or ""
         # strip HTML tags cheaply
         import re as _re
-        summary = _re.sub(r"<[^>]+>", "", summary)[:400]
+        summary = _re.sub(r"<[^>]+>", "", summary).strip()[:2000]
+        image = _extract_image(item, raw_html)
         pub = _t("pubDate") or _t("dc:date")
 
         if title and link:
@@ -749,6 +816,7 @@ def _fetch_rss(url: str) -> list[dict]:
                 "title": title,
                 "link": link,
                 "summary": summary,
+                "image": image,
                 "published": pub,
                 "domain": domain,
             })
@@ -762,9 +830,12 @@ def _fetch_rss(url: str) -> list[dict]:
             title = _ta("atom:title")
             link_el = entry.find("atom:link", ns)
             link = link_el.get("href", "") if link_el is not None else ""
+            _content_el = entry.find("atom:content", ns)
+            raw_html = _content_el.text if _content_el is not None and _content_el.text else ""
             summary = _ta("atom:summary") or _ta("atom:content")
             import re as _re
-            summary = _re.sub(r"<[^>]+>", "", summary)[:400]
+            summary = _re.sub(r"<[^>]+>", "", summary).strip()[:2000]
+            image = _extract_image(entry, raw_html)
             pub = _ta("atom:published") or _ta("atom:updated")
             if title and link:
                 items.append({
@@ -772,6 +843,7 @@ def _fetch_rss(url: str) -> list[dict]:
                     "title": title,
                     "link": link,
                     "summary": summary,
+                    "image": image,
                     "published": pub,
                     "domain": domain,
                 })
@@ -780,10 +852,9 @@ def _fetch_rss(url: str) -> list[dict]:
     return items[:60]
 
 
-@app.get("/api/news/feeds")
-def news_feeds() -> dict:
-    """Return the hardcoded feed catalogue grouped by domain."""
-    return {"feeds": _NEWS_FEEDS}
+# NOTE: GET /api/news/feeds is now served by routes/api_news.py (MySQL-backed,
+# schema `AgenticOS`). The previous hardcoded catalogue + _NEWS_FEEDS list were
+# migrated into news_db._SEED_FEEDS and are seeded into the DB on first run.
 
 
 @app.post("/api/news/fetch")
@@ -830,66 +901,73 @@ def news_fetch(body: dict) -> dict:
     }
 
 
-# Feed catalogue — grouped by topic domain
-_NEWS_FEEDS = [
-  # Physics & Space
-  {"id":"sciencenews-physics", "label":"Science News – Physics", "domain":"Physics & Space",
-   "url":"https://www.sciencenews.org/topic/physics/feed"},
-  {"id":"quanta-physics", "label":"Quanta Magazine", "domain":"Physics & Space",
-   "url":"https://www.quantamagazine.org/feed/"},
-  {"id":"sciencedaily-space", "label":"ScienceDaily – Space", "domain":"Physics & Space",
-   "url":"https://www.sciencedaily.com/rss/space_time.xml"},
-  {"id":"arxiv-physics", "label":"arXiv – Physics (new)", "domain":"Physics & Space",
-   "url":"https://rss.arxiv.org/rss/physics"},
-  {"id":"arxiv-hep", "label":"arXiv – HEP", "domain":"Physics & Space",
-   "url":"https://rss.arxiv.org/rss/hep-ph"},
-  # Biology & Life Sciences
-  {"id":"sciencedaily-biology", "label":"ScienceDaily – Biology", "domain":"Biology & Life Sciences",
-   "url":"https://www.sciencedaily.com/rss/plants_animals/biology.xml"},
-  {"id":"sciencenews-life", "label":"Science News – Life", "domain":"Biology & Life Sciences",
-   "url":"https://www.sciencenews.org/topic/life/feed"},
-  {"id":"scitechdaily-bio", "label":"SciTechDaily – Biology", "domain":"Biology & Life Sciences",
-   "url":"https://scitechdaily.com/feed/"},
-  # AI & Machine Learning
-  {"id":"arxiv-ai", "label":"arXiv – AI", "domain":"AI & Machine Learning",
-   "url":"https://rss.arxiv.org/rss/cs.AI"},
-  {"id":"arxiv-ml", "label":"arXiv – ML", "domain":"AI & Machine Learning",
-   "url":"https://rss.arxiv.org/rss/cs.LG"},
-  {"id":"sciencedaily-ai", "label":"ScienceDaily – AI", "domain":"AI & Machine Learning",
-   "url":"https://www.sciencedaily.com/rss/computers_math/artificial_intelligence.xml"},
-  # Neuroscience
-  {"id":"sciencedaily-neuro", "label":"ScienceDaily – Neuroscience", "domain":"Neuroscience",
-   "url":"https://www.sciencedaily.com/rss/mind_brain/neuroscience.xml"},
-  {"id":"arxiv-neuro", "label":"arXiv – Neurons & Cognition", "domain":"Neuroscience",
-   "url":"https://rss.arxiv.org/rss/q-bio.NC"},
-  {"id":"sciencenews-brain", "label":"Science News – Brain", "domain":"Neuroscience",
-   "url":"https://www.sciencenews.org/topic/brain-behavior/feed"},
-  # Mathematics
-  {"id":"quanta-math", "label":"Quanta – Math", "domain":"Mathematics",
-   "url":"https://www.quantamagazine.org/mathematics/feed/"},
-  {"id":"arxiv-math", "label":"arXiv – Mathematics", "domain":"Mathematics",
-   "url":"https://rss.arxiv.org/rss/math"},
-  {"id":"sciencedaily-math", "label":"ScienceDaily – Math", "domain":"Mathematics",
-   "url":"https://www.sciencedaily.com/rss/computers_math/mathematics.xml"},
-  # Engineering & Technology
-  {"id":"sciencedaily-eng", "label":"ScienceDaily – Engineering", "domain":"Engineering & Technology",
-   "url":"https://www.sciencedaily.com/rss/matter_energy/engineering.xml"},
-  {"id":"arxiv-cs-sys", "label":"arXiv – Systems", "domain":"Engineering & Technology",
-   "url":"https://rss.arxiv.org/rss/cs.SY"},
-  {"id":"newscientist", "label":"New Scientist", "domain":"Engineering & Technology",
-   "url":"https://www.newscientist.com/feed/home/"},
-  # Chemistry & Materials
-  {"id":"chemworld", "label":"Chemistry World", "domain":"Chemistry & Materials",
-   "url":"https://www.chemistryworld.com/rss"},
-  {"id":"sciencedaily-chem", "label":"ScienceDaily – Chemistry", "domain":"Chemistry & Materials",
-   "url":"https://www.sciencedaily.com/rss/matter_energy/chemistry.xml"},
-  {"id":"arxiv-condmat", "label":"arXiv – Condensed Matter", "domain":"Chemistry & Materials",
-   "url":"https://rss.arxiv.org/rss/cond-mat"},
-  # Climate & Earth Science
-  {"id":"sciencedaily-earth", "label":"ScienceDaily – Earth", "domain":"Climate & Earth Science",
-   "url":"https://www.sciencedaily.com/rss/earth_climate/earth_science.xml"},
-  {"id":"sciencedaily-climate", "label":"ScienceDaily – Climate", "domain":"Climate & Earth Science",
-   "url":"https://www.sciencedaily.com/rss/earth_climate/global_warming.xml"},
-  {"id":"quanta-earth", "label":"Quanta – Earth Science", "domain":"Climate & Earth Science",
-   "url":"https://www.quantamagazine.org/earth-science/feed/"},
-]
+class NewsRankRequest(BaseModel):
+    articles: list[dict]            # [{title, domain_label?}, ...] (order preserved)
+    domains: list[str] = []
+    keywords: list[str] = []
+    model: str | None = None        # override; defaults to the app's active model
+
+
+@app.post("/api/news/rank")
+def news_rank(body: NewsRankRequest) -> dict:
+    """Score fetched articles 0-10 for relevance using the app's active LLM.
+
+    Runs through core.llm.complete() — the SAME unified provider layer the
+    governing agent uses — so ranking honors whatever model is selected in the
+    GUI (local Ollama or cloud). Returns a `scores` array aligned to the posted
+    article order, plus the model/provider/cost used.
+    """
+    import json as _json
+    import re as _re
+    from core import llm
+
+    articles = body.articles[:40]  # cap for cost/latency
+    if not articles:
+        return {"scores": [], "model": llm.active_model()}
+
+    domains = ", ".join(body.domains) or "general science and technology"
+    keywords = ", ".join(body.keywords) or "(none specified)"
+    listing = "\n".join(
+        f"{i + 1}. [{a.get('domain_label') or a.get('domain') or ''}] {a.get('title', '')}"
+        for i, a in enumerate(articles)
+    )
+    prompt = (
+        "You are a science news ranker. Score each article 0-10 for how "
+        "interesting and significant it is to a researcher interested in: "
+        + domains + ".\n\nKeywords of particular interest: " + keywords + ".\n\n"
+        "Respond ONLY with a JSON array, one object per article in the same "
+        'order: [{"score": 8, "reasoning": "one short sentence why"}, ...]\n\n'
+        "Articles:\n" + listing + "\n\nRespond with only the JSON array."
+    )
+
+    try:
+        result = llm.complete(
+            [{"role": "user", "content": prompt}],
+            model=body.model,
+            max_tokens=2000,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"LLM call failed: {exc}") from exc
+
+    text = result.text or ""
+    cleaned = _re.sub(r"```(?:json)?", "", text).strip()
+    match = _re.search(r"\[.*\]", cleaned, _re.S)
+    payload = match.group(0) if match else cleaned
+    try:
+        scores = _json.loads(payload)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            502, f"Model did not return valid JSON ({result.model}): {text[:200]}"
+        ) from exc
+
+    return {
+        "scores": scores,
+        "model": result.model,
+        "provider": result.provider,
+        "cost_usd": result.cost_usd,
+        "tokens": result.tokens_used,
+    }
+
+
+# Feed catalogue now lives in MySQL (schema `AgenticOS`, table news_feeds),
+# seeded from news_db._SEED_FEEDS. Managed via routes/api_news.py.
