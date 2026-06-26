@@ -15,6 +15,8 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from core.exceptions import SkippedRun  # noqa: F401 — re-exported for agents
+
 from agents import brain2_agent, briefing_agent, hub_agent
 from core import memory
 from core.constitution import Constitution
@@ -73,6 +75,8 @@ def _make_node(step: dict, constitution: Constitution):
             "model": step.get("model", "default"),
         }
         result = action(call_state)
+        # A SkippedRun raised inside an action propagates up through the node;
+        # the orchestrator's run_workflow() catches it before it hits LangGraph.
 
         tokens = int(result.get("tokens_used", 0)) if isinstance(result, dict) else 0
         cost = float(result.get("cost_usd", 0.0)) if isinstance(result, dict) else 0.0
@@ -140,6 +144,9 @@ def run_workflow(workflow_name: str, *, thread_id: str | None = None) -> dict:
     except PermissionError as exc:
         memory.finish_run(run_id, "interrupted", detail={"reason": str(exc)})
         raise
+    except SkippedRun as exc:
+        memory.finish_run(run_id, "skipped", detail={"reason": str(exc)})
+        return {}  # clean exit — not an error
     except Exception as exc:
         memory.finish_run(run_id, "failed", detail={"error": str(exc)})
         raise

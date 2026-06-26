@@ -8,7 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import HubApiExplorer from "./components/HubApiExplorer";
-import ToolCallVisualizer from "./components/ToolCallVisualizer";
+import WorkflowsWorkspace from "./components/WorkflowsWorkspace";
 import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
 
@@ -192,23 +192,30 @@ function AgentActivity({ refreshKey, expanded }) {
       .catch(() => {});
   }, [expanded, refreshKey]);
 
-  if (!d) return <Empty msg="No activity data" />;
+  if (!d || d.available === false) return <Empty msg="No activity data — sidecar unreachable" />;
+
+  // Numbers can be absent in a partial/degraded payload; coerce defensively so
+  // a missing field never crashes the panel (.toFixed on undefined throws).
+  const costToday = Number(d.cost_today_usd ?? 0);
+  const costMonth = Number(d.cost_month_usd ?? 0);
+  const tokensTotal = Number(d.tokens_total ?? 0);
+  const recentRuns = d.recent_runs ?? [];
 
   if (!expanded) {
     return (
       <>
         <dl className="kv">
-          <dt>Cost today</dt><dd>${d.cost_today_usd.toFixed(4)}</dd>
-          <dt>Cost this month</dt><dd>${d.cost_month_usd.toFixed(4)}</dd>
-          <dt>Runs today</dt><dd>{d.runs_today}</dd>
-          <dt>Total tokens</dt><dd>{d.tokens_total.toLocaleString()}</dd>
+          <dt>Cost today</dt><dd>${costToday.toFixed(4)}</dd>
+          <dt>Cost this month</dt><dd>${costMonth.toFixed(4)}</dd>
+          <dt>Runs today</dt><dd>{d.runs_today ?? 0}</dd>
+          <dt>Total tokens</dt><dd>{tokensTotal.toLocaleString()}</dd>
           <dt>Success rate</dt><dd>{d.success_rate ?? "—"}%</dd>
           <dt>Avg duration</dt><dd>{d.avg_duration_s ?? "—"}s</dd>
         </dl>
         <table style={{ marginTop: 8 }}>
           <thead><tr><th>Workflow</th><th>Status</th><th>Cost</th></tr></thead>
           <tbody>
-            {d.recent_runs.slice(0, 6).map((r) => (
+            {recentRuns.slice(0, 6).map((r) => (
               <tr key={r.run_id}>
                 <td>{r.workflow}</td>
                 <td>
@@ -225,16 +232,16 @@ function AgentActivity({ refreshKey, expanded }) {
   }
 
   // ---- Expanded view ----
-  const runs = allRuns || d.recent_runs;
+  const runs = allRuns || recentRuns;
   return (
     <div className="exp-grid-2">
       <div className="exp-col">
         <div className="exp-section-title">Summary</div>
         <dl className="kv">
-          <dt>Cost today</dt><dd>${d.cost_today_usd.toFixed(4)}</dd>
-          <dt>Cost this month</dt><dd>${d.cost_month_usd.toFixed(4)}</dd>
-          <dt>Runs today</dt><dd>{d.runs_today}</dd>
-          <dt>Total tokens</dt><dd>{d.tokens_total.toLocaleString()}</dd>
+          <dt>Cost today</dt><dd>${costToday.toFixed(4)}</dd>
+          <dt>Cost this month</dt><dd>${costMonth.toFixed(4)}</dd>
+          <dt>Runs today</dt><dd>{d.runs_today ?? 0}</dd>
+          <dt>Total tokens</dt><dd>{tokensTotal.toLocaleString()}</dd>
           <dt>Success rate</dt><dd>{d.success_rate ?? "—"}%</dd>
           <dt>Avg duration</dt><dd>{d.avg_duration_s ?? "—"}s</dd>
         </dl>
@@ -884,6 +891,13 @@ function WorkflowsPanel({
   );
 }
 
+// Format a millisecond epoch timestamp as HH:MM:SS
+const fmtTs = (ms) => {
+  if (!ms) return null;
+  const d = new Date(ms);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+};
+
 // Events panel: the live AG-UI feed, highlight-linked to the selection (FR-49).
 function LinkedEventsPanel({ feed, selWf, selRun, onSelectEvent }) {
   const ref = useRef(null);
@@ -897,11 +911,18 @@ function LinkedEventsPanel({ feed, selWf, selRun, onSelectEvent }) {
     <div className="feed-scroll linked-feed" ref={ref}>
       {feed.map((e, i) => {
         const cls = hasSel ? (isHi(e) ? " hi" : " dim") : "";
+        const ts = fmtTs(e.timestamp);
         return (
           <div className={`feed-line linkable${cls}`} key={i} onClick={() => onSelectEvent(e)}>
+            {ts && <span className="feed-ts">{ts}</span>}
             <b>{e.type}</b> {e.workflow || ""}{e.step ? ` · ${e.step}` : ""}
             {e.run_id ? <span className="feed-run"> {shortId(e.run_id)}</span> : null}
-            {e.ts ? <span className="feed-ts"> {e.ts}</span> : null}
+            {e.type === 'RUN_ERROR' && e.error
+              ? <span className="feed-error"> — {e.error}</span>
+              : null}
+            {e.type === 'RUN_SKIPPED' && e.reason
+              ? <span className="feed-skipped"> — {e.reason}</span>
+              : null}
           </div>
         );
       })}
@@ -1268,7 +1289,7 @@ function AgentView({ ctx }) {
 // (⌘7). Agent is appended last so the ⌘1–6 bindings stay stable.
 const VIEWS = [
   { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
-  { id: "workflows", label: "Workflows", component: WorkflowsDashboard },
+  { id: "workflows", label: "Workflows", component: WorkflowsWorkspace },
   { id: "web-news", label: "Web News", component: WebNewsView },
   
   { id: "scripts", label: "Scripts", component: ScriptsExplorer },
@@ -1277,7 +1298,6 @@ const VIEWS = [
   { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
     purpose: "Read and search the Brain2 Obsidian vault inside the app." },
   { id: "hub-api", label: "Hub API", component: HubApiExplorer },
-  { id: "tool-viz", label: "Run Visualizer", component: ToolCallVisualizer },
   { id: "agent", label: "Agent", component: AgentView, badge: "approvals" },
 ];
 
@@ -1296,6 +1316,7 @@ export default function App() {
     let saved = localStorage.getItem(VIEW_KEY);
     if (saved === "dashboard") saved = "sysops";      // FR-47 migration (old dashboard → sysops)
     if (saved === "events") saved = "workflows";      // Events merged into Workflows dashboard
+    if (saved === "tool-viz") saved = "workflows";    // Run Visualizer merged into Workflows workspace
     if (saved === "config") saved = "scripts";        // Phase 2 migration: old config → scripts tabs
     return VIEWS.some((v) => v.id === saved) ? saved : "sysops";
   });

@@ -699,7 +699,13 @@ def complete(
     provider = info.provider if info else "anthropic"
 
     chat = get_chat_model(model_id, max_tokens=max_tokens, **kwargs)
-    resp = chat.invoke(_to_lc_messages(system, messages))
+    # Wrap invoke() in the same env-isolation guard used during construction.
+    # langchain_anthropic reads ANTHROPIC_BASE_URL at call time, not just at
+    # client build time, so stripping it only during __init__ is not enough.
+    _is_anthropic = provider == "anthropic"
+    _ctx = _isolated_anthropic_env() if _is_anthropic else contextlib.nullcontext()
+    with _ctx:
+        resp = chat.invoke(_to_lc_messages(system, messages))
 
     text = resp.content if isinstance(resp.content, str) else "".join(
         part.get("text", "") if isinstance(part, dict) else str(part)

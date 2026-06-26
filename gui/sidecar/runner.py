@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from langgraph.types import Command
 
 from core import memory, orchestrator
+from core.exceptions import SkippedRun
 from gui.sidecar.events import bus
 
 APPROVAL_TIMEOUT_S = 3600  # parked run gives up after an hour
@@ -48,7 +49,7 @@ class PendingApproval:
 class RunHandle:
     run_id: str
     workflow: str
-    status: str = "running"  # running | waiting_approval | completed | failed | denied
+    status: str = "running"  # running | waiting_approval | completed | failed | denied | skipped
     started_at: float = field(default_factory=time.time)
     finished_at: float | None = None
     error: str | None = None
@@ -194,6 +195,14 @@ class WorkflowRunner:
             bus.publish(
                 "RUN_ERROR", run_id=handle.run_id, workflow=handle.workflow,
                 error=str(exc), kind="denied",
+            )
+        except SkippedRun as exc:
+            handle.status = "skipped"
+            handle.finished_at = time.time()
+            memory.finish_run(handle.run_id, "skipped", detail={"reason": str(exc)})
+            bus.publish(
+                "RUN_SKIPPED", run_id=handle.run_id, workflow=handle.workflow,
+                reason=str(exc),
             )
         except Exception as exc:  # noqa: BLE001 — report any failure to the GUI
             handle.status = "failed"

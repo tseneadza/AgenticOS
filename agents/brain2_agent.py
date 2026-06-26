@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from tools import filesystem_tool as fs
+from core.exceptions import SkippedRun
 
 CONFIG = yaml.safe_load(
     (Path(__file__).resolve().parent.parent / "config" / "settings.yaml").read_text()
@@ -234,8 +235,10 @@ def _classify_note(content: str, filename: str) -> str:
 def scan_raw_notes(state: dict) -> dict:
     raw_dir = VAULT / "00 - Raw"
     if not raw_dir.exists():
-        return {"raw_notes": [], "raw_count": 0}
+        raise SkippedRun("Raw notes folder does not exist")
     notes = [n for n in fs.list_directory(str(raw_dir)) if n.endswith(".md")]
+    if not notes:
+        raise SkippedRun("No raw notes to process")
     return {"raw_notes": notes, "raw_count": len(notes)}
 
 
@@ -277,7 +280,7 @@ def process_each_raw_note(state: dict) -> dict:
 def scan_learning_notes(state: dict) -> dict:
     learning_dir = VAULT / "02 - Learning"
     if not learning_dir.exists():
-        return {"learning_notes": [], "learning_count": 0}
+        raise SkippedRun("Learning folder does not exist")
     to_process = []
     for name in fs.list_directory(str(learning_dir)):
         if not name.endswith(".md"):
@@ -286,6 +289,8 @@ def scan_learning_notes(state: dict) -> dict:
         fm = _frontmatter(content)
         if str(fm.get("status", "")).lower() == "processing":
             to_process.append({"filename": name, "title": fm.get("title", name[:-3])})
+    if not to_process:
+        raise SkippedRun("No learning notes with status: processing")
     return {"learning_notes": to_process, "learning_count": len(to_process)}
 
 
@@ -332,9 +337,8 @@ def research_each_learning_note(state: dict) -> dict:
 # ---------------------------------------------------------------- FR-15: save-session
 
 def collect_session_summary(state: dict) -> dict:
-    from core.memory import Memory
-    mem = Memory()
-    runs = mem.recent_runs(limit=10)
+    from core import memory as _mem
+    runs = _mem.recent_runs(limit=10)
     projects = []
     projects_dir = VAULT / "01 - Projects"
     if projects_dir.exists():

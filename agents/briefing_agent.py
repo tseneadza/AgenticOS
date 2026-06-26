@@ -37,14 +37,14 @@ def _template_brief(vault: dict, hub: dict) -> str:
     lines = [f"# Morning Briefing — {today}", ""]
 
     lines.append("## Today's Focus")
-    active = [p for p in vault["projects"] if p["status"].lower() in ("active", "in-progress")]
-    for p in active or vault["projects"][:3]:
-        prio = f" ({p['priority']})" if p["priority"] else ""
-        lines.append(f"- **{p['name']}**{prio} — status: {p['status']}")
-    if vault["open_tasks"]:
+    active = [p for p in vault.get("projects", []) if str(p.get("status", "")).lower() in ("active", "in-progress")]
+    for p in active or vault.get("projects", [])[:3]:
+        prio = f" ({p.get('priority')})" if p.get("priority") else ""
+        lines.append(f"- **{p.get('name', 'untitled')}**{prio} — status: {p.get('status', 'unknown')}")
+    if vault.get("open_tasks"):
         lines.append("")
         lines.append("Open tasks:")
-        lines.extend(f"- [ ] {t}" for t in vault["open_tasks"][:5])
+        lines.extend(f"- [ ] {t}" for t in vault.get("open_tasks", [])[:5])
 
     lines.append("")
     lines.append("## New Since Last Brief")
@@ -63,15 +63,16 @@ def _template_brief(vault: dict, hub: dict) -> str:
 
     lines.append("")
     lines.append("## Inbox")
-    lines.append(f"- {vault['raw_note_count']} unprocessed note(s) in `00 - Raw/`")
+    lines.append(f"- {vault.get('raw_note_count', 0)} unprocessed note(s) in `00 - Raw/`")
 
     lines.append("")
     lines.append("## Codehome Status")
     if hub.get("hub_up"):
-        lines.append(f"- Hub is up — {hub['running_count']} app(s) running")
-        for app in hub["apps"]:
-            if str(app["status"]).lower() == "running":
-                lines.append(f"  - {app['name']} (port {app['port']})")
+        lines.append(f"- Hub is up — {hub.get('running_count', 0)} app(s) running")
+        for app in hub.get("apps", []):
+            # _normalise_app() returns a boolean `running` key (not `status`).
+            if app.get("running"):
+                lines.append(f"  - {app.get('name', 'unknown')} (port {app.get('port', '?')})")
     else:
         lines.append("- Hub unreachable")
 

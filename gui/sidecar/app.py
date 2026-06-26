@@ -21,6 +21,7 @@ from gui.sidecar.runner import runner
 from gui.sidecar.routes import api_config
 from gui.sidecar.routes import api_tasks
 from gui.sidecar.routes import api_news
+from gui.sidecar.routes import api_runs
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -47,6 +48,7 @@ app.add_middleware(
 app.include_router(api_config.router)
 app.include_router(api_tasks.router)
 app.include_router(api_news.router)
+app.include_router(api_runs.router)
 
 
 @app.on_event("startup")
