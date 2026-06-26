@@ -135,7 +135,7 @@ endpoints; events already carry `run_id` + `workflow`).
 | Placeholders (Web News, Scripts, Zsh Config Editor, Obsidian Viewer) → "Coming Soon" | FR-50 | ✅ shared `ComingSoon` stub |
 | Native menu / shortcuts synced to registry | FR-51 | ✅ ⌘1–6 + generic `view-*` handler in `lib.rs` |
 
-## Phase 9 — Hub Absorption & Decommission (NF-4) 🟡 IN PROGRESS
+## Phase 9 — Hub Absorption & Decommission (NF-4) ✅ COMPLETE (2026-06-26)
 
 | Acceptance criterion | FR | Status |
 |----------------------|----|--------|
@@ -143,10 +143,10 @@ endpoints; events already carry `run_id` + `workflow`).
 | Native start/stop/restart/status (no external Hub) | FR-61 | ✅ `core/process_manager.py` + lifecycle routes |
 | Agent blocks + scripts register natively (tool-registry contract unchanged) | FR-62 | ✅ `hub_mcp.py` internals swapped to native registry |
 | Scripts dashboard live | FR-63 | ✅ `ScriptsExplorer.jsx` repointed to sidecar |
-| Hub `:8085` decommissioned | FR-64 | 🔲 Phase 9d |
+| Hub `:8085` decommissioned | FR-64 | ✅ `hub_autostart: false`; PORT_ASSIGNMENTS retired; cutover 9/9 |
 
-**Parallel-run note:** Hub and native registry coexist. `GET /api/apps` (native)
-and `GET /api/cards` (Hub) both served simultaneously. Cutover at 9d.
+**Phase 9 complete — 2026-06-26.** Hub Go server retired. AgenticOS owns all
+Codehome app management natively. `hub_mcp.py` MCP surface preserved unchanged.
 
 ## Phase 10 — Governing Agent (NF-3) 🟡 IN PROGRESS (10a/10b/10c)
 

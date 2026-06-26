@@ -1,3 +1,22 @@
+## 2026-06-26 — Phase 9d: Hub Decommissioned (FR-64)
+
+- **`config/settings.yaml`**: `hub_url` commented out; `hub_autostart: false`
+  added — sidecar no longer spawns Hub binary on boot.
+- **`gui/sidecar/app.py`**: `_ensure_hub_running` startup hook converted to
+  a no-op controlled by `hub_autostart` flag; legacy path preserved but
+  gated behind `hub_autostart: true`.
+- **`tools/hub_mcp.py`**: `HUB_URL` annotated as non-load-bearing (used only
+  by analytics/env/tags/favorites which degrade gracefully when Hub absent).
+- **`hub/docs/PORT_ASSIGNMENTS.md`**: `:8085` marked RETIRED 2026-06-26.
+- **Frontend**: rebuilt (`npm run build`) — 40 modules, 672ms, ScriptsExplorer
+  ships with native data sources.
+- **Cutover smoke test (9/9 passed, Hub cold)**:
+  `list_hub_apps` native, `hub_status` native, `build_agent_tool_registry`,
+  `build_script_tool_registry` (13 tools), `hub_manifests` (keno block),
+  `panels.hub_status`, `GET /api/apps` (27), `GET /api/apps/scripts` (13),
+  `POST /api/apps/keno/start|stop` — all pass with `:8085` dead.
+- **Git**: `84c1404` — 36 files, 1941 insertions, 3 new files.
+
 ## 2026-06-26 — Phase 9c: Native Tool Registry + Scripts Dashboard (FR-62/63)
 
 - **`tools/hub_mcp.py`** (internals swapped): `list_hub_apps`, `hub_status`,
