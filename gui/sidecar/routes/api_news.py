@@ -26,6 +26,7 @@ router = APIRouter()
 
 
 def _require_db() -> None:
+    """Raise HTTP 503 if the MySQL news database is unavailable."""
     if not news_db.is_available():
         raise HTTPException(503, "MySQL unavailable — check ~/.agentic-os/.env")
     news_db.ensure_schema()  # idempotent; cheap after first call
@@ -34,18 +35,24 @@ def _require_db() -> None:
 # ── request models ────────────────────────────────────────────────────────────
 
 class CategoryCreate(BaseModel):
+    """Request body for creating a news category."""
+
     name: str
     color: str = "#888780"
     sort_order: int | None = None
 
 
 class CategoryUpdate(BaseModel):
+    """Request body for updating a news category (all fields optional)."""
+
     name: str | None = None
     color: str | None = None
     sort_order: int | None = None
 
 
 class FeedCreate(BaseModel):
+    """Request body for creating a new RSS feed entry."""
+
     label: str
     url: str
     category_id: str
@@ -53,6 +60,8 @@ class FeedCreate(BaseModel):
 
 
 class FeedUpdate(BaseModel):
+    """Request body for updating an RSS feed entry (all fields optional)."""
+
     label: str | None = None
     url: str | None = None
     category_id: str | None = None
@@ -64,6 +73,7 @@ class FeedUpdate(BaseModel):
 
 @router.get("/api/news/categories")
 def list_categories() -> dict:
+    """Return all news categories with count."""
     _require_db()
     cats = news_db.list_categories()
     return {"categories": cats, "count": len(cats)}
@@ -71,6 +81,7 @@ def list_categories() -> dict:
 
 @router.post("/api/news/categories", status_code=201)
 def create_category(body: CategoryCreate) -> dict:
+    """Create a new news category."""
     _require_db()
     if not body.name.strip():
         raise HTTPException(400, "name is required")
@@ -83,6 +94,7 @@ def create_category(body: CategoryCreate) -> dict:
 
 @router.patch("/api/news/categories/{cat_id}")
 def update_category(cat_id: str, body: CategoryUpdate) -> dict:
+    """Update a news category's name, color, or sort order."""
     _require_db()
     cat = news_db.update_category(cat_id, body.model_dump(exclude_none=True))
     if not cat:
@@ -92,6 +104,7 @@ def update_category(cat_id: str, body: CategoryUpdate) -> dict:
 
 @router.delete("/api/news/categories/{cat_id}", status_code=204)
 def delete_category(cat_id: str) -> None:
+    """Delete a news category and all its associated feeds."""
     _require_db()
     if not news_db.delete_category(cat_id):
         raise HTTPException(404, f"Category '{cat_id}' not found")
@@ -101,6 +114,7 @@ def delete_category(cat_id: str) -> None:
 
 @router.get("/api/news/feeds")
 def list_feeds(enabled_only: bool = False, category_id: str | None = None) -> dict:
+    """Return RSS feeds, optionally filtered by enabled status or category."""
     _require_db()
     feeds = news_db.list_feeds(enabled_only=enabled_only, category_id=category_id)
     return {"feeds": feeds, "count": len(feeds)}
@@ -108,6 +122,7 @@ def list_feeds(enabled_only: bool = False, category_id: str | None = None) -> di
 
 @router.post("/api/news/feeds", status_code=201)
 def create_feed(body: FeedCreate) -> dict:
+    """Create a new RSS feed entry."""
     _require_db()
     if not body.label.strip() or not body.url.strip():
         raise HTTPException(400, "label and url are required")
@@ -117,6 +132,7 @@ def create_feed(body: FeedCreate) -> dict:
 
 @router.patch("/api/news/feeds/{feed_id}")
 def update_feed(feed_id: str, body: FeedUpdate) -> dict:
+    """Update an RSS feed's label, URL, category, or enabled status."""
     _require_db()
     if not news_db.get_feed(feed_id):
         raise HTTPException(404, f"Feed '{feed_id}' not found")
@@ -126,6 +142,7 @@ def update_feed(feed_id: str, body: FeedUpdate) -> dict:
 
 @router.delete("/api/news/feeds/{feed_id}", status_code=204)
 def delete_feed(feed_id: str) -> None:
+    """Delete an RSS feed entry."""
     _require_db()
     if not news_db.delete_feed(feed_id):
         raise HTTPException(404, f"Feed '{feed_id}' not found")
@@ -133,6 +150,8 @@ def delete_feed(feed_id: str) -> None:
 # ── ranking ───────────────────────────────────────────────────────────────────
 
 class ArticleForRanking(BaseModel):
+    """Schema for a single article submitted for AI ranking."""
+
     title: str
     url: str | None = None
     content: str | None = None
@@ -140,6 +159,8 @@ class ArticleForRanking(BaseModel):
 
 
 class RankRequest(BaseModel):
+    """Request body for AI-powered article ranking."""
+
     articles: list[ArticleForRanking]
     domains: list[str] | None = None
     keywords: list[str] | None = None

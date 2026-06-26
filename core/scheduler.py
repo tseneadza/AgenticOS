@@ -52,14 +52,17 @@ _SETTINGS = yaml.safe_load((CONFIG_DIR / "settings.yaml").read_text())["settings
 # ---------------------------------------------------------------------------
 
 def _load_workflows() -> dict:
+    """Load and return the workflows dict from config/workflows.yaml."""
     return yaml.safe_load((CONFIG_DIR / "workflows.yaml").read_text()).get("workflows", {})
 
 
 def _plist_label(workflow_name: str) -> str:
+    """Return the launchd label for a workflow (e.g. 'com.agentcos.workflow.daily')."""
     return f"{PLIST_PREFIX}.{workflow_name}"
 
 
 def _plist_path(workflow_name: str) -> Path:
+    """Return the filesystem path for a workflow's launchd plist file."""
     return LAUNCHD_DIR / f"{_plist_label(workflow_name)}.plist"
 
 

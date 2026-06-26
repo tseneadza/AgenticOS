@@ -70,7 +70,7 @@ def load_config_file():
 
 
 def save_config_file(config):
-    """Save config to YAML file."""
+    """Save config to YAML file with restricted permissions (0600)."""
     ensure_config_dir()
 
     try:

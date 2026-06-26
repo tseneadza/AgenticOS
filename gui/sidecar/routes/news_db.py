@@ -75,15 +75,18 @@ def is_available() -> bool:
 
 
 def _gen_id(prefix: str = "") -> str:
+    """Generate a short random ID with an optional prefix."""
     return (prefix + uuid.uuid4().hex)[:16]
 
 
 def _slug(name: str) -> str:
+    """Convert a name into a URL-safe slug, falling back to a random ID."""
     s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return s or _gen_id()
 
 
 def _row_to_dict(cursor, row) -> dict:
+    """Convert a database row to a dict, normalizing datetimes and booleans."""
     cols = [d[0] for d in cursor.description]
     d = dict(zip(cols, row))
     for k, v in d.items():
@@ -216,6 +219,7 @@ def ensure_schema() -> None:
 # ── categories ────────────────────────────────────────────────────────────────
 
 def list_categories() -> list[dict]:
+    """Return all news categories ordered by sort_order then name."""
     conn = _connect()
     try:
         cur = conn.cursor()
@@ -226,6 +230,16 @@ def list_categories() -> list[dict]:
 
 
 def create_category(name: str, color: str = "#888780", sort_order: int | None = None) -> dict:
+    """Create a new news category and return it.
+
+    Args:
+        name: Category display name.
+        color: Hex color string for UI display.
+        sort_order: Optional sort position; auto-incremented if None.
+
+    Returns:
+        The newly created category as a dictionary.
+    """
     cat_id = _slug(name)
     conn = _connect()
     try:
@@ -245,6 +259,15 @@ def create_category(name: str, color: str = "#888780", sort_order: int | None = 
 
 
 def update_category(cat_id: str, updates: dict) -> dict | None:
+    """Update allowed fields on a news category.
+
+    Args:
+        cat_id: The category ID to update.
+        updates: Dict of field names to new values (name, color, sort_order).
+
+    Returns:
+        The updated category dict, or None if not found.
+    """
     allowed = {"name", "color", "sort_order"}
     fields = {k: v for k, v in updates.items() if k in allowed}
     conn = _connect()
@@ -305,6 +328,14 @@ def list_feeds(enabled_only: bool = False, category_id: str | None = None) -> li
 
 
 def get_feed(feed_id: str) -> dict | None:
+    """Fetch a single feed by ID, joined with its category.
+
+    Args:
+        feed_id: The unique feed identifier.
+
+    Returns:
+        The feed as a dictionary, or None if not found.
+    """
     conn = _connect()
     try:
         cur = conn.cursor()
@@ -322,6 +353,17 @@ def get_feed(feed_id: str) -> dict | None:
 
 
 def create_feed(label: str, url: str, category_id: str, enabled: bool = True) -> dict:
+    """Create a new RSS feed entry and return it.
+
+    Args:
+        label: Display label for the feed.
+        url: The RSS/Atom feed URL.
+        category_id: ID of the category this feed belongs to.
+        enabled: Whether the feed is active for fetching.
+
+    Returns:
+        The newly created feed as a dictionary.
+    """
     feed_id = _gen_id("f")
     conn = _connect()
     try:
@@ -337,6 +379,15 @@ def create_feed(label: str, url: str, category_id: str, enabled: bool = True) ->
 
 
 def update_feed(feed_id: str, updates: dict) -> dict | None:
+    """Update allowed fields on a feed.
+
+    Args:
+        feed_id: The feed ID to update.
+        updates: Dict of field names to new values.
+
+    Returns:
+        The updated feed dict, or None if not found.
+    """
     allowed = {"label", "url", "category_id", "enabled", "sort_order"}
     fields = {k: v for k, v in updates.items() if k in allowed}
     if "enabled" in fields:
@@ -358,6 +409,14 @@ def update_feed(feed_id: str, updates: dict) -> dict | None:
 
 
 def delete_feed(feed_id: str) -> bool:
+    """Delete a feed by its ID.
+
+    Args:
+        feed_id: The unique feed identifier.
+
+    Returns:
+        True if the feed was deleted, False if not found.
+    """
     conn = _connect()
     try:
         cur = conn.cursor()

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
-const HUB = "http://localhost:8085/api";
+const SIDECAR = "http://localhost:5130/api";
+const HUB = SIDECAR; // Phase 9c: native sidecar, no Hub dependency
 
 // ─── Type classification ─────────────────────────────────────────────────────
 const TYPE_STYLE = {
@@ -216,7 +217,7 @@ export default function ScriptsExplorer() {
   useEffect(() => {
     const check = async () => {
       try {
-        const r = await fetch("http://localhost:8085/health", { signal: AbortSignal.timeout(2000) });
+        const r = await fetch("http://localhost:5130/health", { signal: AbortSignal.timeout(2000) });
         setHubOk(r.ok);
       } catch { setHubOk(false); }
     };
@@ -230,7 +231,7 @@ export default function ScriptsExplorer() {
     const load = async () => {
       setLoading(true);
       try {
-        const r = await fetch(`${HUB}/scripts`);
+        const r = await fetch(`${SIDECAR}/apps/scripts`);
         const d = await r.json();
         const enriched = (d.scripts || []).map(s => ({
           ...s,
@@ -256,7 +257,7 @@ export default function ScriptsExplorer() {
       setScriptInfo(null);
       setInfoErr(null);
       try {
-        const r = await fetch(`${HUB}/scripts/info?id=${encodeURIComponent(sc.id)}`);
+        const r = await fetch(`${SIDECAR}/apps/scripts/info?id=${encodeURIComponent(sc.app_id + '/' + sc.name)}`);
         if (!r.ok) throw new Error(`Hub returned ${r.status}`);
         const ct = r.headers.get("content-type") || "";
         if (!ct.includes("application/json")) throw new Error("Hub returned non-JSON (HTML catch-all)");
@@ -313,10 +314,10 @@ export default function ScriptsExplorer() {
     setRunning(true); setOutput(null);
     const start = Date.now();
     try {
-      const res = await fetch(`${HUB}/scripts/run`, {
+      const res = await fetch(`${SIDECAR}/apps/scripts/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ app_id: sc.app_id, script_id: sc.id }),
+        body: JSON.stringify({ app_id: sc.app_id, script_id: sc.name }),
       });
       const dur = Date.now() - start;
       let text;
@@ -363,7 +364,7 @@ export default function ScriptsExplorer() {
   const card = { background:"var(--bg-inset)", borderRadius:4, border:"1px solid var(--border-soft)", overflow:"hidden" };
 
   const hubDot   = hubOk===null ? "#e0b84c" : hubOk ? "#7fb069" : "#d9534f";
-  const hubLabel = hubOk===null ? "checking…" : hubOk ? "localhost:8085 · online" : "localhost:8085 · offline";
+  const hubLabel = hubOk===null ? "checking…" : hubOk ? "sidecar:5130 · online" : "sidecar:5130 · offline";
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (

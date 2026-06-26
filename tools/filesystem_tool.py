@@ -67,6 +67,11 @@ class _McpFilesystemClient:
     _CALL_TIMEOUT = 30
 
     def __init__(self, roots: list[str]):
+        """Initialize the MCP filesystem client and start the background event loop.
+
+        Args:
+            roots: Allowed filesystem root paths to pass to the MCP server.
+        """
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
             target=self._loop.run_forever, name="mcp-fs-client", daemon=True
@@ -80,6 +85,11 @@ class _McpFilesystemClient:
         atexit.register(self.close)
 
     async def _start(self, roots: list[str]) -> None:
+        """Spawn the MCP filesystem server via npx and initialize the session.
+
+        Args:
+            roots: Allowed filesystem root paths for the server.
+        """
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
 
@@ -96,6 +106,18 @@ class _McpFilesystemClient:
         self._tools = {t.name for t in listed.tools}
 
     async def _call(self, tool: str, args: dict) -> str:
+        """Invoke an MCP tool asynchronously and return the text result.
+
+        Args:
+            tool: MCP tool name (e.g. "read_file", "write_file").
+            args: Tool arguments dict.
+
+        Returns:
+            Concatenated text content from the tool response.
+
+        Raises:
+            RuntimeError: If the MCP tool reports an error.
+        """
         result = await self._session.call_tool(tool, args)
         text = "\n".join(
             c.text for c in result.content if getattr(c, "text", None) is not None
@@ -105,14 +127,25 @@ class _McpFilesystemClient:
         return text
 
     def call(self, tool: str, args: dict) -> str:
+        """Synchronous wrapper around _call for use from non-async code.
+
+        Args:
+            tool: MCP tool name.
+            args: Tool arguments dict.
+
+        Returns:
+            Text result from the MCP tool.
+        """
         fut = asyncio.run_coroutine_threadsafe(self._call(tool, args), self._loop)
         return fut.result(timeout=self._CALL_TIMEOUT)
 
     @property
     def tools(self) -> set[str]:
+        """Return the set of tool names available on the MCP server."""
         return self._tools
 
     def close(self) -> None:
+        """Shut down the MCP session and stop the background event loop."""
         if self._stack is not None:
             stack, self._stack = self._stack, None
             try:
@@ -128,6 +161,7 @@ _client_lock = threading.Lock()
 
 
 def _mcp() -> _McpFilesystemClient:
+    """Return the singleton MCP filesystem client, creating it on first call."""
     global _client
     with _client_lock:
         if _client is None:
@@ -136,11 +170,20 @@ def _mcp() -> _McpFilesystemClient:
 
 
 def reset_write_counter() -> None:
+    """Reset the file-write counter to zero (used between workflow runs)."""
     global _files_written
     _files_written = 0
 
 
 def read_text_file(path: str) -> str:
+    """Read and return the UTF-8 text content of a file.
+
+    Args:
+        path: Absolute path to the file to read.
+
+    Returns:
+        The file's text content.
+    """
     if _BACKEND != "mcp":
         return Path(path).read_text(encoding="utf-8")
     client = _mcp()
@@ -149,6 +192,14 @@ def read_text_file(path: str) -> str:
 
 
 def list_directory(path: str) -> list[str]:
+    """List sorted entry names in a directory.
+
+    Args:
+        path: Absolute path to the directory.
+
+    Returns:
+        Sorted list of file and subdirectory names.
+    """
     if _BACKEND != "mcp":
         return sorted(p.name for p in Path(path).iterdir())
     raw = _mcp().call("list_directory", {"path": path})
@@ -165,6 +216,23 @@ def list_directory(path: str) -> list[str]:
 
 
 def write_file(path: str, content: str, *, approved: bool = False) -> str:
+    """Write text content to a file, enforcing constitution guards.
+
+    Creates parent directories if needed. Increments the write counter
+    and checks it against the constitution's per-run limit.
+
+    Args:
+        path: Absolute path to write to (must be within write allowlist).
+        content: UTF-8 text content to write.
+        approved: Whether this write has been pre-approved.
+
+    Returns:
+        The path that was written to.
+
+    Raises:
+        core.constitution.ConstitutionViolation: If the path is outside the
+            write allowlist or the write limit is exceeded.
+    """
     global _files_written
     _constitution.guard("file_write", payload=content, approved=True)
     _constitution.guard_write_path(path)
@@ -184,6 +252,17 @@ def write_file(path: str, content: str, *, approved: bool = False) -> str:
 
 
 def delete_file(path: str, *, approved: bool = False) -> None:
+    """Delete a file, subject to constitution approval and write-path guards.
+
+    Args:
+        path: Absolute path to the file to delete.
+        approved: Whether deletion has been pre-approved via the approval queue.
+
+    Raises:
+        core.constitution.ApprovalRequired: If not yet approved.
+        core.constitution.ConstitutionViolation: If the path is outside the
+            write allowlist.
+    """
     # file_delete is on the approval_required list — guard() raises
     # ApprovalRequired unless approved=True is passed post-approval.
     # Direct op in both backends: the MCP filesystem server exposes no

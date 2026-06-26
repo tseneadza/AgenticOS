@@ -62,10 +62,20 @@ def is_available() -> bool:
 
 
 def _gen_id() -> str:
+    """Generate a short random ID for a new task."""
     return uuid.uuid4().hex[:12]
 
 
 def _row_to_dict(cursor, row: tuple) -> dict:
+    """Convert a database row tuple to a dict, deserializing JSON tags and datetimes.
+
+    Args:
+        cursor: The database cursor (used to read column names).
+        row: The raw row tuple from a fetchone/fetchall call.
+
+    Returns:
+        A dictionary mapping column names to their values.
+    """
     cols = [d[0] for d in cursor.description]
     d = dict(zip(cols, row))
     # Deserialise JSON tags stored as string (mysql-connector returns str)
@@ -91,6 +101,19 @@ def list_tasks(
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict]:
+    """Query tasks with optional filters, sorted by priority then creation date.
+
+    Args:
+        status: Filter by task status (e.g., 'pending', 'completed').
+        type_: Filter by task type (e.g., 'manual', 'agent').
+        priority: Filter by priority level.
+        project: Filter by project name.
+        limit: Maximum number of tasks to return.
+        offset: Number of tasks to skip for pagination.
+
+    Returns:
+        A list of task dictionaries.
+    """
     conn = _connect()
     try:
         cur = conn.cursor()
@@ -116,6 +139,14 @@ def list_tasks(
 
 
 def get_task(task_id: str) -> dict | None:
+    """Fetch a single task by its ID.
+
+    Args:
+        task_id: The unique task identifier.
+
+    Returns:
+        The task as a dictionary, or None if not found.
+    """
     conn = _connect()
     try:
         cur = conn.cursor()
@@ -139,6 +170,23 @@ def create_task(
     notes: str | None = None,
     created_by: str = "user",
 ) -> dict:
+    """Insert a new task into the database and return it.
+
+    Args:
+        title: Task title (required).
+        description: Optional detailed description.
+        type_: Task type ('manual', 'agent', or 'project').
+        priority: Priority level ('low', 'medium', 'high', 'urgent').
+        project: Optional project name.
+        workflow: Optional associated workflow name.
+        tags: Optional list of string tags.
+        due_at: Optional ISO datetime string for the due date.
+        notes: Optional free-form notes.
+        created_by: Creator identifier (defaults to 'user').
+
+    Returns:
+        The newly created task as a dictionary.
+    """
     task_id = _gen_id()
     conn = _connect()
     try:
@@ -195,6 +243,14 @@ def update_task(task_id: str, updates: dict) -> dict | None:
 
 
 def delete_task(task_id: str) -> bool:
+    """Delete a task by its ID.
+
+    Args:
+        task_id: The unique task identifier.
+
+    Returns:
+        True if the task was deleted, False if not found.
+    """
     conn = _connect()
     try:
         cur = conn.cursor()

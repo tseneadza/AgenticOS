@@ -80,14 +80,17 @@ GOVERNOR_SYSTEM = (
 
 
 def _is_yes(decision: str | None) -> bool:
+    """Check whether a human approval decision string is affirmative."""
     return str(decision).strip().lower() in ("y", "yes", "approve", "approved", "ok")
 
 
 def _default_deny(action_type: str, description: str) -> str:  # pragma: no cover
+    """Default approval function that always denies."""
     return "deny"
 
 
 def _noop_event(phase: str, tool: str, info: dict) -> None:  # pragma: no cover
+    """No-op event sink used when no event callback is provided."""
     return None
 
 
@@ -165,6 +168,14 @@ class GovernorToolbox:
         approval_fn: ApprovalFn = _default_deny,
         event_fn: EventFn = _noop_event,
     ) -> None:
+        """Initialize the toolbox with constitution, approval, and event hooks.
+
+        Args:
+            constitution: Constitution instance for guard checks. Loaded from
+                disk if not provided.
+            approval_fn: Callback invoked when a tool needs human approval.
+            event_fn: Callback for tool lifecycle events (start/end/error).
+        """
         self.constitution = constitution or Constitution.load()
         self.approval_fn = approval_fn
         self.event_fn = event_fn
@@ -191,6 +202,7 @@ class GovernorToolbox:
         return self._run(action_type, payload, do)
 
     def _run(self, action_type: str, payload: str, do: Callable[[], Any]) -> str:
+        """Execute ``do``, emit lifecycle events, and return the result as a string."""
         self.event_fn("start", action_type, {"payload": payload})
         try:
             result = do()
@@ -267,6 +279,7 @@ class GovernorToolbox:
             return f"ERROR: unknown workflow '{name}'. Use list_workflows first."
 
         def _do() -> dict:
+            """Start the named workflow via the sidecar runner."""
             from gui.sidecar.runner import runner
 
             run_id = runner.start(name)
@@ -288,6 +301,7 @@ class GovernorToolbox:
             return f"ERROR: invalid args_json: {exc}"
 
         def _do() -> Any:
+            """Invoke the named tool from the registry with the parsed kwargs."""
             from core.tool_registry import get_registry
 
             return get_registry().call(name, **kwargs)
@@ -308,6 +322,7 @@ class GovernorToolbox:
             return "ERROR: empty command."
 
         def _do() -> str:
+            """Execute the shell command and return its output."""
             return _exec_shell(cmd)
 
         if _is_safe_shell(cmd):
@@ -343,6 +358,17 @@ class GovernorToolbox:
     def _authoring_write(
         self, action_type: str, target: Path, payload: str, write_fn: Callable[[], Any]
     ) -> str:
+        """Guard and execute a config/workflow write with mandatory approval.
+
+        Args:
+            action_type: Constitution action type (e.g. ``"config_write"``).
+            target: Filesystem path to write to.
+            payload: Content to validate against blocked patterns.
+            write_fn: Callable that performs the actual write.
+
+        Returns:
+            JSON result string, or a BLOCKED/DENIED status message.
+        """
         try:
             self.constitution.guard_write_path(target)
         except ConstitutionViolation as cv:

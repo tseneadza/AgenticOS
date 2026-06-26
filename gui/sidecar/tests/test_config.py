@@ -21,8 +21,8 @@ def temp_config_dir(monkeypatch):
 
 
 @pytest.fixture
-def client(temp_config_dir):
-    """Create FastAPI test client with mocked config directory."""
+def client(temp_config_dir):  # noqa: D103
+    """Create a FastAPI test client with mocked config directory."""
     from gui.sidecar.routes.api_config import router, CONFIG_DIR, CONFIG_FILE
     from fastapi import FastAPI
 

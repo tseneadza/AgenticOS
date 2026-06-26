@@ -27,17 +27,47 @@ _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent / "config" / "settings.yaml").read_text()
 )["settings"]
 
+# Phase 9d: Hub decommissioned. HUB_URL kept for the small set of functions
+# (analytics, env vars, tags, favorites) that still make Hub HTTP calls.
+# Those are non-load-bearing for the native stack; they degrade gracefully
+# if Hub is absent. The core functions (list, start, stop, manifests,
+# scripts) all read from core/app_registry + core/process_manager instead.
 HUB_URL = _SETTINGS.get("hub_url", "http://localhost:8085").rstrip("/")
 
 
 # ============================================================ internal helpers
 def _get_json(path: str, timeout: int = 4) -> Any:
+    """Send a GET request to the Hub API and return the parsed JSON response.
+
+    Args:
+        path: API endpoint path (e.g. "/api/cards").
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Parsed JSON response body.
+
+    Raises:
+        requests.HTTPError: If the Hub returns a non-2xx status.
+    """
     resp = requests.get(f"{HUB_URL}{path}", timeout=timeout)
     resp.raise_for_status()
     return resp.json()
 
 
 def _post_json(path: str, body: dict | None = None, timeout: int = 15) -> Any:
+    """Send a POST request to the Hub API and return the parsed JSON response.
+
+    Args:
+        path: API endpoint path (e.g. "/api/cards/{id}/start").
+        body: Optional JSON body to send with the request.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Parsed JSON response body, or ``{"ok": True}`` if the response has no JSON.
+
+    Raises:
+        requests.HTTPError: If the Hub returns a non-2xx status.
+    """
     resp = requests.post(f"{HUB_URL}{path}", json=body or {}, timeout=timeout)
     resp.raise_for_status()
     try:
@@ -81,26 +111,46 @@ def _normalise_app(raw: dict) -> dict:
 
 # ============================================================ FR-17: list / start / stop
 def list_hub_apps(state: dict | None = None) -> dict:
-    """Return all Hub-registered apps with current status.
+    """Return all Codehome apps with current running status.
 
+    Phase 9c: primary source is the native app_registry + process_manager.
+    Falls back to Hub HTTP if the native scan fails (parallel-run safety net).
     Accepts an optional ``state`` kwarg so it can serve directly as a
     LangGraph workflow action without a wrapper lambda.
     """
     try:
-        raw = _get_json("/api/cards")
+        from core import app_registry
+        from core.process_manager import manager
+        apps_raw = app_registry.get_all()
+        statuses = manager.status_all()
+        apps = []
+        for a in apps_raw:
+            s = statuses.get(a["id"], {})
+            apps.append({
+                "id": a["id"],
+                "name": a["name"],
+                "port": a.get("expected_port"),
+                "running": s.get("running", False),
+                "url": s.get("url"),
+                "agent": a.get("agent"),
+            })
+        running_count = sum(1 for a in apps if a["running"])
+        return {"hub_up": True, "native": True, "apps": apps, "running_count": running_count}
     except Exception as exc:  # noqa: BLE001
-        log.warning("Hub unreachable: %s", exc)
-        return {"hub_up": False, "error": str(exc), "apps": []}
-
-    # Handle {apps:[...]}, {cards:[...]}, and bare list
+        log.warning("Native registry failed, falling back to Hub: %s", exc)
+    # Hub fallback
+    try:
+        raw = _get_json("/api/cards")
+    except Exception as exc2:  # noqa: BLE001
+        log.warning("Hub also unreachable: %s", exc2)
+        return {"hub_up": False, "native": False, "error": str(exc2), "apps": []}
     if isinstance(raw, list):
         items = raw
     else:
         items = raw.get("apps") or raw.get("cards") or []
-
     apps = [_normalise_app(c) for c in items if isinstance(c, dict)]
     running_count = sum(1 for a in apps if a["running"])
-    return {"hub_up": True, "apps": apps, "running_count": running_count}
+    return {"hub_up": True, "native": False, "apps": apps, "running_count": running_count}
 
 
 def start_hub_app(app_id: str) -> dict:
@@ -133,24 +183,26 @@ def hub_app_action(app_id: str, action: str) -> dict:
 def hub_status() -> dict:
     """Panel-friendly wrapper: list apps + response time, degrade gracefully.
 
+    Phase 9c: sources from native registry/process_manager first.
     Used by gui/sidecar/panels.hub_status() so the panel routes through hub_mcp
     instead of making direct REST calls (Phase 6 acceptance criterion).
     """
     try:
         t0 = time.time()
-        raw = _get_json("/api/cards")
+        result = list_hub_apps()
         elapsed_ms = round((time.time() - t0) * 1000)
+        if not result.get("hub_up"):
+            return {"available": False, "error": result.get("error", "unknown")}
+        apps = result.get("apps", [])
+        apps_sorted = sorted(apps, key=lambda a: (not a["running"], a["name"] or ""))
+        return {
+            "available": True,
+            "native": result.get("native", False),
+            "response_ms": elapsed_ms,
+            "apps": apps_sorted,
+        }
     except Exception as exc:  # noqa: BLE001
         return {"available": False, "error": str(exc)}
-
-    if isinstance(raw, list):
-        items = raw
-    else:
-        items = raw.get("apps") or raw.get("cards") or []
-
-    apps = [_normalise_app(c) for c in items if isinstance(c, dict)]
-    apps_sorted = sorted(apps, key=lambda a: (not a["running"], a["name"] or ""))
-    return {"available": True, "response_ms": elapsed_ms, "apps": apps_sorted}
 
 
 # ============================================================ FR-18: agent-block manifests
@@ -183,35 +235,30 @@ def get_app_manifest(app_id: str) -> dict | None:
 
 
 def _fetch_all_manifests() -> dict[str, dict | None]:
-    """{app_id: agent_block_or_None} for every Hub-registered app."""
+    """{app_id: agent_block_or_None} -- Phase 9c: read from native registry."""
+    try:
+        from core import app_registry
+        return app_registry.get_manifests()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Native manifest scan failed, falling back to Hub: %s", exc)
     result: dict[str, dict | None] = {}
     try:
         apps_data = list_hub_apps()
     except Exception:  # noqa: BLE001
         return result
-
     for app in apps_data.get("apps", []):
         app_id = app.get("id")
         if not app_id:
             continue
-        # Agent block may already be embedded in the card listing
-        if app.get("agent"):
-            result[app_id] = app["agent"]
-        else:
-            result[app_id] = get_app_manifest(app_id)
+        result[app_id] = app.get("agent") or get_app_manifest(app_id)
     return result
 
 
 def build_agent_tool_registry() -> dict[str, dict]:
-    """FR-18: scan all Hub app 'agent' blocks; return a callable tool registry.
+    """FR-18: scan all app agent blocks; return a callable tool registry.
 
-    An app.json with:
-        "agent": {
-            "api_base": "http://localhost:5100/api",
-            "tools": [{"name": "get_draws", "method": "GET", "path": "/draws"}]
-        }
-    produces a tool named ``keno__get_draws`` in the registry dict.
-    New Codehome apps appear automatically without manual registration.
+    Phase 9c: reads from native app_registry (no Hub round-trip).
+    Contract unchanged -- callers see the same {tool_name: tool_def} dict.
     """
     registry: dict[str, dict] = {}
     for app_id, manifest in _fetch_all_manifests().items():
@@ -254,44 +301,17 @@ def call_agent_tool(tool_name: str, registry: dict, **kwargs: Any) -> dict:
 
 
 def hub_manifests() -> dict:
-    """Return agent manifests for all Hub apps (used by /api/panels/hub/manifests).
+    """Return agent manifests for all apps (used by /api/panels/hub/manifests).
 
-    Scans ~/Codehome/**/app.json directly for 'agent' blocks — this is fast
-    (just glob + JSON reads) and doesn't require the Hub API to return agent
-    data. Falls back to card-listing data for apps with no app.json found.
+    Phase 9c: delegates to native app_registry -- no Hub round-trip.
     """
-    # First: scan the filesystem for agent blocks in all app.json files.
-    # This is the primary source since the Hub API doesn't expose agent blocks.
-    codehome = Path.home() / "Codehome"
-    fs_manifests: dict[str, dict] = {}
-    if codehome.exists():
-        for app_json in codehome.rglob("app.json"):
-            try:
-                data = json.loads(app_json.read_text())
-                agent_block = data.get("agent")
-                if agent_block:
-                    app_id = data.get("id") or app_json.parent.name
-                    fs_manifests[app_id] = agent_block
-            except Exception:  # noqa: BLE001
-                continue
-
-    # Second: get the app list to know all registered app IDs.
     try:
-        result = list_hub_apps()
-        manifests: dict[str, dict | None] = {
-            app["id"]: fs_manifests.get(app["id"]) or app.get("agent")
-            for app in result.get("apps", [])
-            if app.get("id")
-        }
-    except Exception:  # noqa: BLE001
-        # Hub unreachable — return whatever filesystem scan found
-        manifests = fs_manifests  # type: ignore[assignment]
-
-    # Merge in any filesystem manifests not in the Hub card list
-    for app_id, block in fs_manifests.items():
-        manifests.setdefault(app_id, block)
-
-    return {"available": True, "manifests": manifests}
+        from core import app_registry
+        manifests = app_registry.get_manifests()
+        return {"available": True, "native": True, "manifests": manifests}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Native manifest scan failed: %s", exc)
+        return {"available": False, "error": str(exc), "manifests": {}}
 
 
 # ============================================================ App Details & Status
@@ -465,25 +485,36 @@ def stop_all_apps() -> dict:
 
 # ============================================================ FR-19: scripts discovery
 def list_hub_scripts() -> dict:
-    """FR-19: return all Hub-registered scripts from GET /api/scripts."""
+    """FR-19: return all Codehome scripts.
+
+    Phase 9c: reads from native app_registry (no Hub round-trip).
+    """
+    try:
+        from core import app_registry
+        scripts = app_registry.get_scripts()
+        return {"available": True, "native": True, "scripts": scripts}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Native script scan failed, falling back to Hub: %s", exc)
     try:
         raw = _get_json("/api/scripts")
-    except Exception as exc:  # noqa: BLE001
-        log.warning("Hub /api/scripts unavailable: %s", exc)
-        return {"available": False, "error": str(exc), "scripts": []}
-
-    scripts = raw if isinstance(raw, list) else raw.get("scripts", [])
+    except Exception as exc2:  # noqa: BLE001
+        log.warning("Hub /api/scripts unavailable: %s", exc2)
+        return {"available": False, "error": str(exc2), "scripts": []}
+    scripts_raw = raw if isinstance(raw, list) else raw.get("scripts", [])
     normalised = [
         {
             "id": s.get("id") or s.get("name", ""),
             "name": s.get("name", ""),
+            "app_id": s.get("app_id", ""),
+            "app_name": s.get("app_name", ""),
+            "app_path": s.get("app_path", ""),
             "description": s.get("description", ""),
             "command": s.get("command", ""),
         }
-        for s in scripts
+        for s in scripts_raw
         if isinstance(s, dict)
     ]
-    return {"available": True, "scripts": normalised}
+    return {"available": True, "native": False, "scripts": normalised}
 
 
 def run_hub_script(script_id: str, args: dict | None = None) -> dict:
@@ -502,7 +533,7 @@ def build_script_tool_registry() -> dict[str, dict]:
         return {}
     registry: dict[str, dict] = {}
     for script in result.get("scripts", []):
-        script_id = script["id"]
+        script_id = script.get("id") or script.get("name") or ""
         if not script_id:
             continue
         registry[f"hub_script__{script_id}"] = {
@@ -576,6 +607,7 @@ def _serve_mcp() -> None:  # pragma: no cover
 
     @server.list_tools()
     async def _list_tools():  # noqa: ANN202
+        """Return the list of MCP tool definitions for all Hub operations."""
         return [
             # ── App Control
             Tool(
@@ -806,6 +838,7 @@ def _serve_mcp() -> None:  # pragma: no cover
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict):  # noqa: ANN202
+        """Dispatch an MCP tool call to the corresponding Hub function."""
         try:
             # ── App Control
             if name == "list_hub_apps":
@@ -880,6 +913,7 @@ def _serve_mcp() -> None:  # pragma: no cover
     import asyncio
 
     async def _main() -> None:
+        """Run the MCP stdio server until the client disconnects."""
         async with stdio_server(server):
             # stdio_server manages I/O; just keep running until stdin closes
             try:

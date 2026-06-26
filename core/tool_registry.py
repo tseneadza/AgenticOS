@@ -37,6 +37,7 @@ class ToolRegistry:
     REFRESH_TTL: int = 60
 
     def __init__(self) -> None:
+        """Initialize the registry with static tools and an empty dynamic cache."""
         self._registry: dict[str, dict] = {}
         self._last_refresh: float = 0.0
         self._static_tools: dict[str, dict] = self._load_static()
@@ -168,13 +169,16 @@ class ToolRegistry:
 
     # ----------------------------------------------------------------- dunder helpers
     def __len__(self) -> int:
+        """Return the number of tools currently in the registry."""
         return len(self._registry)
 
     def __contains__(self, item: str) -> bool:
+        """Check if a tool name is registered (triggers refresh if stale)."""
         self.refresh()
         return item in self._registry
 
     def __repr__(self) -> str:
+        """Return a debug-friendly string representation of the registry."""
         return (
             f"<ToolRegistry tools={len(self._registry)} "
             f"last_refresh={self._last_refresh:.0f}>"

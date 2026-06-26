@@ -1,7 +1,14 @@
 # Agentic OS — global settings
 settings:
   vault_path: "/Users/tonyseneadza/Brain2"
-  hub_url: "http://localhost:8085"
+  # hub_url: "http://localhost:8085"  # Phase 9d: RETIRED — Hub decommissioned 2026-06-26
+  #   All app management now handled natively by core/app_registry.py +
+  #   core/process_manager.py. hub_mcp.py still exists as an MCP surface
+  #   but its internals call native code, not Hub HTTP.
+
+  # Phase 9d: disable Hub auto-start on sidecar boot. The sidecar no longer
+  # needs Hub running; this flag prevents _ensure_hub_running from spawning it.
+  hub_autostart: false
   data_dir: "data"
 
   # Filesystem tool backend (TR-03): "mcp" = real MCP stdio client to

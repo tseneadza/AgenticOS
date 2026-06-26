@@ -32,6 +32,7 @@ SHELL_LOG = Path.home() / ".agentic-os" / "shell.log"  # Phase 3 source
 
 # ----------------------------------------------------------------- FR-28
 def system_health() -> dict:
+    """Collect system health metrics: CPU, RAM, disk, network, load, and top processes."""
     vm = psutil.virtual_memory()
     disks = []
     seen = set()
@@ -55,6 +56,7 @@ def system_health() -> dict:
     load1, load5, load15 = os.getloadavg()
 
     def top(attr: str) -> list[dict]:
+        """Return the top 10 processes sorted by the given attribute descending."""
         procs = []
         for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
             try:
@@ -87,16 +89,19 @@ def system_health() -> dict:
 
 # ----------------------------------------------------------------- FR-29
 def agent_activity() -> dict:
+    """Return agent activity panel data: costs, run counts, success rate, and recent runs."""
     # Run telemetry now comes from MySQL via memory.activity_stats()
     # (Category A of docs/mysql-migration-plan.md). MySQL aggregates can come
     # back as Decimal, so coerce to plain int/float for clean JSON.
     row = memory.activity_stats()
 
     def _f(key: str) -> float:
+        """Coerce a row value to float, defaulting to 0.0 if None."""
         v = row.get(key)
         return float(v) if v is not None else 0.0
 
     def _i(key: str) -> int:
+        """Coerce a row value to int, defaulting to 0 if None."""
         v = row.get(key)
         return int(v) if v is not None else 0
 
@@ -115,6 +120,7 @@ def agent_activity() -> dict:
 
 # ----------------------------------------------------------------- FR-30
 def keno_telemetry() -> dict:
+    """Return Keno data pipeline telemetry from MySQL, degrading gracefully on failure."""
     try:
         import mysql.connector
 

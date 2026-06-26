@@ -135,18 +135,18 @@ endpoints; events already carry `run_id` + `workflow`).
 | Placeholders (Web News, Scripts, Zsh Config Editor, Obsidian Viewer) → "Coming Soon" | FR-50 | ✅ shared `ComingSoon` stub |
 | Native menu / shortcuts synced to registry | FR-51 | ✅ ⌘1–6 + generic `view-*` handler in `lib.rs` |
 
-## Phase 9 — Hub Absorption & Decommission (NF-4) 🔲 PLANNED (spec provisional)
+## Phase 9 — Hub Absorption & Decommission (NF-4) 🟡 IN PROGRESS
 
-AgenticOS natively owns Codehome app management; external Hub on `:8085`
-retired. **Needs a detailed drill-down before build.**
+| Acceptance criterion | FR | Status |
+|----------------------|----|--------|
+| Native app registry from `~/Codehome/**/app.json` | FR-60 | ✅ `core/app_registry.py` + `GET /api/apps` |
+| Native start/stop/restart/status (no external Hub) | FR-61 | ✅ `core/process_manager.py` + lifecycle routes |
+| Agent blocks + scripts register natively (tool-registry contract unchanged) | FR-62 | ✅ `hub_mcp.py` internals swapped to native registry |
+| Scripts dashboard live | FR-63 | ✅ `ScriptsExplorer.jsx` repointed to sidecar |
+| Hub `:8085` decommissioned | FR-64 | 🔲 Phase 9d |
 
-| Acceptance criterion | FR |
-|----------------------|----|
-| Native app registry from `~/Codehome/**/app.json` | FR-60 |
-| Native start/stop/restart/status (no external Hub) | FR-61 |
-| Agent blocks + scripts register natively (tool-registry contract unchanged) | FR-62 |
-| Scripts dashboard live | FR-63 |
-| Hub `:8085` decommissioned | FR-64 |
+**Parallel-run note:** Hub and native registry coexist. `GET /api/apps` (native)
+and `GET /api/cards` (Hub) both served simultaneously. Cutover at 9d.
 
 ## Phase 10 — Governing Agent (NF-3) 🟡 IN PROGRESS (10a/10b/10c)
 

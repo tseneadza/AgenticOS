@@ -38,6 +38,11 @@ API_HOST = "https://api.anthropic.com/v1/models"
 
 
 def hr(title: str) -> None:
+    """Print a section header with horizontal rules.
+
+    Args:
+        title: Section title to display.
+    """
     print("\n" + "=" * 72)
     print(title)
     print("=" * 72)
@@ -60,6 +65,7 @@ def show_cause(exc: BaseException) -> None:
 
 
 def main() -> None:
+    """Run the full cloud connectivity diagnostic, layer by layer."""
     hr("0. Interpreter / platform")
     print(f"  python : {sys.version.split()[0]}  ({sys.executable})")
     print(f"  macOS  : {platform.platform()}")

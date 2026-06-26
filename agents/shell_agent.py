@@ -27,6 +27,7 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
 
 def _load_settings() -> dict:
+    """Load and return the ``settings`` section from ``config/settings.yaml``."""
     return yaml.safe_load((CONFIG_DIR / "settings.yaml").read_text())["settings"]
 
 
@@ -72,12 +73,21 @@ def _build_project_map(vault_path: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 class ShellAgent:
+    """iTerm2/ZSH event handler that surfaces Brain2 project context.
+
+    Receives parsed shell events (preexec, precmd, chpwd) from the socket
+    server and logs or acts on them. On directory changes, matches the new
+    path against known Brain2 projects and emits context events.
+    """
+
     def __init__(self) -> None:
+        """Initialize the shell agent with settings and a lazy project map."""
         self._settings = _load_settings()
         self._vault = self._settings.get("vault_path", "")
         self._project_map: dict[str, str] | None = None  # lazy build
 
     def _get_project_map(self) -> dict[str, str]:
+        """Return the project-directory-to-name map, building it lazily on first call."""
         if self._project_map is None:
             self._project_map = _build_project_map(self._vault)
         return self._project_map

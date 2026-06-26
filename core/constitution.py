@@ -24,6 +24,12 @@ class ApprovalRequired(Exception):
     """Raised when an action type needs human approval before executing."""
 
     def __init__(self, action: str, description: str):
+        """Initialize with the action name and a human-readable description.
+
+        Args:
+            action: The action type requiring approval (e.g. "file_delete").
+            description: Explanation of why approval is needed.
+        """
         self.action = action
         self.description = description
         super().__init__(f"Approval required for '{action}': {description}")
@@ -31,6 +37,15 @@ class ApprovalRequired(Exception):
 
 @dataclass
 class Constitution:
+    """Runtime enforcement of agent safety constraints and resource budgets.
+
+    Attributes:
+        approval_required: Map of action types to descriptions requiring human sign-off.
+        limits: Resource limits (max tokens, cost cap, file-write cap).
+        blocked: List of payload patterns that are unconditionally forbidden.
+        write_allowlist: List of directory roots the agent is allowed to write into.
+    """
+
     approval_required: dict[str, str] = field(default_factory=dict)
     limits: dict = field(default_factory=dict)
     blocked: list[str] = field(default_factory=list)
@@ -38,6 +53,15 @@ class Constitution:
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Constitution":
+        """Load a Constitution from a YAML file.
+
+        Args:
+            path: Path to the constitution YAML. Defaults to
+                config/constitution.yaml.
+
+        Returns:
+            A populated Constitution instance.
+        """
         path = path or CONFIG_DIR / "constitution.yaml"
         raw = yaml.safe_load(path.read_text())["constitution"]
         return cls(
@@ -70,7 +94,14 @@ class Constitution:
             raise ApprovalRequired(action_type, self.approval_required[action_type])
 
     def guard_write_path(self, target: str | os.PathLike) -> None:
-        """Ensure the agent only writes inside allowlisted roots."""
+        """Ensure the target path is inside an allowlisted root directory.
+
+        Args:
+            target: Filesystem path the agent intends to write to.
+
+        Raises:
+            ConstitutionViolation: If the path is outside all allowlisted roots.
+        """
         resolved = Path(target).resolve()
         for root in self.write_allowlist:
             try:
@@ -83,6 +114,11 @@ class Constitution:
         )
 
     def check_token_budget(self, tokens_used: int) -> None:
+        """Raise ConstitutionViolation if tokens_used exceeds the per-workflow cap.
+
+        Args:
+            tokens_used: Total tokens consumed so far in the workflow.
+        """
         budget = self.limits.get("max_tokens_per_workflow")
         if budget and tokens_used > budget:
             raise ConstitutionViolation(
@@ -90,6 +126,11 @@ class Constitution:
             )
 
     def check_cost_budget(self, cost_today_usd: float) -> None:
+        """Raise ConstitutionViolation if daily cost exceeds the configured cap.
+
+        Args:
+            cost_today_usd: Cumulative USD cost for the current day.
+        """
         cap = self.limits.get("max_cost_per_day_usd")
         if cap and cost_today_usd > cap:
             raise ConstitutionViolation(
@@ -97,6 +138,11 @@ class Constitution:
             )
 
     def check_files_written(self, count: int) -> None:
+        """Raise ConstitutionViolation if file-write count exceeds the per-run cap.
+
+        Args:
+            count: Number of files written so far in the current run.
+        """
         cap = self.limits.get("max_files_written_per_run")
         if cap and count > cap:
             raise ConstitutionViolation(

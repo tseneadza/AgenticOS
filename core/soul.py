@@ -28,7 +28,7 @@ _lock = threading.Lock()
 
 
 def _resolve(names: tuple[str, ...]) -> Path:
-    """First existing candidate, else the preferred (.md) path even if absent."""
+    """Return the first existing file from candidates, or the preferred (.md) path."""
     for name in names:
         p = _CONFIG / name
         if p.exists():
@@ -37,14 +37,17 @@ def _resolve(names: tuple[str, ...]) -> Path:
 
 
 def soul_path() -> Path:
+    """Return the resolved path to the Soul identity file."""
     return _resolve(_SOUL_NAMES)
 
 
 def memory_path() -> Path:
+    """Return the resolved path to the Memory file."""
     return _resolve(_MEMORY_NAMES)
 
 
 def _read(path: Path) -> str:
+    """Read and strip a file's text content, returning empty string on error."""
     try:
         return path.read_text(encoding="utf-8").strip()
     except Exception:
@@ -52,10 +55,12 @@ def _read(path: Path) -> str:
 
 
 def load_soul() -> str:
+    """Load and return the Soul identity text from config/Soul.md."""
     return _read(soul_path())
 
 
 def load_memory() -> str:
+    """Load and return the Memory text from config/Memory.md."""
     return _read(memory_path())
 
 

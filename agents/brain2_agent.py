@@ -19,6 +19,14 @@ VAULT = Path(CONFIG["vault_path"])
 
 
 def _frontmatter(text: str) -> dict:
+    """Extract YAML frontmatter from a Markdown document.
+
+    Args:
+        text: Full text of the Markdown file.
+
+    Returns:
+        Parsed frontmatter as a dict, or empty dict if absent or invalid.
+    """
     match = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
     if not match:
         return {}
@@ -222,6 +230,15 @@ _RAW_KEYWORDS: dict[str, list[str]] = {
 
 
 def _classify_note(content: str, filename: str) -> str:
+    """Classify a raw note into a vault destination folder by keyword matching.
+
+    Args:
+        content: The note's text content.
+        filename: The note's filename (used as additional signal).
+
+    Returns:
+        Vault folder name (e.g. ``"01 - Projects"``, ``"Tasks"``).
+    """
     text = (filename + " " + content).lower()
     scores: dict[str, int] = {t: 0 for t in _RAW_NOTE_TYPES}
     for note_type, keywords in _RAW_KEYWORDS.items():
@@ -233,6 +250,17 @@ def _classify_note(content: str, filename: str) -> str:
 
 
 def scan_raw_notes(state: dict) -> dict:
+    """Scan the raw-notes inbox and return the list of unprocessed notes.
+
+    Args:
+        state: Pipeline state dict (unused beyond convention).
+
+    Returns:
+        Dict with ``raw_notes`` (list of filenames) and ``raw_count``.
+
+    Raises:
+        SkippedRun: If the raw-notes folder doesn't exist or is empty.
+    """
     raw_dir = VAULT / "00 - Raw"
     if not raw_dir.exists():
         raise SkippedRun("Raw notes folder does not exist")
@@ -243,6 +271,18 @@ def scan_raw_notes(state: dict) -> dict:
 
 
 def process_each_raw_note(state: dict) -> dict:
+    """Classify, file, and archive each raw note from the inbox.
+
+    Reads notes listed by ``scan_raw_notes``, classifies each by keyword,
+    prepends frontmatter if missing, writes to the destination folder, and
+    creates an archive stub in ``06 - Archive/processed-raw/``.
+
+    Args:
+        state: Pipeline state dict with ``scan_raw`` outputs.
+
+    Returns:
+        Dict with ``processed`` count and ``results`` list of per-note outcomes.
+    """
     raw_dir = VAULT / "00 - Raw"
     archive_dir = VAULT / "06 - Archive" / "processed-raw"
     notes = state.get("outputs", {}).get("scan_raw", {}).get("raw_notes", [])
@@ -278,6 +318,19 @@ def process_each_raw_note(state: dict) -> dict:
 # ---------------------------------------------------------------- FR-14: research-learning-notes
 
 def scan_learning_notes(state: dict) -> dict:
+    """Find learning notes with ``status: processing`` in their frontmatter.
+
+    Args:
+        state: Pipeline state dict (unused beyond convention).
+
+    Returns:
+        Dict with ``learning_notes`` (list of filename/title dicts) and
+        ``learning_count``.
+
+    Raises:
+        SkippedRun: If the learning folder doesn't exist or has no notes
+            with ``status: processing``.
+    """
     learning_dir = VAULT / "02 - Learning"
     if not learning_dir.exists():
         raise SkippedRun("Learning folder does not exist")
@@ -337,6 +390,16 @@ def research_each_learning_note(state: dict) -> dict:
 # ---------------------------------------------------------------- FR-15: save-session
 
 def collect_session_summary(state: dict) -> dict:
+    """Gather data for the end-of-session report.
+
+    Pulls recent workflow runs from memory and active projects from the vault.
+
+    Args:
+        state: Pipeline state dict (unused beyond convention).
+
+    Returns:
+        Dict with ``recent_runs``, ``active_projects``, and ``session_date``.
+    """
     from core import memory as _mem
     runs = _mem.recent_runs(limit=10)
     projects = []
@@ -359,6 +422,14 @@ def collect_session_summary(state: dict) -> dict:
 
 
 def write_session_report(state: dict) -> dict:
+    """Generate and write the session report to ``04 - Reflections/``.
+
+    Args:
+        state: Pipeline state dict with ``collect_session`` outputs.
+
+    Returns:
+        Dict with ``written_to`` (file path) and ``total_cost_usd``.
+    """
     data = state.get("outputs", {}).get("collect_session", {})
     today = dt.date.today().isoformat()
     runs = data.get("recent_runs", [])

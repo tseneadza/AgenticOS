@@ -25,6 +25,7 @@ router = APIRouter()
 
 
 def _require_db() -> None:
+    """Raise HTTP 503 if the MySQL task database is unavailable."""
     if not tasks_db.is_available():
         raise HTTPException(503, "MySQL unavailable — check ~/.agentic-os/.env")
 
@@ -32,6 +33,8 @@ def _require_db() -> None:
 # ── request models ────────────────────────────────────────────────────────────
 
 class TaskCreate(BaseModel):
+    """Request body for creating a new task."""
+
     title: str
     description: str | None = None
     type: str = "manual"           # manual | agent | project
@@ -45,6 +48,8 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
+    """Request body for updating task fields (all optional)."""
+
     title: str | None = None
     description: str | None = None
     type: str | None = None
@@ -59,6 +64,8 @@ class TaskUpdate(BaseModel):
 
 
 class StatusTransition(BaseModel):
+    """Request body for a quick task status transition."""
+
     status: str   # pending | in_progress | completed | cancelled | failed
 
 

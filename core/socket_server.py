@@ -42,13 +42,21 @@ Handler = Callable[[dict], Awaitable[None]]
 
 
 class SocketServer:
+    """Async Unix socket server that receives and dispatches ZSH shell events."""
+
     def __init__(self, socket_path: Path = SOCKET_PATH):
+        """Initialize the socket server.
+
+        Args:
+            socket_path: Filesystem path for the Unix domain socket.
+        """
         self.socket_path = socket_path
         self._handlers: list[Handler] = []
         self._server: asyncio.Server | None = None
         self._active_writers: list[asyncio.StreamWriter] = []
 
     def add_handler(self, handler: Handler) -> None:
+        """Register an async handler to be called for each incoming event."""
         self._handlers.append(handler)
 
     # ------------------------------------------------------------------
@@ -100,6 +108,7 @@ class SocketServer:
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
+        """Handle a single client connection, reading newline-delimited JSON events."""
         peer = writer.get_extra_info("peername") or "zsh"
         logger.debug("Shell plugin connected: %s", peer)
         self._active_writers.append(writer)
@@ -163,6 +172,7 @@ _server: SocketServer | None = None
 
 
 def get_server() -> SocketServer:
+    """Return the module-level SocketServer singleton, creating it on first call."""
     global _server
     if _server is None:
         _server = SocketServer()

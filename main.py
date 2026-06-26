@@ -13,6 +13,7 @@ import sys
 
 
 def cmd_list() -> int:
+    """List all available workflows with their descriptions and schedules."""
     from core.orchestrator import load_workflows
 
     print("Available workflows:\n")
@@ -25,6 +26,7 @@ def cmd_list() -> int:
 
 
 def cmd_history() -> int:
+    """Display recent workflow run history with timing, token, and cost details."""
     from core import memory
 
     runs = memory.recent_runs(15)
@@ -47,6 +49,14 @@ def cmd_history() -> int:
 
 
 def cmd_run(workflow: str) -> int:
+    """Execute a named workflow end-to-end and print results.
+
+    Args:
+        workflow: Name of the workflow to run.
+
+    Returns:
+        Exit code: 0 on success, 2 for constitution violations, 3 for permission errors.
+    """
     from core.constitution import ConstitutionViolation
     from core.orchestrator import run_workflow
     from tools.filesystem_tool import reset_write_counter
@@ -79,6 +89,7 @@ def cmd_run(workflow: str) -> int:
 
 
 def main() -> int:
+    """Parse CLI arguments and dispatch to the appropriate subcommand."""
     parser = argparse.ArgumentParser(prog="agentic-os", description="Personal Agentic OS")
     sub = parser.add_subparsers(dest="command", required=True)
     run_p = sub.add_parser("run", help="Run a workflow")

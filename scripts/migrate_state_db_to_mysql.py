@@ -53,6 +53,7 @@ BRIEFED_DOCS_COLS = ("doc_hash", "title", "path", "first_briefed_at")
 
 
 def _find_source() -> Path | None:
+    """Return the first existing SQLite source file, or None if none found."""
     for p in SOURCE_CANDIDATES:
         if p.exists():
             return p
@@ -60,6 +61,15 @@ def _find_source() -> Path | None:
 
 
 def _sqlite_has_table(con: sqlite3.Connection, name: str) -> bool:
+    """Check whether a table exists in the SQLite database.
+
+    Args:
+        con: Open SQLite connection.
+        name: Table name to look for.
+
+    Returns:
+        True if the table exists, False otherwise.
+    """
     row = con.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
     ).fetchone()
@@ -67,6 +77,15 @@ def _sqlite_has_table(con: sqlite3.Connection, name: str) -> bool:
 
 
 def _sqlite_columns(con: sqlite3.Connection, table: str) -> set[str]:
+    """Return the set of column names for a SQLite table.
+
+    Args:
+        con: Open SQLite connection.
+        table: Table name to inspect.
+
+    Returns:
+        Set of column name strings.
+    """
     return {r[1] for r in con.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
@@ -92,6 +111,17 @@ def _archive(src: Path) -> None:
 
 
 def migrate(dry_run: bool = False, archive: bool = False) -> int:
+    """Copy run_history and briefed_docs rows from SQLite into MySQL.
+
+    Uses INSERT IGNORE so re-running is safe and idempotent.
+
+    Args:
+        dry_run: If True, report counts without writing any rows.
+        archive: If True, rename a live state.db to .bak after copying.
+
+    Returns:
+        Exit code (0 for success).
+    """
     src = _find_source()
     if src is None:
         print(
@@ -166,6 +196,7 @@ def migrate(dry_run: bool = False, archive: bool = False) -> int:
 
 
 def main() -> int:
+    """Parse CLI arguments and run the migration."""
     ap = argparse.ArgumentParser(
         description="Copy leftover SQLite state into MySQL (non-destructive)."
     )

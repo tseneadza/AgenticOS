@@ -34,12 +34,25 @@ PROMPTS = ["list my workflows", "what is the system status?"]
 
 
 def hr(title: str) -> None:
+    """Print a section header with horizontal rules.
+
+    Args:
+        title: Section title to display.
+    """
     print("\n" + "=" * 72)
     print(title)
     print("=" * 72)
 
 
 def pkg_version(name: str) -> str:
+    """Return the installed version of a Python package, or an error string.
+
+    Args:
+        name: Package name to look up.
+
+    Returns:
+        Version string, or a diagnostic message if lookup fails.
+    """
     try:
         from importlib.metadata import version
 
@@ -76,6 +89,7 @@ def ollama_show(model_id: str) -> None:
 
 
 def main() -> None:
+    """Run the full tool-binding diagnostic for the active or specified model."""
     from core import llm
 
     model_id = sys.argv[1] if len(sys.argv) > 1 else llm.active_model()

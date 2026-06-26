@@ -1,3 +1,63 @@
+## 2026-06-26 — Phase 9c: Native Tool Registry + Scripts Dashboard (FR-62/63)
+
+- **`tools/hub_mcp.py`** (internals swapped): `list_hub_apps`, `hub_status`,
+  `_fetch_all_manifests`, `build_agent_tool_registry`, `hub_manifests`,
+  `list_hub_scripts` now read from `core/app_registry` +
+  `core/process_manager` — no Hub HTTP round-trips. All function signatures
+  and the `ACTIONS` dict surface unchanged. Hub HTTP kept as graceful
+  fallback if native scan fails. `native: true` flag added to responses
+  for observability during parallel-run.
+- **`gui/sidecar/routes/api_apps.py`** (extended): added
+  `GET /api/apps/scripts/info` (raw script content for header parsing) and
+  `POST /api/apps/scripts/run` (sync exec, 30s timeout, venv-aware Python).
+  Constitution gate on `POST /api/apps/stop-all`: returns 403 with
+  `approval_required` detail; `POST /api/apps/stop-all-confirmed` for
+  pre-approved bypass.
+- **`ScriptsExplorer.jsx`** (repointed): `HUB` → `SIDECAR` at `localhost:5130`;
+  scripts load from `/api/apps/scripts`, info from `/api/apps/scripts/info`,
+  run from `/api/apps/scripts/run`. Health dot now probes sidecar not Hub.
+- **Smoke test (2026-06-26)**: `list_hub_apps` native=True, 27 apps, 2ms;
+  `build_agent_tool_registry` returns `keno__get_draws` natively;
+  `list_hub_scripts` 13 scripts native; script info 190 lines + 5 examples;
+  script run executed; constitution stop-all gate fires correctly.
+
+## 2026-06-26 — Phase 9b: Native Process Manager (FR-61)
+
+- **`core/process_manager.py`** (new): async process lifecycle manager.
+  `asyncio.create_subprocess_exec` with `start_new_session=True`; inherits
+  env + injects `PORT`; venv python rewriting mirrors Hub's
+  `shouldRewriteWithVenvPython` (python/python3/`.py` → venv python3, shell
+  scripts left untouched). Per-app logfile at
+  `~/.agentic-os/logs/<app_id>.log`. SIGTERM → 5-second grace → SIGKILL
+  (mirrors Hub). Port-probe fallback for Hub-managed apps (`managed: false`).
+- **`gui/sidecar/routes/api_apps.py`** (updated): added lifecycle routes
+  `POST /api/apps/{id}/start|stop|restart`, `GET /api/apps/{id}/status`,
+  `GET /api/apps/{id}/logs`, `POST /api/apps/stop-all`. `GET /api/apps` now
+  enriches each entry with live status and returns real `running_count`.
+- **Smoke test (2026-06-26)**: Keno started (pid, port 5100, log streaming),
+  Flask serving, stop confirmed, restart confirmed; Hub detected as running
+  via port-probe (`managed=false`); `running_count` accurate throughout.
+
+## 2026-06-26 — Phase 9a: Native App Registry (FR-60)
+
+- **`core/app_registry.py`** (new): scans `~/Codehome/**/app.json` without
+  requiring the external Hub on `:8085`. Normalises all apps into a stable
+  `AppEntry` schema (id, name, start_command, expected_port, venv, agent,
+  scripts, tags). 60-second TTL cache; `invalidate_cache()` for on-demand
+  refresh. Hidden dirs, `venv/`, `node_modules/` auto-skipped. Duplicate id
+  detection with warning log.
+- **`gui/sidecar/routes/api_apps.py`** (new): four REST endpoints over the
+  native registry — `GET /api/apps` (list), `GET /api/apps/{id}` (detail),
+  `GET /api/apps/manifests` (agent blocks), `GET /api/apps/scripts` (flat
+  script list), `POST /api/apps/refresh` (force rescan).
+- **`gui/sidecar/app.py`**: wired `api_apps.router` — additive, no Hub routes
+  removed (parallel-run period).
+- **`config/settings.yaml`**: added `app_registry.scan_roots` key; annotated
+  `hub_url` as Phase-9d-retired.
+- **Smoke test (2026-06-26)**: `GET /api/apps` → 27 apps; Keno agent block
+  in `/api/apps/manifests`; 13 scripts across all apps; `/api/apps/keno`
+  returns venv path + start command correctly.
+
 ## 2026-06-24 — SQLite → MySQL migration: Phases 3–6 (checkpointer + cleanup)
 
 - **LangGraph checkpointer is now MySQL** via `langgraph-checkpoint-mysql`'s

@@ -31,10 +31,20 @@ AGENT_REGISTRY = {
 
 
 def _merge(left: dict, right: dict) -> dict:
+    """Merge two dicts, with right-side keys overriding left (annotation reducer)."""
     return {**left, **right}
 
 
 class WorkflowState(TypedDict, total=False):
+    """Typed state dict carried through a LangGraph workflow execution.
+
+    Attributes:
+        outputs: Accumulated step outputs keyed by step id.
+        tokens_used: Running total of tokens consumed across all steps.
+        cost_usd: Running total of USD cost across all steps.
+        model: Active model id for the current run.
+    """
+
     outputs: Annotated[dict, _merge]
     tokens_used: Annotated[int, lambda a, b: a + b]
     cost_usd: Annotated[float, lambda a, b: a + b]
@@ -42,10 +52,24 @@ class WorkflowState(TypedDict, total=False):
 
 
 def load_workflows() -> dict[str, dict]:
+    """Load and return the workflows dict from config/workflows.yaml."""
     return yaml.safe_load((CONFIG_DIR / "workflows.yaml").read_text())["workflows"]
 
 
 def _make_node(step: dict, constitution: Constitution):
+    """Create a LangGraph node function for a single workflow step.
+
+    Args:
+        step: Step definition dict with keys id, agent, action, and optional
+            requires_approval and model.
+        constitution: Constitution instance used to enforce budgets.
+
+    Returns:
+        A callable node(state) -> dict suitable for StateGraph.add_node().
+
+    Raises:
+        ValueError: If the step references an unknown agent or action.
+    """
     agent_name = step["agent"]
     action_name = step["action"]
     step_id = step["id"]
@@ -58,6 +82,7 @@ def _make_node(step: dict, constitution: Constitution):
         ) from exc
 
     def node(state: WorkflowState) -> dict[str, Any]:
+        """Execute the workflow step, with optional HITL approval gate."""
         if step.get("requires_approval"):
             decision = interrupt(
                 {
@@ -92,6 +117,18 @@ def _make_node(step: dict, constitution: Constitution):
 
 
 def build_graph(workflow_name: str, checkpointer: BaseCheckpointSaver):
+    """Build and compile a LangGraph StateGraph for the named workflow.
+
+    Args:
+        workflow_name: Key in workflows.yaml identifying the workflow.
+        checkpointer: LangGraph checkpoint saver for persisting state.
+
+    Returns:
+        A compiled LangGraph application ready for invoke().
+
+    Raises:
+        ValueError: If the workflow name is not found in workflows.yaml.
+    """
     workflows = load_workflows()
     if workflow_name not in workflows:
         raise ValueError(

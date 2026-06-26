@@ -38,6 +38,7 @@ _LOCAL_PROVIDERS: set[str] = set()
 
 
 def _settings() -> dict:
+    """Load and return the 'settings' section from settings.yaml."""
     return yaml.safe_load(_SETTINGS_PATH.read_text())["settings"]
 
 
@@ -46,6 +47,20 @@ def _settings() -> dict:
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class ModelInfo:
+    """Metadata for a registered LLM model.
+
+    Attributes:
+        id: Concrete model identifier (e.g. "claude-sonnet-4-6").
+        provider: Backend provider name (e.g. "anthropic", "ollama").
+        label: Human-readable display label.
+        context_window: Maximum context length in tokens (0 if unknown).
+        supports_tools: Whether the model supports tool/function calling.
+        cost_per_mtok: Per-million-token cost dict with "input" and "output" keys.
+        base_url: Optional provider endpoint override.
+        api_key_env: Optional env var name holding this model's API key.
+        extra: Passthrough kwargs forwarded to the LangChain constructor.
+    """
+
     id: str
     provider: str  # "anthropic" | "ollama" | "openai_compatible" | "google" | custom
     label: str
@@ -58,10 +73,12 @@ class ModelInfo:
 
     @property
     def is_local(self) -> bool:
+        """True if this model runs on a local provider (e.g. Ollama)."""
         return self.provider in _LOCAL_PROVIDERS
 
 
 def _agent_cfg() -> dict:
+    """Return the 'agent' sub-section of settings, defaulting to empty dict."""
     return _settings().get("agent", {}) or {}
 
 
@@ -86,6 +103,14 @@ def registry() -> list[ModelInfo]:
 
 
 def get_model_info(model_id: str) -> ModelInfo | None:
+    """Look up ModelInfo by id from the registry or discovered Ollama models.
+
+    Args:
+        model_id: Concrete model identifier to look up.
+
+    Returns:
+        The ModelInfo if found, or None.
+    """
     for info in registry():
         if info.id == model_id:
             return info
@@ -150,6 +175,7 @@ _DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 
 
 def anthropic_base_url() -> str:
+    """Return the Anthropic API base URL from settings, or the default."""
     return _agent_cfg().get("anthropic_base_url") or _DEFAULT_ANTHROPIC_BASE_URL
 
 
@@ -299,7 +325,7 @@ def ensure_ollama_running(wait: float = 8.0) -> dict:
 
 
 def _label_for(name: str, details: dict) -> str:
-    """Human label for a discovered (unconfigured) Ollama model."""
+    """Build a human-readable label for a discovered (unconfigured) Ollama model."""
     params = (details or {}).get("parameter_size")
     return f"{name} ({params}, local)" if params else f"{name} (local)"
 
@@ -351,7 +377,7 @@ def discover_ollama(force: bool = False) -> dict[str, ModelInfo]:
 
 
 def _ollama_installed_ids() -> set[str]:
-    """Ids of currently-pulled Ollama models (back-compat helper)."""
+    """Return the set of currently-pulled Ollama model ids (back-compat helper)."""
     return set(discover_ollama().keys())
 
 
@@ -429,6 +455,7 @@ def list_models(*, ensure_ollama: bool = True) -> dict:
 
     def _row(info: ModelInfo, *, installed: bool, available: bool,
              size: int, fits: bool, reason: str | None) -> dict:
+        """Build a model descriptor dict for the API response."""
         return {
             "id": info.id,
             "provider": info.provider,
@@ -524,6 +551,15 @@ def cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> float:
 # same /v1/chat/completions protocol; only base_url + api_key_env differ.
 @dataclass(frozen=True)
 class ProviderAdapter:
+    """Pluggable backend adapter for a specific LLM provider.
+
+    Attributes:
+        name: Provider identifier (e.g. "anthropic", "ollama").
+        local: Whether this provider runs models locally.
+        build: Callable (ModelInfo, **kwargs) -> LangChain chat model.
+        available: Callable (ModelInfo) -> bool indicating availability.
+    """
+
     name: str
     local: bool
     build: Any      # (ModelInfo, **kwargs) -> LangChain chat model
@@ -538,20 +574,32 @@ def register_provider(adapter: "ProviderAdapter") -> None:
 
 
 def get_provider(name: str) -> "ProviderAdapter | None":
+    """Return the ProviderAdapter for the given name, or None if unregistered."""
     return _PROVIDERS.get(name)
 
 
 def provider_names() -> list[str]:
+    """Return a sorted list of all registered provider names."""
     return sorted(_PROVIDERS)
 
 
 def _api_key(info: ModelInfo, default_env: str | None = None) -> str | None:
+    """Retrieve the API key for a model from its configured env var.
+
+    Args:
+        info: Model metadata containing an optional api_key_env field.
+        default_env: Fallback env var name if info.api_key_env is not set.
+
+    Returns:
+        The API key string, or None if no env var is set.
+    """
     env = info.api_key_env or default_env
     return os.environ.get(env) if env else None
 
 
 # --- anthropic (cloud) ----------------------------------------------------- #
 def _anthropic_build(info: ModelInfo, **kwargs: Any):
+    """Build a ChatAnthropic LangChain model with isolated env and pinned endpoint."""
     from langchain_anthropic import ChatAnthropic
     # Pin endpoint + key and strip ambient ANTHROPIC_* routing vars so the cloud
     # client always reaches the real API (Open issue #2).
@@ -565,17 +613,20 @@ def _anthropic_build(info: ModelInfo, **kwargs: Any):
 
 
 def _anthropic_available(info: ModelInfo) -> bool:
+    """True if an Anthropic API key is set for this model."""
     return bool(_api_key(info, "ANTHROPIC_API_KEY"))
 
 
 # --- ollama (local) -------------------------------------------------------- #
 def _ollama_build(info: ModelInfo, **kwargs: Any):
+    """Build a ChatOllama LangChain model targeting the local Ollama service."""
     from langchain_ollama import ChatOllama
     kwargs = {**info.extra, **kwargs}
     return ChatOllama(model=info.id, base_url=info.base_url or ollama_base_url(), **kwargs)
 
 
 def _ollama_available(info: ModelInfo) -> bool:
+    """True if the Ollama model is pulled and fits within available RAM."""
     if info.id not in _ollama_installed_ids():
         return False
     size = int(_discovered_meta.get(info.id, {}).get("size_bytes", 0))
@@ -586,6 +637,7 @@ def _ollama_available(info: ModelInfo) -> bool:
 # --- openai-compatible (OpenAI, Groq, Together, OpenRouter, DeepSeek, Mistral,
 #     xAI, Fireworks, Perplexity, vLLM, LM Studio, …) ---------------------- #
 def _openai_build(info: ModelInfo, **kwargs: Any):
+    """Build a ChatOpenAI LangChain model for OpenAI-compatible endpoints."""
     from langchain_openai import ChatOpenAI
     if info.base_url:
         kwargs.setdefault("base_url", info.base_url)
@@ -597,6 +649,7 @@ def _openai_build(info: ModelInfo, **kwargs: Any):
 
 
 def _openai_available(info: ModelInfo) -> bool:
+    """True if an OpenAI API key is set or a custom base_url is configured."""
     # Reachable if a key is present, or a base_url is configured (self-hosted
     # endpoints that do not require a key).
     return bool(_api_key(info, "OPENAI_API_KEY")) or bool(info.base_url)
@@ -604,6 +657,7 @@ def _openai_available(info: ModelInfo) -> bool:
 
 # --- google gemini (cloud) ------------------------------------------------- #
 def _google_build(info: ModelInfo, **kwargs: Any):
+    """Build a ChatGoogleGenerativeAI LangChain model for Google Gemini."""
     from langchain_google_genai import ChatGoogleGenerativeAI
     key = _api_key(info, "GOOGLE_API_KEY")
     if key:
@@ -613,6 +667,7 @@ def _google_build(info: ModelInfo, **kwargs: Any):
 
 
 def _google_available(info: ModelInfo) -> bool:
+    """True if a Google API key is set for this model."""
     return bool(_api_key(info, "GOOGLE_API_KEY"))
 
 
@@ -653,6 +708,17 @@ def get_chat_model(model_id: str | None = None, **kwargs: Any):
 
 @dataclass
 class LLMResult:
+    """Result of a single LLM completion, including text and usage accounting.
+
+    Attributes:
+        text: The generated text content.
+        model: Model id used for the completion.
+        provider: Provider name (e.g. "anthropic", "ollama").
+        input_tokens: Number of input tokens consumed.
+        output_tokens: Number of output tokens generated.
+        cost_usd: Estimated USD cost of the completion.
+    """
+
     text: str
     model: str
     provider: str
@@ -662,10 +728,20 @@ class LLMResult:
 
     @property
     def tokens_used(self) -> int:
+        """Total tokens consumed (input + output)."""
         return self.input_tokens + self.output_tokens
 
 
 def _to_lc_messages(system: str | None, messages: list[dict]):
+    """Convert a system prompt and list of role/content dicts to LangChain message objects.
+
+    Args:
+        system: Optional system prompt prepended as a SystemMessage.
+        messages: List of dicts with "role" and "content" keys.
+
+    Returns:
+        List of LangChain message objects.
+    """
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
     lc: list[Any] = []

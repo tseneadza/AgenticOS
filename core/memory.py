@@ -110,6 +110,14 @@ def _db():
 # ── run history ───────────────────────────────────────────────────────────────
 
 def start_run(workflow: str) -> str:
+    """Record a new workflow run as 'running' and return its generated run_id.
+
+    Args:
+        workflow: Name of the workflow being started.
+
+    Returns:
+        A 12-character hex run identifier.
+    """
     run_id = uuid.uuid4().hex[:12]
     conn = _db()
     try:
@@ -131,6 +139,15 @@ def finish_run(
     cost_usd: float = 0.0,
     detail: dict | None = None,
 ) -> None:
+    """Mark a run as finished with its final status and telemetry.
+
+    Args:
+        run_id: The run identifier returned by start_run().
+        status: Final status (e.g. "completed", "failed", "skipped").
+        tokens_used: Total tokens consumed during the run.
+        cost_usd: Total USD cost of the run.
+        detail: Optional dict of additional run metadata (serialized as JSON).
+    """
     conn = _db()
     try:
         cur = conn.cursor()
@@ -161,6 +178,14 @@ def cost_today() -> float:
 
 
 def recent_runs(limit: int = 10) -> list[dict]:
+    """Return the most recent run_history rows, newest first.
+
+    Args:
+        limit: Maximum number of rows to return.
+
+    Returns:
+        List of run dicts ordered by started_at descending.
+    """
     conn = _db()
     try:
         cur = conn.cursor(dictionary=True)

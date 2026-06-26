@@ -19,7 +19,10 @@ import time
 
 
 class EventBus:
+    """Thread-safe event bus that fans AG-UI events to WebSocket subscribers."""
+
     def __init__(self) -> None:
+        """Initialize the event bus with empty subscriber set and history ring buffer."""
         self._subscribers: set[asyncio.Queue] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._lock = threading.Lock()
@@ -27,15 +30,18 @@ class EventBus:
         self._history_max = 500
 
     def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Bind the asyncio event loop used for thread-safe event fanout."""
         self._loop = loop
 
     def subscribe(self) -> asyncio.Queue:
+        """Create and register a new subscriber queue for receiving events."""
         q: asyncio.Queue = asyncio.Queue(maxsize=1000)
         with self._lock:
             self._subscribers.add(q)
         return q
 
     def unsubscribe(self, q: asyncio.Queue) -> None:
+        """Remove a subscriber queue from the bus."""
         with self._lock:
             self._subscribers.discard(q)
 
@@ -54,6 +60,7 @@ class EventBus:
         self._loop.call_soon_threadsafe(self._fanout, event)
 
     def _fanout(self, event: dict) -> None:
+        """Distribute an event to all subscriber queues, dropping on full queues."""
         with self._lock:
             subscribers = list(self._subscribers)
         for q in subscribers:

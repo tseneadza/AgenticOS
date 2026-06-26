@@ -34,6 +34,8 @@ MAX_TOOL_ITERATIONS = 8
 
 @dataclass
 class AgentTurn:
+    """Tracks the state of a single governing-agent conversation turn."""
+
     turn_id: str
     session_id: str
     message: str
@@ -49,6 +51,14 @@ class AgentTurn:
 
 
 def _text_of(content) -> str:
+    """Extract plain text from LLM message content (string, list of parts, or other).
+
+    Args:
+        content: Message content in any supported format.
+
+    Returns:
+        The concatenated text content as a string.
+    """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -62,6 +72,7 @@ class AgentRunner:
     """Runs governing-agent turns and streams them over the event bus."""
 
     def __init__(self) -> None:
+        """Initialize with empty turn and session registries."""
         self.turns: dict[str, AgentTurn] = {}
         # Per-session conversation history as role/content dicts.
         self.sessions: dict[str, list[dict]] = {}
@@ -70,6 +81,16 @@ class AgentRunner:
     # ------------------------------------------------------------------ API
     def start_turn(self, message: str, *, model: str | None = None,
                    session_id: str = "default") -> str:
+        """Start a new agent turn on a background thread.
+
+        Args:
+            message: The user message to send to the agent.
+            model: Optional model ID override; uses active model if None.
+            session_id: Conversation session identifier for history tracking.
+
+        Returns:
+            The unique turn ID.
+        """
         model_id = llm.resolve(model) if model else llm.active_model()
         turn = AgentTurn(
             turn_id="agt-" + uuid.uuid4().hex[:8],
@@ -86,7 +107,13 @@ class AgentRunner:
 
     # ------------------------------------------------------------- bridges
     def _approval_fn(self, turn: AgentTurn):
+        """Return a closure that parks a tool action for HITL approval.
+
+        Args:
+            turn: The agent turn requesting approval.
+        """
         def fn(action_type: str, description: str) -> str:
+            """Park an approval request and block until resolved or timed out."""
             approval = PendingApproval(
                 approval_id=uuid.uuid4().hex[:10],
                 run_id=turn.turn_id,
@@ -112,7 +139,13 @@ class AgentRunner:
         return fn
 
     def _event_fn(self, turn: AgentTurn):
+        """Return a closure that publishes tool call events to the bus.
+
+        Args:
+            turn: The agent turn whose tool calls are being tracked.
+        """
         def fn(phase: str, tool: str, info: dict) -> None:
+            """Publish a TOOL_CALL_START or TOOL_CALL_END event to the bus."""
             if phase == "start":
                 bus.publish("TOOL_CALL_START", run_id=turn.turn_id, tool=tool,
                             payload=info.get("payload", ""))
@@ -124,6 +157,11 @@ class AgentRunner:
 
     # ------------------------------------------------------------- execute
     def _execute(self, turn: AgentTurn) -> None:
+        """Run a governing-agent turn, streaming events and enforcing budgets.
+
+        Args:
+            turn: The AgentTurn tracking this execution.
+        """
         bus.publish("RUN_STARTED", run_id=turn.turn_id, agent="governor",
                     model=turn.model_id, message=turn.message)
         try:

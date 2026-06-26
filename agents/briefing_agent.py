@@ -33,6 +33,15 @@ _SYSTEM = (
 
 
 def _template_brief(vault: dict, hub: dict) -> str:
+    """Build a deterministic morning briefing from vault and hub data.
+
+    Args:
+        vault: Vault state dict with projects, raw notes, open tasks, and recent docs.
+        hub: Codehome Hub state dict with app statuses.
+
+    Returns:
+        Markdown-formatted briefing string.
+    """
     today = dt.date.today().strftime("%A, %B %d, %Y")
     lines = [f"# Morning Briefing — {today}", ""]
 
@@ -82,6 +91,20 @@ def _template_brief(vault: dict, hub: dict) -> str:
 
 
 def compose_brief(state: dict) -> dict:
+    """Compose the morning briefing using an LLM or a template fallback.
+
+    Args:
+        state: Pipeline state dict containing vault and hub outputs, plus an
+            optional ``model`` key selecting the LLM.
+
+    Returns:
+        Dict with ``brief`` (Markdown text), ``tokens_used``, ``mode``, and
+        optionally ``cost_usd`` and ``model``.
+
+    Raises:
+        RuntimeError: If the selected model is unavailable and template
+            fallback is disabled.
+    """
     vault = state["outputs"]["read_vault"]
     hub = state["outputs"]["check_hub"]
 

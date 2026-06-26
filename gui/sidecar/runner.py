@@ -25,6 +25,8 @@ APPROVAL_TIMEOUT_S = 3600  # parked run gives up after an hour
 
 @dataclass
 class PendingApproval:
+    """A HITL approval request that parks a workflow run until resolved."""
+
     approval_id: str
     run_id: str
     workflow: str
@@ -37,16 +39,31 @@ class PendingApproval:
     _event: threading.Event = field(default_factory=threading.Event)
 
     def resolve(self, decision: str) -> None:
+        """Set the decision and wake the waiting thread.
+
+        Args:
+            decision: The approve/deny decision string.
+        """
         self.decision = decision
         self._event.set()
 
     def wait(self, timeout: float) -> str | None:
+        """Block until the approval is resolved or timeout expires.
+
+        Args:
+            timeout: Maximum seconds to wait.
+
+        Returns:
+            The decision string, or None if the timeout expired.
+        """
         self._event.wait(timeout)
         return self.decision
 
 
 @dataclass
 class RunHandle:
+    """Tracks the state of a single workflow run."""
+
     run_id: str
     workflow: str
     status: str = "running"  # running | waiting_approval | completed | failed | denied | skipped
@@ -56,13 +73,24 @@ class RunHandle:
 
 
 class WorkflowRunner:
+    """Threaded workflow runner with HITL approval support for the GUI."""
+
     def __init__(self) -> None:
+        """Initialize the runner with empty run and approval registries."""
         self.runs: dict[str, RunHandle] = {}
         self.approvals: dict[str, PendingApproval] = {}
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
     def start(self, workflow: str) -> str:
+        """Start a workflow run on a background thread.
+
+        Args:
+            workflow: Name of the workflow to execute.
+
+        Returns:
+            The unique run ID.
+        """
         run_id = memory.start_run(workflow)
         handle = RunHandle(run_id=run_id, workflow=workflow)
         with self._lock:
@@ -74,6 +102,7 @@ class WorkflowRunner:
         return run_id
 
     def pending_approvals(self) -> list[dict]:
+        """Return a list of all unresolved approval requests as dicts."""
         with self._lock:
             return [
                 {
@@ -91,6 +120,15 @@ class WorkflowRunner:
             ]
 
     def resolve_approval(self, approval_id: str, decision: str) -> bool:
+        """Resolve a pending approval and publish the decision to the event bus.
+
+        Args:
+            approval_id: ID of the approval to resolve.
+            decision: The approve/deny decision string.
+
+        Returns:
+            True if the approval was found and resolved, False otherwise.
+        """
         with self._lock:
             approval = self.approvals.get(approval_id)
         if approval is None or approval.decision is not None:
@@ -106,6 +144,14 @@ class WorkflowRunner:
 
     # ------------------------------------------------------------------
     def _execute(self, handle: RunHandle) -> None:
+        """Run a workflow on the current thread, streaming events to the bus.
+
+        Handles interrupts for HITL approvals, tracks tokens and cost,
+        and publishes RUN_FINISHED or RUN_ERROR events on completion.
+
+        Args:
+            handle: The RunHandle tracking this execution.
+        """
         bus.publish("RUN_STARTED", run_id=handle.run_id, workflow=handle.workflow)
         config = {"configurable": {"thread_id": handle.run_id}}
         conn = memory.checkpointer_conn()

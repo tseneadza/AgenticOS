@@ -22,6 +22,7 @@ from gui.sidecar.routes import api_config
 from gui.sidecar.routes import api_tasks
 from gui.sidecar.routes import api_news
 from gui.sidecar.routes import api_runs
+from gui.sidecar.routes import api_apps  # Phase 9a: native app registry
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -49,6 +50,7 @@ app.include_router(api_config.router)
 app.include_router(api_tasks.router)
 app.include_router(api_news.router)
 app.include_router(api_runs.router)
+app.include_router(api_apps.router)  # Phase 9a: native app registry (parallel to Hub)
 
 
 @app.on_event("startup")
@@ -71,6 +73,7 @@ async def _ensure_news_schema() -> None:
 
 @app.on_event("startup")
 async def _attach_loop() -> None:
+    """Bind the running asyncio event loop to the AG-UI event bus."""
     bus.attach_loop(asyncio.get_running_loop())
 
 
@@ -105,52 +108,41 @@ async def _start_shell_socket() -> None:
 
 @app.on_event("startup")
 async def _ensure_hub_running() -> None:
-    """Auto-start the Codehome Hub if it is not already up.
+    """Phase 9d: Hub decommissioned — this startup hook is now a no-op.
 
-    Runs as a background task so a slow Hub start does not block the sidecar
-    from accepting requests.  The same logic as POST /api/panels/hub/start —
-    kept in sync intentionally so both paths behave identically.
+    Kept in place so git history shows the deliberate removal decision.
+    The native app_registry + process_manager replaced all Hub functionality.
+    Set hub_autostart: true in settings.yaml to re-enable if needed.
     """
     import logging
-    import socket
-    import subprocess
-
     _log = logging.getLogger("agentcos.hub_autostart")
-
-    def _hub_alive() -> bool:
-        try:
-            with socket.create_connection(("127.0.0.1", 8085), timeout=0.4):
-                return True
-        except OSError:
-            return False
-
-    async def _run() -> None:
-        if _hub_alive():
-            _log.info("Hub already running — skipping auto-start")
-            return
-
-        home = Path.home()
-        hub_bin = home / "Codehome" / "hub" / "hub_server"
-        if not hub_bin.exists():
-            _log.warning("Hub binary not found at %s — cannot auto-start", hub_bin)
-            return
-
-        log_path = home / "Codehome" / "hub" / "hub.log"
-        try:
-            log_fh = open(log_path, "a")  # noqa: WPS515, SIM115
+    if _SETTINGS.get("hub_autostart", False):
+        # Legacy path — only runs if explicitly re-enabled
+        import socket, subprocess
+        def _hub_alive() -> bool:
+            try:
+                with socket.create_connection(("127.0.0.1", 8085), timeout=0.4):
+                    return True
+            except OSError:
+                return False
+        async def _run() -> None:
+            if _hub_alive():
+                return
+            home = Path.home()
+            hub_bin = home / "Codehome" / "hub" / "hub_server"
+            if not hub_bin.exists():
+                return
+            log_path = home / "Codehome" / "hub" / "hub.log"
+            log_fh = open(log_path, "a")
             subprocess.Popen(
-                [str(hub_bin)],
-                cwd=str(home / "Codehome" / "hub"),
-                stdout=log_fh,
-                stderr=log_fh,
-                start_new_session=True,
+                [str(hub_bin)], cwd=str(home / "Codehome" / "hub"),
+                stdout=log_fh, stderr=log_fh, start_new_session=True,
             )
-            _log.warning("Hub was down — auto-started hub_server (log: %s)", log_path)
-        except Exception as exc:  # noqa: BLE001
-            _log.error("Hub auto-start failed: %s", exc)
-
-    task = asyncio.create_task(_run(), name="hub-autostart")
-    app.state.hub_autostart_task = task  # prevent GC
+        task = asyncio.create_task(_run(), name="hub-autostart")
+        app.state.hub_autostart_task = task
+    else:
+        _log.info("Hub autostart disabled (Phase 9d) — native stack active")
+        app.state.hub_autostart_task = None
 
 
 @app.on_event("shutdown")
@@ -257,6 +249,14 @@ def list_workflows() -> dict:
 
 @app.post("/api/workflows/{name}/run")
 def run_workflow(name: str) -> dict:
+    """Start a workflow run in the background and return the run ID.
+
+    Args:
+        name: Name of the workflow to execute.
+
+    Raises:
+        HTTPException: 404 if the workflow name is not found.
+    """
     if name not in orchestrator.load_workflows():
         raise HTTPException(404, f"Unknown workflow '{name}'")
     run_id = runner.start(name)
@@ -265,6 +265,11 @@ def run_workflow(name: str) -> dict:
 
 @app.get("/api/runs")
 def runs(limit: int = 20) -> dict:
+    """Return recent workflow runs and currently active runs.
+
+    Args:
+        limit: Maximum number of historical runs to return.
+    """
     from core import memory
 
     return {"runs": memory.recent_runs(limit=limit), "active": [
@@ -281,16 +286,25 @@ def runs(limit: int = 20) -> dict:
 
 # ------------------------------------------------------------- approvals
 class Decision(BaseModel):
+    """Request body for approving or denying a pending approval."""
+
     decision: str  # "approve" | "deny" (any y/yes/approve string approves)
 
 
 @app.get("/api/approvals")
 def approvals() -> dict:
+    """Return all pending HITL approval requests."""
     return {"approvals": runner.pending_approvals()}
 
 
 @app.post("/api/approvals/{approval_id}")
 def decide(approval_id: str, body: Decision) -> dict:
+    """Resolve a pending approval with an approve or deny decision.
+
+    Args:
+        approval_id: ID of the pending approval to resolve.
+        body: Decision payload containing the approve/deny string.
+    """
     if not runner.resolve_approval(approval_id, body.decision):
         raise HTTPException(404, "No such pending approval")
     return {"ok": True}
@@ -310,11 +324,21 @@ def agent_models(start: bool = True) -> dict:
 
 
 class ModelSelect(BaseModel):
+    """Request body for selecting an active LLM model."""
+
     id: str
 
 
 @app.post("/api/agent/model")
 def agent_set_model(body: ModelSelect) -> dict:
+    """Switch the active LLM model for subsequent agent turns.
+
+    Args:
+        body: Contains the model ID to activate.
+
+    Raises:
+        HTTPException: 404 if the model ID is unknown.
+    """
     from core import llm
 
     try:
@@ -333,6 +357,8 @@ def agent_set_model(body: ModelSelect) -> dict:
 # FR-54/57: start a governing-agent turn. Output streams over the AG-UI bus
 # (/ws/agui) and the dedicated /ws/agent feed; this POST is the headless trigger.
 class AgentChat(BaseModel):
+    """Request body for starting a governing-agent chat turn."""
+
     message: str
     model: str | None = None
     session_id: str = "default"
@@ -340,6 +366,11 @@ class AgentChat(BaseModel):
 
 @app.post("/api/agent/chat")
 def agent_chat(body: AgentChat) -> dict:
+    """Start a governing-agent turn via HTTP (headless trigger).
+
+    Args:
+        body: Chat message, optional model override, and session ID.
+    """
     from gui.sidecar.agent_runner import agent_runner
 
     turn_id = agent_runner.start_turn(
@@ -351,26 +382,36 @@ def agent_chat(body: AgentChat) -> dict:
 # ------------------------------------------------------------- panels
 @app.get("/api/panels/system")
 def panel_system() -> dict:
+    """Return system health metrics (CPU, RAM, disk, network)."""
     return panels.system_health()
 
 
 @app.get("/api/panels/activity")
 def panel_activity() -> dict:
+    """Return agent activity stats (cost, tokens, run history)."""
     return panels.agent_activity()
 
 
 @app.get("/api/panels/keno")
 def panel_keno() -> dict:
+    """Return Keno data pipeline telemetry (draw counts, sync status)."""
     return panels.keno_telemetry()
 
 
 @app.get("/api/panels/hub")
 def panel_hub() -> dict:
+    """Return Codehome Hub status and registered app information."""
     return panels.hub_status()
 
 
 @app.post("/api/panels/hub/{app_id}/{action}")
 def panel_hub_action(app_id: str, action: str) -> dict:
+    """Execute a start/stop/restart action on a Hub-managed app.
+
+    Args:
+        app_id: Identifier of the Hub application.
+        action: Action to perform (start, stop, restart).
+    """
     try:
         return panels.hub_app_action(app_id, action)
     except ValueError as exc:
@@ -387,6 +428,7 @@ def panel_hub_start() -> dict:
     from pathlib import Path
 
     def _hub_alive() -> bool:
+        """Check if the Hub is accepting connections on port 8085."""
         try:
             with socket.create_connection(("127.0.0.1", 8085), timeout=0.4):
                 return True
@@ -419,23 +461,31 @@ def panel_hub_start() -> dict:
 
 @app.get("/api/panels/terminal")
 def panel_terminal(limit: int = 15) -> dict:
+    """Return the last N lines of agent terminal output.
+
+    Args:
+        limit: Maximum number of terminal lines to return.
+    """
     return panels.iterm_strip(lines=limit)
 
 
 # FR-18: agent capability manifests for all Hub apps (polled at low frequency)
 @app.get("/api/panels/hub/manifests")
 def panel_hub_manifests() -> dict:
+    """Return agent capability manifests for all Hub-registered apps."""
     return panels.hub_manifests()
 
 
 # FR-19: Hub scripts discovery
 @app.get("/api/panels/hub/scripts")
 def panel_hub_scripts() -> dict:
+    """Return all Hub-registered scripts for display and tool registry."""
     return panels.hub_scripts()
 
 
 @app.get("/api/health")
 def health() -> dict:
+    """Return a simple health check with the sidecar port."""
     return {"ok": True, "port": SIDECAR_PORT}
 
 
@@ -449,6 +499,7 @@ async def ws_terminal(ws: WebSocket) -> None:
 # ------------------------------------------------------------- AG-UI WS
 @app.websocket("/ws/agui")
 async def agui_stream(ws: WebSocket) -> None:
+    """AG-UI event stream WebSocket for live workflow and agent updates."""
     await ws.accept()
     # replay recent history so a freshly-opened GUI isn't blank
     for event in bus.history[-50:]:
@@ -482,6 +533,7 @@ async def ws_agent(ws: WebSocket) -> None:
     q = bus.subscribe()
 
     async def _forward() -> None:
+        """Forward events from the bus queue to the WebSocket client."""
         while True:
             await ws.send_json(await q.get())
 
@@ -504,6 +556,7 @@ async def ws_agent(ws: WebSocket) -> None:
 
 
 def main() -> None:  # noqa: C901
+    """Start the sidecar uvicorn server with PID-file management and zombie detection."""
     import atexit
     import logging
     import os
@@ -522,6 +575,7 @@ def main() -> None:  # noqa: C901
 
     # ------------------------------------------------------------------ helpers
     def _port_alive(port: int) -> bool:
+        """Check if a TCP port is accepting connections on localhost."""
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5):
                 return True
@@ -614,6 +668,7 @@ def main() -> None:  # noqa: C901
     _original_sigterm = signal.getsignal(signal.SIGTERM)
 
     def _sigterm_handler(signum: int, frame: object) -> None:  # noqa: ANN001
+        """Handle SIGTERM by cleaning up the PID file before re-raising."""
         _safe_cleanup()
         # Restore and re-raise so uvicorn (and anything else upstream) still sees it.
         signal.signal(signal.SIGTERM, _original_sigterm)
@@ -848,6 +903,7 @@ def _fetch_rss(url: str) -> list[dict]:
     # RSS 2.0
     for item in root.findall(".//item"):
         def _t(tag, el=item):
+            """Extract stripped text from an XML sub-element by tag name."""
             node = el.find(tag)
             return node.text.strip() if node is not None and node.text else ""
 
@@ -882,6 +938,7 @@ def _fetch_rss(url: str) -> list[dict]:
     if not items:
         for entry in root.findall("atom:entry", ns):
             def _ta(tag, el=entry):
+                """Extract stripped text from an Atom entry sub-element by tag name."""
                 node = el.find(tag, ns)
                 return node.text.strip() if node is not None and node.text else ""
             title = _ta("atom:title")
@@ -959,6 +1016,7 @@ def news_fetch(body: dict) -> dict:
     # keyword pre-filter (OR logic — keep if any keyword matches title/summary)
     if keywords:
         def _matches(item):
+            """Return True if any keyword appears in the item's title or summary."""
             text = (item["title"] + " " + item["summary"]).lower()
             return any(kw in text for kw in keywords)
         all_items = [i for i in all_items if _matches(i)]
@@ -972,6 +1030,8 @@ def news_fetch(body: dict) -> dict:
 
 
 class NewsRankRequest(BaseModel):
+    """Request body for LLM-powered article relevance ranking."""
+
     articles: list[dict]            # [{title, domain_label?}, ...] (order preserved)
     domains: list[str] = []
     keywords: list[str] = []
