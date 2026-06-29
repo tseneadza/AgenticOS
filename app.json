@@ -4,14 +4,20 @@
   "description": "LangGraph-based agentic operating system orchestrating multi-step workflows against Brain2, Hub, and Claude API.",
   "version": "1.0.0",
   "type": "desktop",
-  "icon": "🤖",
+  "icon": "\ud83e\udd16",
   "category": "infrastructure",
-  "tags": ["agentic", "ai", "orchestration", "brain2", "langraph"],
+  "tags": [
+    "agentic",
+    "ai",
+    "orchestration",
+    "brain2",
+    "langraph"
+  ],
   "scripts": [
     {
       "name": "agentic-gui.sh",
       "path": "scripts/agentic-gui.sh",
-      "description": "Manage the Agentic OS desktop stack — install, start, stop, restart, status",
+      "description": "Manage the Agentic OS desktop stack \u2014 install, start, stop, restart, status",
       "type": "shell",
       "examples": [
         "agentic-gui.sh install",
@@ -30,7 +36,7 @@
     {
       "name": "diagnose_cloud.py",
       "path": "scripts/diagnose_cloud.py",
-      "description": "Diagnose cloud provider connection errors — walks TLS/proxy/DNS layers to find the real cause",
+      "description": "Diagnose cloud provider connection errors \u2014 walks TLS/proxy/DNS layers to find the real cause",
       "type": "python",
       "examples": [
         "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/diagnose_cloud.py"
@@ -52,6 +58,21 @@
         "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py",
         "cd ~/Codehome/AgenticOS && ./.venv/bin/python scripts/migrate_state_db_to_mysql.py --archive"
       ]
+    },
+    {
+      "name": "check-system-health",
+      "path": "scripts/check-system-health.sh",
+      "description": "Script: check-system-health.sh"
+    },
+    {
+      "name": "main",
+      "path": "main.py",
+      "description": "Script: main.py"
+    },
+    {
+      "name": "register_app_scripts",
+      "path": "scripts/register_app_scripts.py",
+      "description": "Script: register_app_scripts.py"
     }
   ]
 }

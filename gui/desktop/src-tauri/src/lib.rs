@@ -58,17 +58,36 @@ fn hub_alive() -> bool {
 fn spawn_hub() -> Option<Child> {
     let home = std::env::var("HOME").ok()?;
     let hub_bin = format!("{home}/Codehome/hub/hub_server");
+
+    // Check if Hub binary exists before attempting to spawn
+    if !std::path::Path::new(&hub_bin).exists() {
+        eprintln!("[HUB] Binary not found at {hub_bin}");
+        eprintln!("[HUB] Hub is optional. The app will work with just the sidecar.");
+        eprintln!("[HUB] To enable Hub features, clone/build: https://github.com/Codehome/hub");
+        return None;
+    }
+
     let hub_dir = format!("{home}/Codehome/hub");
     let log_dir = format!("{home}/Codehome/hub");
     let log = std::fs::File::create(format!("{log_dir}/hub.log")).ok()?;
     let err = log.try_clone().ok()?;
 
-    Command::new(&hub_bin)
+    eprintln!("[HUB] Spawning hub_server from {hub_bin}...");
+    match Command::new(&hub_bin)
         .current_dir(&hub_dir)
         .stdout(log)
         .stderr(err)
         .spawn()
-        .ok()
+    {
+        Ok(child) => {
+            eprintln!("[HUB] Spawned successfully (PID: {:?})", child.id());
+            Some(child)
+        }
+        Err(e) => {
+            eprintln!("[HUB] Failed to spawn: {e}");
+            None
+        }
+    }
 }
 
 fn kill_hub(state: &HubState) {
@@ -285,7 +304,7 @@ pub fn run() {
                 let tray_menu = build_tray_menu(app)?;
                 let tray_icon = app.default_window_icon().cloned();
                 let builder = TrayIconBuilder::new()
-                    .title("OSA")
+                    .title("")
                     .tooltip("Agentic OS")
                     .menu(&tray_menu)
                     .show_menu_on_left_click(true)
@@ -298,7 +317,7 @@ pub fn run() {
                 match builder.build(app) {
                     Ok(tray) => {
                         let _ = tray.set_visible(true);
-                        let _ = tray.set_title(Some("OSA"));
+                        let _ = tray.set_title(Some(""));
                     }
                     Err(e) => eprintln!("[TRAY] ERROR building tray: {e:?}"),
                 }

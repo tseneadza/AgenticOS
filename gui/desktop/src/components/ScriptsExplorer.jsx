@@ -431,6 +431,15 @@ export default function ScriptsExplorer() {
                 <button key={v} onClick={() => setGroupBy(v)} style={groupBtn(v)}>{l}</button>
               ))}
             </div>
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+              <span style={{ fontSize:10, color:"var(--text-dim)", minWidth:32 }}>Collapse</span>
+              <button onClick={() => setGroupOpen(Object.fromEntries(groupKeys.map(k => [k, false])))} style={sortBtn(false)}>
+                All
+              </button>
+              <button onClick={() => setGroupOpen(Object.fromEntries(groupKeys.map(k => [k, true])))} style={sortBtn(true)}>
+                Expand
+              </button>
+            </div>
           </div>
           <div style={{ padding:"3px 12px", fontSize:10, color:"var(--text-dim)", borderBottom:"1px solid var(--border-soft)", flexShrink:0 }}>
             {loading ? "Loading scripts…" : fetchErr ? `Error: ${fetchErr}` :

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 
 const HUB = "http://localhost:8085/api";
-const SIDECAR = "http://localhost:5130";  // FastAPI sidecar (full paths include /api)
+const SIDECAR = "http://localhost:5130";
 
-const ENDPOINTS = [
+// All 42 Hub + Sidecar API endpoints (comprehensive list)
+const ENDPOINTS_HARDCODED = [
   { group:"Cards", method:"GET",    path:"/cards",                    desc:"List all registered project cards", params:[] },
   { group:"Cards", method:"GET",    path:"/cards/favorites",          desc:"Cards marked as favourite", params:[] },
   { group:"Cards", method:"GET",    path:"/cards/recent",             desc:"Recently accessed cards", params:[] },
@@ -35,8 +36,6 @@ const ENDPOINTS = [
   { group:"Jupyter", method:"GET",  path:"/jupyter/status",      desc:"Jupyter running status", params:[] },
   { group:"Jupyter", method:"POST", path:"/jupyter/stop",        desc:"Stop Jupyter server", params:[] },
   { group:"System", method:"GET", path:"/health", desc:"Hub server health (root level)", params:[], rootPath:true },
-
-  // ── Sidecar API (FastAPI @ :5130) ──────────────────────────────────────────
   { group:"News (Sidecar)", server:"sidecar", method:"GET",    path:"/api/news/categories",      desc:"List feed categories (id, name, color)", params:[] },
   { group:"News (Sidecar)", server:"sidecar", method:"POST",   path:"/api/news/categories",      desc:"Create a category", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"name":"Robotics","color":"#7fb069"}'}] },
   { group:"News (Sidecar)", server:"sidecar", method:"PATCH",  path:"/api/news/categories/{id}", desc:"Update a category", params:[{name:"id",_in:"path",type:"string",required:true},{name:"body",_in:"body",type:"json",required:true,hint:'{"color":"#d97b4f"}'}] },
@@ -50,7 +49,50 @@ const ENDPOINTS = [
   { group:"System", server:"sidecar", method:"GET", path:"/api/health", desc:"Sidecar health", params:[] },
 ];
 
-const GROUPS = [...new Set(ENDPOINTS.map(e => e.group))];
+// Convert OpenAPI spec to explorer format
+function convertOpenAPIToEndpoints(spec) {
+  const endpoints = [];
+  if (!spec?.paths) return endpoints;
+
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    for (const [method, details] of Object.entries(methods)) {
+      if (!["get", "post", "put", "delete", "patch"].includes(method.toLowerCase())) continue;
+
+      const params = [];
+      if (details.parameters) {
+        details.parameters.forEach(p => {
+          params.push({
+            name: p.name,
+            _in: p.in || "query",
+            type: p.schema?.type || "string",
+            required: p.required || false,
+            hint: p.description || "",
+          });
+        });
+      }
+      if (details.requestBody) {
+        params.push({
+          name: "body",
+          _in: "body",
+          type: "json",
+          required: details.requestBody.required || false,
+          hint: "Request body",
+        });
+      }
+
+      endpoints.push({
+        group: details.tags?.[0] || "Other",
+        method: method.toUpperCase(),
+        path: path,
+        desc: details.summary || details.description || "",
+        params: params,
+        server: path.startsWith("/api") ? "sidecar" : "hub",
+      });
+    }
+  }
+  return endpoints;
+}
+
 const METHOD_COLOR = {
   GET:    { bg:"#1c3a2a", color:"#7fb069" },
   POST:   { bg:"#3a2a1c", color:"#d97b4f" },
@@ -79,9 +121,14 @@ function PathDisplay({ path }) {
 }
 
 export default function HubApiExplorer() {
+  const [endpoints, setEndpoints]   = useState(ENDPOINTS_HARDCODED);
   const [tab, setTab]               = useState("explorer");
   const [selected, setSelected]     = useState(null);
-  const [groupOpen, setGroupOpen]   = useState(Object.fromEntries(GROUPS.map(g => [g, true])));
+  const [groupOpen, setGroupOpen]   = useState(() =>
+    Object.fromEntries(
+      [...new Set(ENDPOINTS_HARDCODED.map(e => e.group))].map(g => [g, true])
+    )
+  );
   const [filter, setFilter]         = useState("");
   const [paramValues, setParamValues] = useState({});
   const [response, setResponse]     = useState(null);
@@ -125,7 +172,8 @@ export default function HubApiExplorer() {
     return () => clearInterval(id);
   }, []);
 
-  const ep  = selected !== null ? ENDPOINTS[selected] : null;
+  const groups = [...new Set(endpoints.map(e => e.group))];
+  const ep  = selected !== null ? endpoints[selected] : null;
   const url = ep ? buildUrl(ep, paramValues) : "";
   const curlCmd = ep ? `curl -X ${ep.method} "${url}"` : "";
 
@@ -171,7 +219,7 @@ export default function HubApiExplorer() {
   };
 
   const filteredEps = (group) =>
-    ENDPOINTS.map((e, i) => ({ ...e, _i: i })).filter(e =>
+    endpoints.map((e, i) => ({ ...e, _i: i })).filter(e =>
       e.group === group &&
       (!filter || e.path.toLowerCase().includes(filter) || e.method.toLowerCase().includes(filter) || e.desc.toLowerCase().includes(filter))
     );
@@ -220,16 +268,31 @@ export default function HubApiExplorer() {
 
         {/* LEFT: endpoint list */}
         <div style={{ width: 290, minWidth: 290, borderRight: "1px solid var(--border-soft)", display: "flex", flexDirection: "column", background: "var(--bg-inset)", overflow: "hidden" }}>
-          <div style={{ padding: "7px 10px", borderBottom: "1px solid var(--border-soft)", flexShrink: 0 }}>
+          <div style={{ padding: "7px 10px", borderBottom: "1px solid var(--border-soft)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 7 }}>
             <input
               style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border-soft)", color: "var(--text)", borderRadius: 4, padding: "4px 9px", fontFamily: "inherit", fontSize: 12, outline: "none" }}
               placeholder="Filter endpoints…"
               value={filter}
               onChange={e => setFilter(e.target.value)}
             />
+            <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+              <span style={{ fontSize: 10, color: "var(--text-dim)" }}>Collapse:</span>
+              <button
+                onClick={() => setGroupOpen(Object.fromEntries(groups.map(g => [g, false])))}
+                style={{ padding: "2px 8px", fontSize: 10, cursor: "pointer", border: "1px solid var(--border-soft)", borderRadius: 3, background: "none", color: "var(--text-dim)" }}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setGroupOpen(Object.fromEntries(groups.map(g => [g, true])))}
+                style={{ padding: "2px 8px", fontSize: 10, cursor: "pointer", border: "1px solid var(--border-soft)", borderRadius: 3, background: "none", color: "var(--text-dim)" }}
+              >
+                Expand
+              </button>
+            </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
-            {GROUPS.map(g => {
+            {groups.map(g => {
               const items = filteredEps(g);
               if (!items.length) return null;
               return (
