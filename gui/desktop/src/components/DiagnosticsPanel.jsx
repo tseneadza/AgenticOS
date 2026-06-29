@@ -11,7 +11,7 @@ import { useState, useEffect, useMemo } from 'react';
  * State persists to localStorage["agentic-os.diagExpanded"]
  * Data updates every 2 seconds via usePoll hook
  */
-export default function DiagnosticsPanel({ data }) {
+export default function DiagnosticsPanel({ data, forceExpanded = false }) {
   // Expanded state (persisted to localStorage)
   const [expanded, setExpanded] = useState(() => {
     const saved = localStorage.getItem('agentic-os.diagExpanded');
@@ -47,8 +47,9 @@ export default function DiagnosticsPanel({ data }) {
   const netOut = formatBytes(data.network?.bytes_out || 0);
 
   const toggle = () => setExpanded(!expanded);
+  const showExpanded = forceExpanded || expanded;
 
-  if (!expanded) {
+  if (!showExpanded) {
     // Collapsed view: 3-line summary
     return (
       <div className="diag-panel diag-collapsed">
@@ -85,7 +86,7 @@ export default function DiagnosticsPanel({ data }) {
 
   return (
     <div className="diag-panel diag-expanded">
-      <button className="diag-header" onClick={toggle}>
+      <button className="diag-header" onClick={forceExpanded ? undefined : toggle}>
         <span className="diag-toggle">⊟</span>
         <span className="diag-title">Diagnostics</span>
       </button>

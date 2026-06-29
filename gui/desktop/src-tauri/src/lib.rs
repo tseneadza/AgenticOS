@@ -15,7 +15,7 @@ use std::net::TcpStream;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
 struct SidecarState(Mutex<Option<Child>>);
 
@@ -139,9 +139,24 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     let sep_view    = PredefinedMenuItem::separator(app)?;
     let v_reload    = MenuItem::with_id(app, "view-reload",     "Reload",            true, Some("cmd+r"))?;
 
+    // ---- View ▸ Theme (FR-60) ----
+    // Full-skin theme switch. Each id is "theme-<key>"; the menu handler derives
+    // the key generically and calls window.__agenticOsSetTheme (App.jsx) — the
+    // exact mirror of the view-<id> bridge above.
+    let t_terra  = MenuItem::with_id(app, "theme-terra",  "Terracotta Dark", true, None::<&str>)?;
+    let t_cyber  = MenuItem::with_id(app, "theme-cyber",  "Cyber Neon",      true, None::<&str>)?;
+    let t_future = MenuItem::with_id(app, "theme-future", "Bold Futuristic", true, None::<&str>)?;
+    let t_term   = MenuItem::with_id(app, "theme-term",   "Terminal Green",  true, None::<&str>)?;
+    let theme_menu = Submenu::with_items(
+        app, "Theme", true,
+        &[&t_terra, &t_cyber, &t_future, &t_term],
+    )?;
+    let sep_theme   = PredefinedMenuItem::separator(app)?;
+
     let view_menu = Submenu::with_items(
         app, "View", true,
-        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_obsidian, &v_agent, &sep_view, &v_reload],
+        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_obsidian, &v_agent,
+          &sep_theme, &theme_menu, &sep_view, &v_reload],
     )?;
 
     // ---- Agent ----
@@ -159,27 +174,135 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     let maximize   = PredefinedMenuItem::maximize(app, None)?;
     let sep_win    = PredefinedMenuItem::separator(app)?;
     let fullscreen = PredefinedMenuItem::fullscreen(app, None)?;
+    let sep_hud    = PredefinedMenuItem::separator(app)?;
+    let to_hud     = MenuItem::with_id(app, "window-minimize-to-hud", "Minimize to HUD", true, Some("cmd+shift+h"))?;
 
     let window_menu = Submenu::with_items(
         app, "Window", true,
-        &[&minimize, &maximize, &sep_win, &fullscreen],
+        &[&minimize, &maximize, &sep_win, &fullscreen, &sep_hud, &to_hud],
     )?;
 
     Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu, &agent_menu, &window_menu])
+}
+
+// ---- Menu-bar tray (FR-61) ----
+// The OSA status item that lives in the macOS menu bar (where Docker/Ollama
+// sit). A small dropdown of quick actions; events are routed by id below,
+// mirroring the app-menu handler.
+fn build_tray_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
+    use tauri_plugin_autostart::ManagerExt;
+    let open    = MenuItem::with_id(app, "tray-open",       "Open Agentic OS",      true, None::<&str>)?;
+    let hud     = MenuItem::with_id(app, "tray-toggle-hud", "Toggle HUD",           true, None::<&str>)?;
+    let sep1    = PredefinedMenuItem::separator(app)?;
+    let brief   = MenuItem::with_id(app, "tray-briefing",   "Run Morning Briefing", true, None::<&str>)?;
+    let restart = MenuItem::with_id(app, "tray-restart",    "Restart Sidecar",      true, None::<&str>)?;
+    let sep2    = PredefinedMenuItem::separator(app)?;
+    let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
+    let launch  = CheckMenuItem::with_id(app, "tray-autostart", "Launch at Login", true, autostart_on, None::<&str>)?;
+    let sep3    = PredefinedMenuItem::separator(app)?;
+    let quit    = PredefinedMenuItem::quit(app, Some("Quit Agentic OS"))?;
+    Menu::with_items(app, &[&open, &hud, &sep1, &brief, &restart, &sep2, &launch, &sep3, &quit])
+}
+
+fn on_tray_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
+    use tauri::Manager;
+    match event.id().as_ref() {
+        "tray-open" => {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }
+        "tray-toggle-hud" => {
+            if let Some(hud) = app.get_webview_window("hud") {
+                if hud.is_visible().unwrap_or(false) {
+                    let _ = hud.hide();
+                } else {
+                    let _ = hud.show();
+                    let _ = hud.set_focus();
+                }
+            }
+        }
+        "tray-briefing" => {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.eval(
+                    "fetch('http://localhost:5130/api/workflows/morning-briefing/run',{method:'POST'}).catch(()=>{})",
+                );
+            }
+        }
+        "tray-restart" => {
+            let state = app.state::<SidecarState>();
+            kill_sidecar(&state);
+            std::thread::sleep(Duration::from_millis(600));
+            let child = spawn_sidecar();
+            *state.0.lock().unwrap() = child;
+        }
+        "tray-autostart" => {
+            use tauri_plugin_autostart::ManagerExt;
+            let am = app.autolaunch();
+            if am.is_enabled().unwrap_or(false) {
+                let _ = am.disable();
+            } else {
+                let _ = am.enable();
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(SidecarState(Mutex::new(None)))
         .manage(HubState(Mutex::new(None)))
+        // Close-to-hide (FR-62): keep the app resident in the menu bar — closing
+        // a window hides it instead of quitting. Real exit is the tray/menu Quit,
+        // which triggers the RunEvent::Exit cleanup below.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
             use tauri::Manager;
 
             // Build and set the native menu bar
             let menu = build_menu(app)?;
             app.set_menu(menu)?;
+
+            // Menu-bar tray icon (FR-61) — the OSA status item.
+            // Embed the icon at compile time so the tray always renders; in dev
+            // builds app.default_window_icon() can be None, which would silently
+            // skip the tray entirely.
+            {
+                use tauri::tray::TrayIconBuilder;
+                let tray_menu = build_tray_menu(app)?;
+                let tray_icon = app.default_window_icon().cloned();
+                let builder = TrayIconBuilder::new()
+                    .title("OSA")
+                    .tooltip("Agentic OS")
+                    .menu(&tray_menu)
+                    .show_menu_on_left_click(true)
+                    .on_menu_event(on_tray_menu_event);
+                let builder = if let Some(icon) = tray_icon {
+                    builder.icon(icon)
+                } else {
+                    builder.icon(tauri::include_image!("icons/32x32.png"))
+                };
+                match builder.build(app) {
+                    Ok(tray) => {
+                        let _ = tray.set_visible(true);
+                        let _ = tray.set_title(Some("OSA"));
+                    }
+                    Err(e) => eprintln!("[TRAY] ERROR building tray: {e:?}"),
+                }
+            }
 
             // Handle menu events
             app.on_menu_event(|app, event| {
@@ -195,6 +318,26 @@ pub fn run() {
                         let _ = window.eval(&format!(
                             "window.__agenticOsSetView && window.__agenticOsSetView('{view}')",
                         ));
+                    }
+                    // Theme switch (FR-60) — any "theme-<key>" item drives the
+                    // React bridge, same pattern as view navigation above.
+                    id if id.starts_with("theme-") => {
+                        let key = &id["theme-".len()..];
+                        let _ = window.eval(&format!(
+                            "window.__agenticOsSetTheme && window.__agenticOsSetTheme('{key}')",
+                        ));
+                    }
+                    // Minimize to HUD (FR-63) — drop the HUD where the sidebar
+                    // was (main's content top-left), float it, then hide main.
+                    "window-minimize-to-hud" => {
+                        if let Some(hud) = app.get_webview_window("hud") {
+                            if let Ok(pos) = window.inner_position() {
+                                let _ = hud.set_position(pos);
+                            }
+                            let _ = hud.show();
+                            let _ = hud.set_focus();
+                        }
+                        let _ = window.hide();
                     }
                     // Agent quick-actions
                     "agent-morning-briefing" => {
@@ -242,15 +385,73 @@ pub fn run() {
                 *app.state::<HubState>().0.lock().unwrap() = child;
             }
 
+            // Launch-at-login (FR-62): default ON, first run only; afterward we
+            // respect whatever the user set via the tray toggle.
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                if let Ok(home) = std::env::var("HOME") {
+                    let data_dir = format!("{home}/Codehome/AgenticOS/data");
+                    let marker = format!("{data_dir}/.autostart_initialized");
+                    if !std::path::Path::new(&marker).exists() {
+                        let _ = app.autolaunch().enable();
+                        let _ = std::fs::create_dir_all(&data_dir);
+                        let _ = std::fs::write(&marker, "1");
+                    }
+                }
+            }
+
+            // macOS Tahoe tray-icon onboarding (FR-61b): on first launch,
+            // show a native dialog explaining the "Allow in Menu Bar"
+            // permission and open System Settings directly.
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(home) = std::env::var("HOME") {
+                    let data_dir = format!("{home}/Codehome/AgenticOS/data");
+                    let marker = format!("{data_dir}/.tray_onboarding_shown");
+                    if !std::path::Path::new(&marker).exists() {
+                        let _ = std::fs::create_dir_all(&data_dir);
+                        let _ = std::fs::write(&marker, "1");
+                        std::thread::spawn(move || {
+                            std::thread::sleep(Duration::from_secs(3));
+                            let script = r#"
+                                set userChoice to button returned of (display dialog ¬
+                                    "To see the OSA tray icon in your menu bar, enable it in System Settings." & return & return & ¬
+                                    "Go to: System Settings → Menu Bar → set \"Agentic OS\" to ON" ¬
+                                    with title "Agentic OS — Menu Bar Setup" ¬
+                                    buttons {"Skip", "Open Settings"} ¬
+                                    default button "Open Settings" ¬
+                                    with icon note)
+                                if userChoice is "Open Settings" then
+                                    do shell script "open 'x-apple.systempreferences:com.apple.ControlCenter-Settings.extension?MenuBar'"
+                                end if
+                            "#;
+                            let _ = Command::new("osascript")
+                                .arg("-e")
+                                .arg(script)
+                                .output();
+                        });
+                    }
+                }
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             use tauri::Manager;
-            if let tauri::RunEvent::Exit = event {
-                kill_hub(&app_handle.state::<HubState>());
-                kill_sidecar(&app_handle.state::<SidecarState>());
+            match event {
+                // When the last visible window is closed, Tauri asks to exit.
+                // Prevent it so the app stays resident behind the tray icon.
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    api.prevent_exit();
+                }
+                // Real quit (tray/menu Quit) — clean up the processes we spawned.
+                tauri::RunEvent::Exit => {
+                    kill_hub(&app_handle.state::<HubState>());
+                    kill_sidecar(&app_handle.state::<SidecarState>());
+                }
+                _ => {}
             }
         });
 }

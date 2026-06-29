@@ -78,9 +78,9 @@ const STYLE_CSS = `
 .wnv-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .wnv-btn:disabled { cursor: default; color: var(--text-dim); opacity: 0.6; }
 .wnv-btn-primary {
-  background: var(--accent); color: #1b1b19; border-color: var(--accent); font-weight: 700;
+  background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 700;
 }
-.wnv-btn-primary:hover:not(:disabled) { filter: brightness(1.08); color: #1b1b19; }
+.wnv-btn-primary:hover:not(:disabled) { filter: brightness(1.08); color: var(--bg); }
 .wnv-skel {
   border-radius: 8px; margin-bottom: 10px; height: 84px;
   background: linear-gradient(100deg, var(--bg-panel) 30%, var(--bg-inset) 50%, var(--bg-panel) 70%);
@@ -199,7 +199,7 @@ function DomainBadge({ domain, small, colors = DOMAIN_COLORS }) {
 
 function ScoreBadge({ score }) {
   const n = typeof score === "number" ? score : null;
-  const color = n == null ? "#888" : n >= 7 ? "#7fb069" : n >= 4 ? "#e0b84c" : "#9a6b5a";
+  const color = n == null ? "var(--text-dim)" : n >= 7 ? "var(--green)" : n >= 4 ? "var(--yellow)" : "var(--red)";
   return (
     <span style={{
       display: "inline-flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -297,7 +297,7 @@ function ArticleCard({ item, ranked, colors = DOMAIN_COLORS, layout = "list" }) 
             <p style={{
               margin: "7px 0 0", padding: "5px 8px", borderRadius: 5,
               background: "var(--bg-inset)",
-              fontSize: 10.5, color: "#e0b84c",
+              fontSize: 10.5, color: "var(--yellow)",
               fontStyle: "italic", lineHeight: 1.5,
             }}>
               ✦ {item._reasoning}
@@ -507,7 +507,7 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
             all: "unset", cursor: "pointer",
             display: "block", width: "100%", boxSizing: "border-box",
             padding: "9px 0", textAlign: "center",
-            background: "var(--accent)", color: "#1b1b19",
+            background: "var(--accent)", color: "var(--bg)",
             borderRadius: 6, fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700,
           }}
         >
@@ -761,7 +761,7 @@ export default function WebNewsView() {
               onClick={() => setDomainFilter("all")}
               className="wnv-pill"
               style={domainFilter === "all" ? {
-                background: "var(--accent)", color: "#1b1b19", borderColor: "var(--accent)", fontWeight: 700,
+                background: "var(--accent)", color: "var(--bg)", borderColor: "var(--accent)", fontWeight: 700,
               } : undefined}
             >
               All
@@ -803,7 +803,7 @@ export default function WebNewsView() {
                 <button key={s} onClick={() => setSortBy(s)} style={{
                   all: "unset", cursor: "pointer", padding: "5px 10px",
                   background: sortBy === s ? "var(--accent)" : "var(--bg-panel)",
-                  color: sortBy === s ? "#1b1b19" : "var(--text-dim)",
+                  color: sortBy === s ? "var(--bg)" : "var(--text-dim)",
                   fontFamily: "var(--mono)", fontSize: 10, fontWeight: sortBy === s ? 700 : 400,
                 }}>
                   {s === "score" ? "AI score" : "newest"}
@@ -820,7 +820,7 @@ export default function WebNewsView() {
                 style={{
                   all: "unset", cursor: "pointer", padding: "5px 10px",
                   background: viewMode === v ? "var(--accent)" : "var(--bg-panel)",
-                  color: viewMode === v ? "#1b1b19" : "var(--text-dim)",
+                  color: viewMode === v ? "var(--bg)" : "var(--text-dim)",
                   fontFamily: "var(--mono)", fontSize: 10, fontWeight: viewMode === v ? 700 : 400,
                 }}>
                 {v === "grid" ? "▦ Grid" : "▤ List"}

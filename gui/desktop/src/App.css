@@ -1,25 +1,14 @@
 /* Agentic OS — Focused Sidebar layout, dark theme, explicit section borders */
-:root {
-  --bg: #1b1b19;
-  --bg-panel: #222220;
-  --bg-inset: #191917;
-  --border: #888780;
-  --border-soft: #4a4a46;
-  --text: #e8e6df;
-  --text-dim: #a09e95;
-  --accent: #d97b4f;
-  --green: #7fb069;
-  --red: #d9534f;
-  --yellow: #e0b84c;
-  --mono: "SF Mono", ui-monospace, Menlo, monospace;
-}
+/* Design tokens now live in theme.css (FR-60): the single source of truth for
+   all colors/fonts/shape, with per-theme [data-theme] overrides. Imported once
+   in main.jsx, ahead of this file. */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.45 -apple-system, "Segoe UI", sans-serif;
+  font: 13px/1.45 var(--sans);
   overflow: hidden;
 }
 
@@ -60,6 +49,13 @@ body {
 .recent-run { padding: 5px 16px; font-size: 12px; display: flex; justify-content: space-between; }
 .recent-run .wf { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
+.hud-btn {
+  margin: 0 12px 8px; padding: 6px 10px;
+  background: none; color: var(--text-dim);
+  border: 1px solid var(--border-soft); border-radius: 6px;
+  font: inherit; font-size: 12px; cursor: pointer; text-align: left;
+}
+.hud-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ---------- nav (Phase 3, FR-36/37) ---------- */
 .nav { display: flex; flex-direction: column; padding: 10px 0; }

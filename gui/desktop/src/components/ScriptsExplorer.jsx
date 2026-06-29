@@ -4,15 +4,18 @@ const SIDECAR = "http://localhost:5130/api";
 const HUB = SIDECAR; // Phase 9c: native sidecar, no Hub dependency
 
 // ─── Type classification ─────────────────────────────────────────────────────
+// Type hues encode meaning (semantic) and stay fixed across themes; their
+// backgrounds derive from the active theme surface via color-mix so each badge
+// reads on every skin. Hues that map to status tokens use the token directly.
 const TYPE_STYLE = {
-  "Launcher":    { bg:"#1c3a2a", color:"#7fb069" },
-  "Test":        { bg:"#1c2a3a", color:"#4fa8d9" },
-  "Data":        { bg:"#2a2a1c", color:"#e0b84c" },
-  "Scraper":     { bg:"#2a1c3a", color:"#b07fd9" },
-  "Diagnostic":  { bg:"#3a2a1c", color:"#d97b4f" },
-  "Maintenance": { bg:"#3a1c1c", color:"#d9534f" },
-  "Dev Setup":   { bg:"#1c3a38", color:"#4fd9cc" },
-  "Unknown":     { bg:"#2a2a2a", color:"#888888" },
+  "Launcher":    { bg:"color-mix(in srgb, var(--green) 16%, var(--bg-inset))",  color:"var(--green)" },
+  "Test":        { bg:"color-mix(in srgb, #4fa8d9 16%, var(--bg-inset))",       color:"#4fa8d9" },
+  "Data":        { bg:"color-mix(in srgb, var(--yellow) 16%, var(--bg-inset))", color:"var(--yellow)" },
+  "Scraper":     { bg:"color-mix(in srgb, #b07fd9 16%, var(--bg-inset))",       color:"#b07fd9" },
+  "Diagnostic":  { bg:"color-mix(in srgb, var(--accent) 16%, var(--bg-inset))", color:"var(--accent)" },
+  "Maintenance": { bg:"color-mix(in srgb, var(--red) 16%, var(--bg-inset))",    color:"var(--red)" },
+  "Dev Setup":   { bg:"color-mix(in srgb, #4fd9cc 16%, var(--bg-inset))",       color:"#4fd9cc" },
+  "Unknown":     { bg:"color-mix(in srgb, var(--text-dim) 16%, var(--bg-inset))", color:"var(--text-dim)" },
 };
 
 function classifyScript(s) {
@@ -349,21 +352,21 @@ export default function ScriptsExplorer() {
     padding:"2px 7px", fontSize:10, cursor:"pointer",
     border:"1px solid var(--border-soft)", borderRadius:3,
     background: sortBy===key ? "var(--accent)" : "none",
-    color: sortBy===key ? "#1b1b19" : "var(--text-dim)",
+    color: sortBy===key ? "var(--bg)" : "var(--text-dim)",
     fontWeight: sortBy===key ? 700 : 400,
     display:"flex", alignItems:"center", gap:3,
   });
   const groupBtn = (val) => ({
     padding:"2px 7px", fontSize:10, cursor:"pointer",
     border:"1px solid var(--border-soft)", borderRadius:3,
-    background: groupBy===val ? "#2a2a28" : "none",
+    background: groupBy===val ? "var(--bg-panel)" : "none",
     color: groupBy===val ? "var(--text)" : "var(--text-dim)",
     fontWeight: groupBy===val ? 600 : 400,
   });
   const sectionLabel = { fontSize:10, textTransform:"uppercase", letterSpacing:1, color:"var(--text-dim)", marginBottom:5 };
   const card = { background:"var(--bg-inset)", borderRadius:4, border:"1px solid var(--border-soft)", overflow:"hidden" };
 
-  const hubDot   = hubOk===null ? "#e0b84c" : hubOk ? "#7fb069" : "#d9534f";
+  const hubDot   = hubOk===null ? "var(--yellow)" : hubOk ? "var(--green)" : "var(--red)";
   const hubLabel = hubOk===null ? "checking…" : hubOk ? "sidecar:5130 · online" : "sidecar:5130 · offline";
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -381,7 +384,7 @@ export default function ScriptsExplorer() {
               borderRight: i===0 ? "none" : undefined,
               borderRadius: i===0 ? "4px 0 0 4px" : "0 4px 4px 0",
               background: tab===t ? "var(--accent)" : "none",
-              color: tab===t ? "#1b1b19" : "var(--text-dim)",
+              color: tab===t ? "var(--bg)" : "var(--text-dim)",
               fontWeight: tab===t ? 700 : 400,
             }}>
               {t==="explorer" ? "Explorer" : `Run Log${runLog.length ? ` (${runLog.length})` : ""}`}
@@ -438,7 +441,7 @@ export default function ScriptsExplorer() {
             {loading ? (
               <div style={{ padding:20, textAlign:"center", color:"var(--text-dim)", fontSize:12 }}>Loading from Hub…</div>
             ) : fetchErr ? (
-              <div style={{ padding:16, color:"#d9534f", fontSize:12 }}>{fetchErr}</div>
+              <div style={{ padding:16, color:"var(--red)", fontSize:12 }}>{fetchErr}</div>
             ) : (
               groupKeys.map(key => {
                 const items = groupedScripts(key);
@@ -450,7 +453,7 @@ export default function ScriptsExplorer() {
                       <div onClick={() => setGroupOpen(p => ({ ...p, [key]:!p[key] }))}
                         style={{ padding:"7px 12px 4px", fontSize:10, textTransform:"uppercase", letterSpacing:1.2, color:"var(--text-dim)", borderBottom:"1px solid var(--border-soft)", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", userSelect:"none" }}>
                         <span style={{ display:"flex", alignItems:"center", gap:6 }}>
-                          {groupBy==="type" && <span style={{ width:6, height:6, borderRadius:"50%", background:TYPE_STYLE[key]?.color||"#aaa", display:"inline-block" }} />}
+                          {groupBy==="type" && <span style={{ width:6, height:6, borderRadius:"50%", background:TYPE_STYLE[key]?.color||"var(--text-dim)", display:"inline-block" }} />}
                           {key}<span style={{ opacity:.5 }}> · {items.length}</span>
                         </span>
                         <span style={{ fontSize:9, transform:isOpen?"rotate(90deg)":"rotate(0deg)", transition:"transform .15s", display:"inline-block" }}>▶</span>
@@ -458,7 +461,7 @@ export default function ScriptsExplorer() {
                     )}
                     {isOpen && items.map(s => (
                       <div key={s.id} onClick={() => selectScript(s.id)}
-                        style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", cursor:"pointer", borderLeft:selected===s.id?"3px solid var(--accent)":"3px solid transparent", background:selected===s.id?"#272724":"transparent" }}>
+                        style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", cursor:"pointer", borderLeft:selected===s.id?"3px solid var(--accent)":"3px solid transparent", background:selected===s.id?"var(--bg-panel)":"transparent" }}>
                         <span style={badge(s.type)}>{s.type}</span>
                         <div style={{ overflow:"hidden", minWidth:0 }}>
                           <div style={{ fontFamily:"var(--mono)", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
@@ -481,12 +484,12 @@ export default function ScriptsExplorer() {
                 <div style={sectionLabel}>Run history · {runLog.length} entries</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                   {runLog.map((l,i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"baseline", gap:8, padding:"5px 10px", background:"var(--bg-inset)", borderRadius:4, borderLeft:`3px solid ${l.ok?"#7fb069":"#d9534f"}` }}>
+                    <div key={i} style={{ display:"flex", alignItems:"baseline", gap:8, padding:"5px 10px", background:"var(--bg-inset)", borderRadius:4, borderLeft:`3px solid ${l.ok?"var(--green)":"var(--red)"}` }}>
                       <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text-dim)", minWidth:64 }}>{l.ts.toLocaleTimeString("en-US",{hour12:false})}</span>
                       <span style={badge(l.type)}>{l.type}</span>
                       <span style={{ fontFamily:"var(--mono)", fontSize:11 }}>{l.name}</span>
                       <span style={{ fontSize:10, color:"var(--text-dim)", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.project}</span>
-                      <span style={{ fontFamily:"var(--mono)", fontSize:10, color:l.ok?"#7fb069":"#d9534f" }}>{l.ok?"OK":`exit ${l.exitCode||"ERR"}`}</span>
+                      <span style={{ fontFamily:"var(--mono)", fontSize:10, color:l.ok?"var(--green)":"var(--red)" }}>{l.ok?"OK":`exit ${l.exitCode||"ERR"}`}</span>
                       <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text-dim)" }}>{l.dur}ms</span>
                     </div>
                   ))}
@@ -510,14 +513,14 @@ export default function ScriptsExplorer() {
                 </div>
                 <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                   <button onClick={runScript} disabled={running||!hubOk}
-                    style={{ padding:"4px 14px", background:"var(--accent)", color:"#1b1b19", border:"none", borderRadius:4, fontFamily:"inherit", fontWeight:700, fontSize:12, cursor:running||!hubOk?"not-allowed":"pointer", opacity:running||!hubOk?0.6:1 }}>
+                    style={{ padding:"4px 14px", background:"var(--accent)", color:"var(--bg)", border:"none", borderRadius:4, fontFamily:"inherit", fontWeight:700, fontSize:12, cursor:running||!hubOk?"not-allowed":"pointer", opacity:running||!hubOk?0.6:1 }}>
                     {running ? "Running…" : "▶ Run"}
                   </button>
                   <button onClick={copyCmd}
                     style={{ padding:"4px 11px", background:"none", border:"1px solid var(--border-soft)", color:"var(--text-dim)", borderRadius:4, fontFamily:"inherit", fontSize:12, cursor:"pointer" }}>
                     {copied ? "Copied!" : "Copy command"}
                   </button>
-                  {!hubOk && <span style={{ fontSize:11, color:"#d9534f" }}>⚠ Hub offline</span>}
+                  {!hubOk && <span style={{ fontSize:11, color:"var(--red)" }}>⚠ Hub offline</span>}
                 </div>
               </div>
 
@@ -532,7 +535,7 @@ export default function ScriptsExplorer() {
                 )}
 
                 {infoErr && (
-                  <div style={{ fontSize:11, color:"#d97b4f", padding:"6px 10px", background:"#2a1c0e", borderRadius:4, border:"1px solid #4a3020" }}>
+                  <div style={{ fontSize:11, color:"var(--accent)", padding:"6px 10px", background:"color-mix(in srgb, var(--accent) 12%, var(--bg-inset))", borderRadius:4, border:"1px solid color-mix(in srgb, var(--accent) 30%, var(--border-soft))" }}>
                     ⚠ Could not read script file: {infoErr}
                   </div>
                 )}
@@ -556,7 +559,7 @@ export default function ScriptsExplorer() {
                         <div style={card}>
                           {scriptInfo.usageLines.map((l,i) => (
                             <div key={i} style={{ fontFamily:"var(--mono)", fontSize:11, padding:"6px 12px", borderBottom:i<scriptInfo.usageLines.length-1?"1px solid var(--border-soft)":"none", lineHeight:1.5, display:"flex", gap:8, alignItems:"baseline" }}>
-                              <span style={{ color:"#e0b84c", userSelect:"none", flexShrink:0 }}>$</span>
+                              <span style={{ color:"var(--yellow)", userSelect:"none", flexShrink:0 }}>$</span>
                               <span style={{ color:"var(--text)" }}>{l}</span>
                             </div>
                           ))}
@@ -590,7 +593,7 @@ export default function ScriptsExplorer() {
                             <div style={sectionLabel}>Env Variables</div>
                             <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                               {scriptInfo.envVars.map(v => (
-                                <span key={v} style={{ fontFamily:"var(--mono)", fontSize:10, padding:"2px 8px", background:"#2a2a1c", color:"#e0b84c", borderRadius:3, border:"1px solid #3a3a24" }}>{v}</span>
+                                <span key={v} style={{ fontFamily:"var(--mono)", fontSize:10, padding:"2px 8px", background:"color-mix(in srgb, var(--yellow) 14%, var(--bg-inset))", color:"var(--yellow)", borderRadius:3, border:"1px solid color-mix(in srgb, var(--yellow) 30%, var(--border-soft))" }}>{v}</span>
                               ))}
                             </div>
                           </div>
@@ -600,7 +603,7 @@ export default function ScriptsExplorer() {
                             <div style={sectionLabel}>Requires</div>
                             <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                               {scriptInfo.deps.map(d => (
-                                <span key={d} style={{ fontFamily:"var(--mono)", fontSize:10, padding:"2px 8px", background:"#1c2a3a", color:"#4fa8d9", borderRadius:3, border:"1px solid #1c3a50" }}>{d}</span>
+                                <span key={d} style={{ fontFamily:"var(--mono)", fontSize:10, padding:"2px 8px", background:"color-mix(in srgb, #4fa8d9 14%, var(--bg-inset))", color:"#4fa8d9", borderRadius:3, border:"1px solid color-mix(in srgb, #4fa8d9 30%, var(--border-soft))" }}>{d}</span>
                               ))}
                             </div>
                           </div>
@@ -612,7 +615,7 @@ export default function ScriptsExplorer() {
                     {scriptInfo.noteLines.length > 0 && (
                       <div>
                         <div style={sectionLabel}>Notes</div>
-                        <div style={{ ...card, borderLeft:"3px solid #e0b84c" }}>
+                        <div style={{ ...card, borderLeft:"3px solid var(--yellow)" }}>
                           {scriptInfo.noteLines.map((l,i) => (
                             <div key={i} style={{ fontSize:12, padding:"5px 12px", borderBottom:i<scriptInfo.noteLines.length-1?"1px solid var(--border-soft)":"none", lineHeight:1.6, color:"var(--text-dim)" }}>{l}</div>
                           ))}
@@ -639,16 +642,16 @@ export default function ScriptsExplorer() {
                   <div style={sectionLabel}>Output</div>
                   <div style={{
                     background:"var(--bg-inset)",
-                    border:`1px solid ${running?"#4a4a46":output?.ok?"#2a4a2a":output?"#4a2a2a":"#4a4a46"}`,
+                    border:`1px solid ${running?"var(--border-soft)":output?.ok?"color-mix(in srgb, var(--green) 35%, var(--bg-inset))":output?"color-mix(in srgb, var(--red) 35%, var(--bg-inset))":"var(--border-soft)"}`,
                     borderRadius:4, padding:"10px 12px",
                     fontFamily:"var(--mono)", fontSize:11, lineHeight:1.7,
                     whiteSpace:"pre-wrap", overflowX:"auto",
                     minHeight:80, maxHeight:220, overflowY:"auto",
-                    color:running?"#e0b84c":output?.ok?"#7fb069":output?"#d9534f":"var(--text-dim)",
+                    color:running?"var(--yellow)":output?.ok?"var(--green)":output?"var(--red)":"var(--text-dim)",
                   }}>
                     {running ? "Running script…" : output ? (
                       <>
-                        <span style={{ display:"inline-block", fontFamily:"var(--mono)", fontSize:11, padding:"2px 8px", borderRadius:3, marginRight:8, background:output.ok?"#1c3a2a":"#3a1c1c", color:output.ok?"#7fb069":"#d9534f" }}>
+                        <span style={{ display:"inline-block", fontFamily:"var(--mono)", fontSize:11, padding:"2px 8px", borderRadius:3, marginRight:8, background:output.ok?"color-mix(in srgb, var(--green) 18%, var(--bg-inset))":"color-mix(in srgb, var(--red) 18%, var(--bg-inset))", color:output.ok?"var(--green)":"var(--red)" }}>
                           {output.ok?"OK":`exit ${output.exitCode||"ERR"}`}
                         </span>
                         <span style={{ color:"var(--text-dim)", fontSize:10 }}>{output.dur}ms</span>

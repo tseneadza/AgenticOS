@@ -1,0 +1,135 @@
+/* Agentic OS — theme token contract (FR-60)
+ *
+ * Single source of truth for every visual token, and the home of ALL themes.
+ * Theming is purely additive: :root is the default look (terracotta), and each
+ * other theme is one `[data-theme="<key>"] { … }` block below. theme.js sets
+ * `document.documentElement[data-theme]`; unknown/unset keys fall back to :root.
+ *
+ * Switch live from the native View ▸ Theme menu (lib.rs → __agenticOsSetTheme).
+ *
+ * Token roles:
+ *   surfaces  --bg --bg-panel --bg-inset
+ *   borders   --border --border-soft --border-w
+ *   type      --text --text-dim --sans --mono
+ *   brand     --accent --accent2
+ *   status    --green --red --yellow   (kept semantic across every theme)
+ *   shape     --radius --glow
+ *   density   --density-pad --gap
+ */
+
+/* ── Terracotta Dark (default) ─────────────────────────────────────────────── */
+:root,
+:root[data-theme="terra"] {
+  --bg:        #1b1b19;
+  --bg-panel:  #222220;
+  --bg-inset:  #191917;
+
+  --border:      #888780;
+  --border-soft: #4a4a46;
+  --border-w:    2px;
+
+  --text:     #e8e6df;
+  --text-dim: #a09e95;
+  --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+
+  --accent:  #d97b4f;
+  --accent2: #d9a24f;
+
+  --green:  #7fb069;
+  --red:    #d9534f;
+  --yellow: #e0b84c;
+
+  --radius: 8px;
+  --glow:   0 4px 14px rgba(0, 0, 0, 0.28);
+
+  --density-pad: 14px;
+  --gap:         10px;
+}
+
+/* ── Cyber Neon (near-black · mint / magenta) ──────────────────────────────── */
+[data-theme="cyber"] {
+  --bg:        #080b0d;
+  --bg-panel:  #0e1316;
+  --bg-inset:  #05080a;
+
+  --border:      #243b3d;
+  --border-soft: #182a2c;
+  --border-w:    1px;
+
+  --text:     #d6f3ec;
+  --text-dim: #6f918c;
+  --sans: "Space Grotesk", -apple-system, system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --accent:  #34f5c8;
+  --accent2: #ff4dbd;
+
+  --green:  #2ff0a4;
+  --red:    #ff5470;
+  --yellow: #ffd84d;
+
+  --radius: 6px;
+  --glow:   0 0 14px rgba(52, 245, 200, 0.30);
+
+  --density-pad: 14px;
+  --gap:         10px;
+}
+
+/* ── Bold Futuristic (indigo glass · violet / cyan) ────────────────────────── */
+[data-theme="future"] {
+  --bg:        #0c0d1e;
+  --bg-panel:  #15172d;
+  --bg-inset:  #090a16;
+
+  --border:      #383b66;
+  --border-soft: #23264a;
+  --border-w:    1px;
+
+  --text:     #e9e7ff;
+  --text-dim: #9a98c6;
+  --sans: "Space Grotesk", -apple-system, system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --accent:  #8d7dff;
+  --accent2: #45e9ff;
+
+  --green:  #5cf2a8;
+  --red:    #ff6092;
+  --yellow: #ffd766;
+
+  --radius: 14px;
+  --glow:   0 4px 24px rgba(141, 125, 255, 0.32);
+
+  --density-pad: 14px;
+  --gap:         10px;
+}
+
+/* ── Terminal Green (CRT phosphor) ─────────────────────────────────────────── */
+[data-theme="term"] {
+  --bg:        #050705;
+  --bg-panel:  #0a0f0a;
+  --bg-inset:  #020402;
+
+  --border:      #1f3a24;
+  --border-soft: #15281a;
+  --border-w:    1px;
+
+  --text:     #7dff9e;
+  --text-dim: #3c8f57;
+  --sans: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --accent:  #3bed6a;
+  --accent2: #a6ff62;
+
+  --green:  #3bed6a;
+  --red:    #ff5f56;
+  --yellow: #f1e15c;
+
+  --radius: 2px;
+  --glow:   0 0 8px rgba(59, 237, 106, 0.22);
+
+  --density-pad: 14px;
+  --gap:         10px;
+}

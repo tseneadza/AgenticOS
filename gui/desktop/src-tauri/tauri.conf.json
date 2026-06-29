@@ -12,11 +12,26 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Agentic OS",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,
         "minHeight": 700
+      },
+      {
+        "label": "hud",
+        "title": "Agentic OS — HUD",
+        "url": "index.html#/hud",
+        "width": 250,
+        "height": 520,
+        "minWidth": 220,
+        "minHeight": 240,
+        "resizable": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
       }
     ],
     "security": {

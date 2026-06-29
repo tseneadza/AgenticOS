@@ -74,7 +74,61 @@ repo must follow this cycle:
 
 4. **See:** `gui/desktop/ICON_SETUP.md` for detailed icon instructions
 
+## Tauri desktop build/run + tray rule (learned 2026-06-28, the hard way)
+
+1. **Native features only appear in a real build, not `tauri dev`.** Frontend
+   (theme CSS/JS) hot-reloads under `tauri dev`, but Rust/config/capabilities only
+   take effect after a recompile — and **macOS menu-bar tray icons (`NSStatusItem`)
+   do NOT render from the raw `cargo run`/`tauri dev` binary.** To test the tray,
+   build + run a bundle:
+   `cd gui/desktop && npm run tauri -- build --debug --bundles app && open src-tauri/target/debug/bundle/macos/"Agentic OS.app"`.
+2. **`tauri::RunEvent` has NO `Reopen` variant in Tauri 2.11** — referencing it
+   fails to compile (which silently leaves the last-good binary running under dev).
+   Dock-icon-reopen needs another mechanism; don't use `RunEvent::Reopen`.
+3. **`tauri::include_image!(path)` embeds at COMPILE time and does NOT rebuild when
+   only the image file's CONTENT changes.** After regenerating that PNG, `touch`
+   the source (`src-tauri/src/lib.rs`) to force a recompile, or the old bytes stay embedded.
+4. **Tray icon source must be small** (~32×32). A large image (e.g. 256×256) makes
+   the status item oversized and it disappears.
+5. **Tray icon ≠ Dock icon.** Dock/app icon = `icon.icns`; tray = whatever
+   `include_image!` points to. To change ONLY the tray, do NOT run `npm run tauri icon`
+   (it overwrites `icon.icns` and changes the Dock). If you did, revert with
+   `git restore gui/desktop/src-tauri/icons/`.
+6. **Verify Rust on the Mac, not the sandbox.** The assistant sandbox (Linux) can't
+   build the macOS Tauri app. Use the on-device shell: `cd gui/desktop/src-tauri && cargo check`.
+   Background long runs with `nohup … >log 2>&1 & disown`; clean up strays with
+   `pkill -f 'target/debug/desktop'` / `'Agentic OS.app/Contents/MacOS'`.
+7. **Two windows, shared origin:** `main` + `hud`. Cross-window state uses Tauri
+   events (`emit`/`listen`, needs `core:event:default`) or shared `localStorage`.
+   Theme persists to `localStorage 'agentic-os.theme'`; HUD stays in sync via the
+   `theme-changed` event.
+8. **macOS Tahoe "Allow in Menu Bar" permission (learned 2026-06-29).** macOS 26+
+   defaults NSStatusItem visibility to OFF for new apps. The tray icon creates
+   successfully but doesn't render. Fix: user must enable in System Settings →
+   Menu Bar. This is NOT a Tauri bug. The app has a first-launch onboarding dialog
+   (FR-61b) that guides the user through this — marker file at
+   `~/Codehome/AgenticOS/data/.tray_onboarding_shown`.
+9. **Close-to-hide + ExitRequested.** To keep the app resident behind the tray
+   icon, TWO things are needed: (a) `on_window_event` catching `CloseRequested`
+   → `api.prevent_close()` + `window.hide()`, AND (b) `RunEvent::ExitRequested`
+   → `api.prevent_exit()` in the `.run()` handler. Without (b), Tauri quits when
+   all windows are hidden. Real quit goes through `PredefinedMenuItem::quit` /
+   Cmd+Q, which triggers `RunEvent::Exit`.
+10. **`open` reuses running instances.** If `/Applications/Agentic OS.app` is
+    already running, `open …/debug/bundle/macos/Agentic OS.app` silently focuses
+    the installed copy instead of launching the debug build. Kill the installed
+    process first: `pkill -f '/Applications/Agentic OS.app'`.
+11. **Install debug build to /Applications** for full testing:
+    `cp -R src-tauri/target/debug/bundle/macos/"Agentic OS.app" /Applications/`
+    then re-sign with `codesign --force --deep --sign "Apple Development: Antwan Seneadza (M36AVUL3XW)"`.
+
 ## GUI / frontend rule (NO SILENT STYLE BUGS)
+
+> NOTE (2026-06-28): design tokens were promoted out of `App.css :root` into
+> `gui/desktop/src/theme.css` (FR-60) — `:root` (terracotta default) plus
+> `[data-theme="cyber|future|term"]` blocks; new tokens `--accent2/--sans/--radius/
+> --border-w/--glow`. theme.css is the single source of truth; treat the App.css
+> reference below as "the same tokens, now in theme.css".
 
 **Before building or editing any React view/component in `gui/desktop/`,
 read `docs/gui-frontend-conventions.md`.** Key rules, each learned the hard way:

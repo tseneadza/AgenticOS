@@ -1,6 +1,10 @@
 // Agentic OS dashboard — Phase 7 (FR-40–44): expandable panels over Phase 3 nav shell
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./api";
+import { applyTheme, loadTheme } from "./theme";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emit, listen } from "@tauri-apps/api/event";
 import "./App.css";
 import "@xterm/xterm/css/xterm.css";
 
@@ -1361,6 +1365,43 @@ export default function App() {
     return () => { delete window.__agenticOsSetView; };
   }, []);
 
+  // FR-60: apply the persisted theme on boot + expose the native-menu switch
+  // bridge (View ▸ Theme in lib.rs), mirroring __agenticOsSetView above.
+  useEffect(() => {
+    applyTheme(loadTheme());
+    // Apply locally AND broadcast so the HUD window (and any other) re-skins
+    // live — keeps the HUD on the theme last set in the app (FR-60).
+    window.__agenticOsSetTheme = (key) => {
+      applyTheme(key);
+      emit("theme-changed", key).catch(() => {});
+    };
+    return () => { delete window.__agenticOsSetTheme; };
+  }, []);
+
+  // FR-63: the HUD nav drives the (re-shown) main window via a Tauri event.
+  useEffect(() => {
+    const un = listen("goto-view", (e) => {
+      const id = e.payload;
+      if (typeof id === "string" && VIEWS.some((v) => v.id === id)) setView(id);
+    });
+    return () => { un.then((f) => f()).catch(() => {}); };
+  }, []);
+
+  // FR-63: collapse to the HUD — drop it where the sidebar was (the main
+  // window's content top-left), then hide main so the sidebar appears to stay.
+  const minimizeToHud = async () => {
+    try {
+      const main = getCurrentWindow();
+      const hud = await WebviewWindow.getByLabel("hud");
+      if (hud) {
+        try { await hud.setPosition(await main.innerPosition()); } catch { /* positioning best-effort */ }
+        await hud.show();
+        await hud.setFocus();
+      }
+      await main.hide();
+    } catch { /* not running under Tauri (browser dev) */ }
+  };
+
   const runWorkflow = (name) => post(`/api/workflows/${name}/run`).catch(() => {});
   const decide = (id, decision) =>
     post(`/api/approvals/${id}`, { decision }).then(loadApprovals).catch(() => {});
@@ -1398,6 +1439,9 @@ export default function App() {
         </div>
 
         <div className="spacer" />
+        <button className="hud-btn" onClick={minimizeToHud} title="Hide the app and float a compact always-on-top HUD">
+          ⤡ Minimize to HUD
+        </button>
         <div className="conn">
           <span className={`dot ${connected ? "on" : "err"}`} />
           sidecar {connected ? "connected" : "disconnected"} · :5130

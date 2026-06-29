@@ -1,52 +1,51 @@
 # Continuation note
 
-**2026-06-25 (latest) — WorkflowsWorkspace committed, env-vars diagnosed, raw notes processed**
+**2026-06-29 — Phase 13 complete, ready for commit**
 
-## ✅ State now
-- Branch `main`, even with `origin/main`. Working tree **clean**.
-- Latest commit: `6121875` feat(workflows): WorkflowsWorkspace, SkippedRun pattern, llm env-isolation fix
-- **Sidecar healthy** on port 5130, MySQL-backed.
-- **No pending changes** — all pre-session work committed and pushed.
+## Completed this session
+- **Tray icon fix (FR-61):** macOS Tahoe "Allow in Menu Bar" permission was
+  defaulting to OFF. Tray now works with signed `.app` bundle.
+- **First-launch onboarding (FR-61b):** native macOS dialog (osascript) on
+  first launch guides user to enable tray in System Settings. Marker file:
+  `~/Codehome/AgenticOS/data/.tray_onboarding_shown`.
+- **Close-to-hide (FR-62 enhancement):** closing the window hides it instead
+  of quitting. App stays resident behind tray icon. Added
+  `RunEvent::ExitRequested → api.prevent_exit()` to the run handler.
+- **Installed to /Applications:** debug build copied and signed.
+- **CLAUDE.md updated** with lessons 8–11 (Tahoe permission, close-to-hide,
+  `open` reuse, install flow).
 
-## 🔍 Key discovery this session
-The running sidecar inherited `ANTHROPIC_BASE_URL=http://localhost:12434` and
-`ANTHROPIC_AUTH_TOKEN=ollama` from Claude Code's environment (Claude Code routes
-its own SDK calls through a local Ollama proxy on port 12434 — separate from the
-Ollama.app instance on 11434). This made the env look like local-LLM-only setup.
+## Files changed (uncommitted — NEED COMMIT)
+- `CLAUDE.md` — new lessons 8–11
+- `gui/desktop/src-tauri/src/lib.rs` — tray builder, onboarding dialog, ExitRequested handler
+- `gui/desktop/src-tauri/capabilities/default.json` — core:tray:default, core:menu:default
+- `gui/desktop/src-tauri/Cargo.toml` — tray-icon feature
+- `gui/desktop/src-tauri/Cargo.lock` — lockfile update
+- `gui/desktop/src-tauri/tauri.conf.json` — window config changes
+- `gui/desktop/src/App.css` — style updates
+- `gui/desktop/src/App.jsx` — component updates
+- `gui/desktop/src/main.jsx` — entry point updates
+- `gui/desktop/src/theme.css` — new (FR-60 design tokens)
+- `gui/desktop/src/theme.js` — new (theme switching)
+- `gui/desktop/src/Hud.jsx` — new (HUD window)
+- `gui/desktop/src/components/DiagnosticsPanel.jsx` — updates
+- `gui/desktop/src/components/ScriptsExplorer.jsx` — updates
+- `gui/desktop/src/components/WebNewsView.jsx` — updates
+- `docs/CONTINUATION.md` — this file
 
-**Resolution already in place:** `core/llm.py` `_isolated_anthropic_env()` strips
-those vars during both client construction AND `invoke()` time (the call-time fix
-was the pre-session commit above). Cloud Anthropic calls go to `api.anthropic.com`
-correctly regardless of what the shell environment holds.
+## Untracked files (decide whether to commit)
+- `gui/desktop/src-tauri/icons/tray.png` — OSA monogram 32x32 (not yet wired up)
+- `gui/desktop/src-tauri/icons/32x32.png.bak` — backup of original icon
+- `docs/IMPLEMENTATION-PLAN.md`, `docs/ROADMAP-APPEND.md` — planning docs
+- `data/` — runtime data directory (should be in .gitignore)
+- `AgenticOS Enhanced copy.pdf`, `menubar_right.png`, `menubar_test.png` — temp files (don't commit)
 
-Two Ollama instances running:
-- `/Applications/Ollama.app` → port 11434 (used by AgenticOS `ollama` provider)
-- `/usr/local/bin/ollama` → port 12434 (used by Claude Code only)
-
-## ▶ NEXT SESSION — START HERE
-**Goal: UI/design overhaul — make AgenticOS more aesthetically pleasing.**
-
-1. **Take a screenshot** of the running GUI first:
-   - `MacOS-MCP:Snapshot` or `Claude in Chrome` to capture current state
-   - Or open `http://localhost:5173` in the browser (Vite dev server) and screenshot
-2. **Read the frontend-design skill** at `/mnt/skills/public/frontend-design/SKILL.md`
-3. **Design targets** (from Tony's intent):
-   - Overall aesthetic uplift — current look is functional but utilitarian
-   - Consider: typography, color palette, spacing rhythm, component polish
-   - Nav/sidebar visual hierarchy
-   - Dashboard card design
-   - WebNewsView article cards
-4. **Optional data copy** (carry-forward): `./.venv/bin/python scripts/migrate_state_db_to_mysql.py`
-   to bring 49/11 old rows from `data/state.db.bak` into MySQL.
-5. **Clean up stale branches** (carry-forward): `phase2-gui-sprint2`, `phase2-gui-sprint1`,
-   `phase2-gui-sidebar` (all merged).
-
-## Carry-forward gotchas (unchanged)
-- `agents/brain2_agent.py` `collect_session_summary()` imports a `Memory` class
-  that never existed in `memory.py` — pre-existing latent ImportError, untouched.
-- MySQL creds: `~/.agentic-os/.env` (`MYSQL_DB=agenticos`; case-insensitive on macOS).
-- Runs REQUIRE MySQL up (no offline SQLite fallback). MySQL ≥ 8.0.19 (on 9.4.0).
-- Adding a script to the desktop Scripts view: add to `app.json` `scripts[]`,
-  then `POST http://localhost:8085/api/discover`.
-- Two Ollama instances are normal — don't kill the 12434 one, Claude Code needs it.
-
+## Next steps (next session)
+1. **Commit all Phase 12/13/14 changes** — stage the modified + new files above,
+   skip the temp files. Suggested message:
+   `"feat: Phase 12-14 — themes, HUD, tray icon, close-to-hide, onboarding (FR-60/61/62)"`
+2. **Replace icons/32x32.png** with proper OSA monogram (currently still Gemini logo)
+3. **Wire up tray.png** as the tray-specific icon (white on transparent, template-style)
+4. **Update docs/roadmap.md** — mark Phase 13 complete
+5. **Update docs/CHANGELOG.md** — log all FR-60/61/62 changes
+6. **Add `data/` to .gitignore** — runtime data shouldn't be tracked
