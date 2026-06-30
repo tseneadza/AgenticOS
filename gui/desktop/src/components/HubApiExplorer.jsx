@@ -4,6 +4,7 @@ import PathDisplay from "./PathDisplay";
 import StatusIndicator from "./StatusIndicator";
 import ResponseDisplay from "./ResponseDisplay";
 import ParamInput from "./ParamInput";
+import GroupHeader from "./GroupHeader";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -281,13 +282,12 @@ export default function HubApiExplorer() {
               if (!items.length) return null;
               return (
                 <div key={g}>
-                  <div
-                    style={{ padding: "7px 12px 4px", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: "var(--text-dim)", borderBottom: "1px solid var(--border-soft)", display: "flex", justifyContent: "space-between", cursor: "pointer", userSelect: "none" }}
-                    onClick={() => setGroupOpen(p => ({ ...p, [g]: !p[g] }))}
-                  >
-                    <span>{g}</span>
-                    <span style={{ fontSize: 9, display: "inline-block", transform: groupOpen[g] ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .15s" }}>▶</span>
-                  </div>
+                  <GroupHeader
+                    name={g}
+                    isOpen={groupOpen[g]}
+                    onToggle={() => setGroupOpen(p => ({ ...p, [g]: !p[g] }))}
+                    itemCount={items.length}
+                  />
                   {groupOpen[g] && items.map(e => (
                     <div
                       key={e._i}
