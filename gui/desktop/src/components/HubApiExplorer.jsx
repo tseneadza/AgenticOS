@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import MethodBadge from "./MethodBadge";
+import PathDisplay from "./PathDisplay";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -104,14 +105,6 @@ function buildUrl(ep, paramValues) {
   const base = ep.server === "sidecar" ? SIDECAR
              : ep.rootPath ? "http://localhost:8085" : HUB;
   return base + path + (qs ? "?" + qs : "");
-}
-
-function PathDisplay({ path }) {
-  return path.split(/(\{[^}]+\})/).map((seg, i) =>
-    seg.startsWith("{")
-      ? <span key={i} style={{ color: "#d97b4f" }}>{seg}</span>
-      : <span key={i}>{seg}</span>
-  );
 }
 
 export default function HubApiExplorer() {
