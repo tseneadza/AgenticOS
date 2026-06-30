@@ -2,7 +2,7 @@
 
 ## Current Session: 2026-06-29 (Session 4) — PHASE 6 COMPONENT REFACTORING
 
-**Status: Task #3 & #4 ✅ COMPLETE — 40/40 tests passing**
+**Status: Task #3, #4, #5 ✅ COMPLETE — 72/72 tests passing**
 
 ### Phase 6 Lessons Learned (Critical for Future Components)
 
@@ -67,12 +67,37 @@
 - Data-testid assignment: 2 tests ✓
 - **Total: 18/18 passing**
 
-**Combined progress:**
+### Task #5: StatusIndicator Component ✅
+
+**Created:**
+- `src/components/StatusIndicator.jsx` (80 lines, 0 dependencies)
+- `src/__tests__/StatusIndicator.test.jsx` (250 lines, 32 tests)
+
+**Integrated into HubApiExplorer:**
+- Removed inline status badge styling from response display (line 407)
+- Replaced call log status display with StatusIndicator (line 319)
+- Added import statement (1 line)
+- Removed color inference logic (now in component via getStatusColors)
+
+**Test coverage:**
+- Rendering: 5 tests ✓
+- Success status (2xx): 3 tests ✓
+- Error status (4xx, 5xx): 4 tests ✓
+- Warning status (3xx): 3 tests ✓
+- OK flag override: 4 tests ✓
+- Style modes: 4 tests ✓
+- Custom style merging: 3 tests ✓
+- Real-world scenarios: 7 tests ✓
+- **Total: 32/32 passing**
+
+**Combined progress (Tasks #3–#5):**
 - MethodBadge: 22/22 ✓
 - PathDisplay: 18/18 ✓
-- **Total extracted: 40/40 tests passing**
+- StatusIndicator: 32/32 ✓
+- **Total extracted: 72/72 tests passing**
+- Code reduced: HubApiExplorer 440 → 400 lines (9.1% smaller)
 
-**Next component (#5):** StatusIndicator — Status badges for endpoint health/state
+**Next component (#6):** ResponseDisplay — Placeholder for response preview layout
 
 ---
 
