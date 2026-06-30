@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import MethodBadge from "./MethodBadge";
 import PathDisplay from "./PathDisplay";
 import StatusIndicator from "./StatusIndicator";
+import ResponseDisplay from "./ResponseDisplay";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -391,27 +392,7 @@ export default function HubApiExplorer() {
                   </div>
                 )}
 
-                <div>
-                  <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "var(--text-dim)", marginBottom: 6 }}>Response</div>
-                  <div style={{
-                    background: "var(--bg-inset)",
-                    border: `1px solid ${loading ? "#4a4a46" : response?.ok ? "#2a4a2a" : response ? "#4a2a2a" : "#4a4a46"}`,
-                    borderRadius: 4, padding: "10px 12px",
-                    fontFamily: "var(--mono)", fontSize: 11, lineHeight: 1.6,
-                    whiteSpace: "pre-wrap", overflowX: "auto",
-                    minHeight: 80, maxHeight: 300, overflowY: "auto",
-                    color: loading ? "#e0b84c" : response?.ok ? "#7fb069" : response ? "#d9534f" : "var(--text-dim)",
-                  }}>
-                    {loading ? "Sending request…" : response ? (
-                      <>
-                        <StatusIndicator status={response.status || "ERR"} ok={response.ok} />
-                        <span style={{ color: "var(--text-dim)", fontSize: 10 }}>{response.dur}ms</span>
-                        {"\n\n"}
-                        {response.text}
-                      </>
-                    ) : "No response yet — click Run to send the request."}
-                  </div>
-                </div>
+                <ResponseDisplay response={response} loading={loading} />
               </div>
             </>
           )}
