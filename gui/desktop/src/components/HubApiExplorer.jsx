@@ -5,6 +5,8 @@ import StatusIndicator from "./StatusIndicator";
 import ResponseDisplay from "./ResponseDisplay";
 import ParamInput from "./ParamInput";
 import GroupHeader from "./GroupHeader";
+import FilterBar from "./FilterBar";
+import CallLogEntry from "./CallLogEntry";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -253,13 +255,8 @@ export default function HubApiExplorer() {
 
         {/* LEFT: endpoint list */}
         <div style={{ width: 290, minWidth: 290, borderRight: "1px solid var(--border-soft)", display: "flex", flexDirection: "column", background: "var(--bg-inset)", overflow: "hidden" }}>
-          <div style={{ padding: "7px 10px", borderBottom: "1px solid var(--border-soft)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 7 }}>
-            <input
-              style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border-soft)", color: "var(--text)", borderRadius: 4, padding: "4px 9px", fontFamily: "inherit", fontSize: 12, outline: "none" }}
-              placeholder="Filter endpoints…"
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-            />
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 7 }}>
+            <FilterBar value={filter} onChange={setFilter} />
             <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
               <span style={{ fontSize: 10, color: "var(--text-dim)" }}>Collapse:</span>
               <button
@@ -314,13 +311,7 @@ export default function HubApiExplorer() {
                 <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "var(--text-dim)", marginBottom: 8 }}>Recent calls · {callLog.length} total</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                   {callLog.map((l, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "5px 10px", background: "var(--bg-inset)", borderRadius: 4, borderLeft: `3px solid ${l.ok ? "#7fb069" : "#d9534f"}`, fontSize: 12 }}>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", minWidth: 64 }}>{l.ts.toLocaleTimeString("en-US", { hour12: false })}</span>
-                      <MethodBadge method={l.method} />
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 11, flex: 1 }}>{l.path}</span>
-                      <StatusIndicator status={l.status || "ERR"} ok={l.ok} style="text" customStyle={{ marginRight: 0 }} />
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)" }}>{l.dur}ms</span>
-                    </div>
+                    <CallLogEntry key={i} entry={l} />
                   ))}
                 </div>
               </div>
