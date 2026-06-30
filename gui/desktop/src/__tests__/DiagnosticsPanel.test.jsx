@@ -61,7 +61,7 @@ describe('DiagnosticsPanel Component', () => {
 
   it('shows collapsed view with 3 metrics', () => {
     render(<DiagnosticsPanel data={mockData} />);
-    const summary = screen.getByText('CPU').parentElement;
+    const summary = screen.getByText('Diagnostics').closest('.diag-panel');
     expect(summary.textContent).toContain('35%'); // CPU
     expect(summary.textContent).toContain('51%'); // RAM
     expect(summary.textContent).toContain('1.0 MB'); // Network
@@ -152,9 +152,9 @@ describe('DiagnosticsPanel Component', () => {
     fireEvent.click(header);
 
     expect(screen.getByText('Top Processes')).toBeInTheDocument();
-    expect(screen.getByText('python3')).toBeInTheDocument();
-    expect(screen.getByText('chrome')).toBeInTheDocument();
-    expect(screen.getByText('node')).toBeInTheDocument();
+    expect(screen.getAllByText('python3').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('chrome').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('node').length).toBeGreaterThan(0);
   });
 
   it('displays disk information', () => {

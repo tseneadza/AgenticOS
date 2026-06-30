@@ -1,4 +1,21 @@
+import { vi } from "vitest";
 import "@testing-library/jest-dom";
+
+// Mock localStorage with actual in-memory storage
+const store = {};
+const localStorageMock = {
+  getItem: (key) => store[key] || null,
+  setItem: (key, value) => {
+    store[key] = String(value);
+  },
+  removeItem: (key) => {
+    delete store[key];
+  },
+  clear: () => {
+    Object.keys(store).forEach(key => delete store[key]);
+  },
+};
+global.localStorage = localStorageMock;
 
 // Mock window.matchMedia
 Object.defineProperty(window, "matchMedia", {

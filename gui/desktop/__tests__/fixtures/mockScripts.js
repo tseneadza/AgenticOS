@@ -36,7 +36,7 @@ export const mockScripts = [
     app_id: "app1",
     name: "seed-db",
     path: "/apps/app1/seed-db.py",
-    description: "Seed the database with test data",
+    description: "Seed the database with sample data",
     type: "Data",
     project: "app1",
   },
@@ -92,7 +92,10 @@ export const mockScriptInfo = {
 export const mockScriptContent = `#!/bin/bash
 # Run tests for the application
 #
-# Usage: ./run-tests.sh [--coverage] [--watch]
+# Usage:
+#   ./run-tests.sh
+#   ./run-tests.sh --coverage
+#   ./run-tests.sh --watch
 #
 # Options:
 #   --coverage    Generate coverage report

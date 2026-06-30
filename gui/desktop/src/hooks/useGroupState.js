@@ -23,7 +23,10 @@ export function useGroupState(initialKeys = []) {
   };
 
   const setAll = (keys, state) => {
-    setGroupOpen(Object.fromEntries(keys.map(k => [k, state])));
+    setGroupOpen(prev => ({
+      ...prev,
+      ...Object.fromEntries(keys.map(k => [k, state]))
+    }));
   };
 
   return { groupOpen, toggleGroup, expandAll, collapseAll, setAll, setGroupOpen };

@@ -10,7 +10,8 @@ import {
   TYPE_STYLE,
   METHOD_COLOR,
 } from "../../src/utils/explorers";
-import { mockScripts, mockScriptContent, mockEndpoints } from "../fixtures/mockEndpoints";
+import { mockScripts, mockScriptContent, mockScriptInfo } from "../fixtures/mockScripts";
+import { mockEndpoints } from "../fixtures/mockEndpoints";
 
 describe("Explorer Utilities", () => {
   // ─────────────────────────────────────────────────────────────────────────
@@ -261,7 +262,7 @@ print("test")
     });
 
     it("should filter by path", () => {
-      const result = filterEndpoints(mockEndpoints, "Cards", "logs");
+      const result = filterEndpoints(mockEndpoints, "Logs & Env", "logs");
       expect(result.length).toBeGreaterThan(0);
       expect(result.some(e => e.path.includes("logs"))).toBe(true);
     });

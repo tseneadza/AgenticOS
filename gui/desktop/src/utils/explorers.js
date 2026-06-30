@@ -25,11 +25,13 @@ export const TYPE_STYLE = {
  */
 export function classifyScript(script) {
   const n = (script.name || "").toLowerCase();
+  // Check diagnostic first (before test, to avoid "inspect" matching "spec")
+  if (n.includes("diagnose") || n.includes("discover") || n.includes("inspect") || n.includes("debug") || n.includes("probe") || n.includes("setup_database")) return "Diagnostic";
+  // Then check other types
   if (n.includes("start") || n.includes("launch") || n.includes("serve")) return "Launcher";
   if (n.includes("test") || n.includes("smoke") || n.includes("spec")) return "Test";
   if (n.includes("seed") || n.includes("import") || n.includes("populate") || n.includes("backfill") || n.includes("migrate") || n.includes("setup_db") || n.includes("load_") || n.includes("collect_") || n.includes("update_all")) return "Data";
   if (n.includes("scrape") || n.includes("fetch") || n.includes("crawl") || n.includes("download") || n.includes("update_fighter") || n.includes("update_full")) return "Scraper";
-  if (n.includes("diagnose") || n.includes("discover") || n.includes("inspect") || n.includes("debug") || n.includes("probe") || n.includes("setup_database")) return "Diagnostic";
   if (n.includes("clear") || n.includes("clean") || n.includes("sync") || n.includes("update-port") || n.includes("show_cron") || n.includes("repo-sync")) return "Maintenance";
   if (n.includes("setup") || n.includes("init") || n.includes("install") || n.includes("symlink") || n.includes("branch") || n.includes("build")) return "Dev Setup";
   const d = (script.description || "").toLowerCase();
