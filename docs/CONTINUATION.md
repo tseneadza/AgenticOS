@@ -2,7 +2,7 @@
 
 ## Current Session: 2026-06-29 (Session 4) — PHASE 6 COMPONENT REFACTORING
 
-**Status: Task #3–#7 ✅ COMPLETE — 130/130 tests passing**
+**Status: Task #3–#8 ✅ COMPLETE — 159/159 tests passing**
 
 ### Phase 6 Lessons Learned (Critical for Future Components)
 
@@ -147,7 +147,36 @@
 - Components: 5 extracted
 - Commits: 5 (one per component)
 
-**Next component (#8):** GroupHeader — Section header for endpoint groups
+### Task #8: GroupHeader Component ✅
+
+**Created:**
+- `src/components/GroupHeader.jsx` (85 lines, 0 dependencies)
+- `src/__tests__/GroupHeader.test.jsx` (320 lines, 29 tests)
+
+**Integrated into HubApiExplorer:**
+- Replaced 7-line inline group header (lines 284-290)
+- Single component render: `<GroupHeader name={g} isOpen={...} onToggle={...} itemCount={...} />`
+- Removed chevron rotation styling logic
+- Added item count display feature
+
+**Test coverage:**
+- Rendering: 5 tests ✓
+- Open/closed state: 4 tests ✓
+- Toggle functionality: 4 tests ✓
+- Item count: 4 tests ✓
+- Accessibility: 5 tests ✓
+- Styling: 3 tests ✓
+- Real-world scenarios: 5 tests ✓
+- **Total: 29/29 passing**
+
+**Final Phase 6 Progress (Tasks #3–#8):**
+- 6 components extracted: 159/159 tests passing
+- Code reduced: HubApiExplorer 440 → 352 lines (20% smaller)
+- Commits: 6 (one per component)
+- Lines of component code: 430 (UI logic extracted)
+- Lines of test code: 1,605 (comprehensive coverage)
+
+**Remaining:** Tasks #9–10 (FilterBar, CallLogEntry) + ScriptsExplorer tasks #13–17
 
 ---
 
