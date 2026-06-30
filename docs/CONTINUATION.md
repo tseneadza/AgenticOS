@@ -2,7 +2,7 @@
 
 ## Current Session: 2026-06-29 (Session 4) — PHASE 6 COMPONENT REFACTORING
 
-**Status: Task #3–#8 ✅ COMPLETE — 159/159 tests passing**
+**Status: Task #3–#10 ✅ COMPLETE — 187/187 tests passing**
 
 ### Phase 6 Lessons Learned (Critical for Future Components)
 
@@ -176,7 +176,34 @@
 - Lines of component code: 430 (UI logic extracted)
 - Lines of test code: 1,605 (comprehensive coverage)
 
-**Remaining:** Tasks #9–10 (FilterBar, CallLogEntry) + ScriptsExplorer tasks #13–17
+### Task #9: FilterBar Component ✅
+
+**Created:**
+- `src/components/FilterBar.jsx` (40 lines, 0 dependencies)
+- `src/__tests__/FilterBar.test.jsx` (105 lines, 10 tests)
+
+**Integrated:** Replaced inline filter input (3 lines), component handle filter state
+
+### Task #10: CallLogEntry Component ✅
+
+**Created:**
+- `src/components/CallLogEntry.jsx` (100 lines, 2 dependencies: MethodBadge, StatusIndicator)
+- `src/__tests__/CallLogEntry.test.jsx` (185 lines, 18 tests)
+
+**Integrated:** Replaced 7-line inline log entry rendering (16 lines → 3 lines)
+
+**MEGA SESSION FINAL RESULTS:**
+- **8 components extracted**: 187/187 tests passing
+- **Code reduction**: HubApiExplorer 440 → 320 lines (27.3% smaller)
+- **Component code**: 555 lines extracted
+- **Test code**: 1,855 lines (3.3:1 test-to-code ratio)
+- **Commits**: 16 total (8 component + 8 progress updates)
+
+**Phase 6 Status:** 8/13 HubApiExplorer components done (61%)
+
+**Remaining:**
+- #11–12: (Unknown — not yet scoped)
+- #13–17: ScriptsExplorer components (5 tasks)
 
 ---
 
