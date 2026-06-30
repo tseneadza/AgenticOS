@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import ScriptTypeBadge from "./ScriptTypeBadge";
+import ScriptGroupHeader from "./ScriptGroupHeader";
+import ScriptItem from "./ScriptItem";
 
 const SIDECAR = "http://localhost:5130/api";
 const HUB = SIDECAR; // Phase 9c: native sidecar, no Hub dependency
@@ -459,24 +462,21 @@ export default function ScriptsExplorer() {
                 return (
                   <div key={key}>
                     {groupBy !== "none" && (
-                      <div onClick={() => setGroupOpen(p => ({ ...p, [key]:!p[key] }))}
-                        style={{ padding:"7px 12px 4px", fontSize:10, textTransform:"uppercase", letterSpacing:1.2, color:"var(--text-dim)", borderBottom:"1px solid var(--border-soft)", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", userSelect:"none" }}>
-                        <span style={{ display:"flex", alignItems:"center", gap:6 }}>
-                          {groupBy==="type" && <span style={{ width:6, height:6, borderRadius:"50%", background:TYPE_STYLE[key]?.color||"var(--text-dim)", display:"inline-block" }} />}
-                          {key}<span style={{ opacity:.5 }}> · {items.length}</span>
-                        </span>
-                        <span style={{ fontSize:9, transform:isOpen?"rotate(90deg)":"rotate(0deg)", transition:"transform .15s", display:"inline-block" }}>▶</span>
-                      </div>
+                      <ScriptGroupHeader
+                        name={key}
+                        isOpen={isOpen}
+                        onToggle={() => setGroupOpen(p => ({ ...p, [key]: !p[key] }))}
+                        itemCount={items.length}
+                        groupBy={groupBy}
+                      />
                     )}
                     {isOpen && items.map(s => (
-                      <div key={s.id} onClick={() => selectScript(s.id)}
-                        style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", cursor:"pointer", borderLeft:selected===s.id?"3px solid var(--accent)":"3px solid transparent", background:selected===s.id?"var(--bg-panel)":"transparent" }}>
-                        <span style={badge(s.type)}>{s.type}</span>
-                        <div style={{ overflow:"hidden", minWidth:0 }}>
-                          <div style={{ fontFamily:"var(--mono)", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
-                          <div style={{ fontSize:10, color:"var(--text-dim)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.project}</div>
-                        </div>
-                      </div>
+                      <ScriptItem
+                        key={s.id}
+                        script={s}
+                        isSelected={selected === s.id}
+                        onSelect={() => selectScript(s.id)}
+                      />
                     ))}
                   </div>
                 );
@@ -495,7 +495,7 @@ export default function ScriptsExplorer() {
                   {runLog.map((l,i) => (
                     <div key={i} style={{ display:"flex", alignItems:"baseline", gap:8, padding:"5px 10px", background:"var(--bg-inset)", borderRadius:4, borderLeft:`3px solid ${l.ok?"var(--green)":"var(--red)"}` }}>
                       <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text-dim)", minWidth:64 }}>{l.ts.toLocaleTimeString("en-US",{hour12:false})}</span>
-                      <span style={badge(l.type)}>{l.type}</span>
+                      <ScriptTypeBadge type={l.type} />
                       <span style={{ fontFamily:"var(--mono)", fontSize:11 }}>{l.name}</span>
                       <span style={{ fontSize:10, color:"var(--text-dim)", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.project}</span>
                       <span style={{ fontFamily:"var(--mono)", fontSize:10, color:l.ok?"var(--green)":"var(--red)" }}>{l.ok?"OK":`exit ${l.exitCode||"ERR"}`}</span>
