@@ -1,8 +1,8 @@
 # Continuation note
 
-## Current Session: 2026-06-29 (Session 4) — PHASE 6 COMPONENT REFACTORING STARTS
+## Current Session: 2026-06-29 (Session 4) — PHASE 6 COMPONENT REFACTORING
 
-**Status: Task #3 (MethodBadge Component) ✅ COMPLETE — 22/22 tests passing**
+**Status: Task #3 & #4 ✅ COMPLETE — 40/40 tests passing**
 
 ### Phase 6 Lessons Learned (Critical for Future Components)
 
@@ -33,7 +33,7 @@
 - **Fix**: Run fresh terminal session (but clearing node_modules/.vite sometimes needed)
 - **Prevention**: If tests don't reflect recent changes, suspect cache → clear and retry fresh
 
-### MethodBadge Component (#3) — Summary
+### Task #3: MethodBadge Component ✅
 
 **Created:**
 - `src/components/MethodBadge.jsx` (40 lines, 0 dependencies)
@@ -45,14 +45,34 @@
 - Replaced 3 inline badge usages with `<MethodBadge method={...} />`
 - Net: HubApiExplorer reduced 440 → 415 lines
 
+**Test coverage:** 22/22 passing ✓
+
+### Task #4: PathDisplay Component ✅
+
+**Created:**
+- `src/components/PathDisplay.jsx` (35 lines, 0 dependencies)
+- `src/__tests__/PathDisplay.test.jsx` (250 lines, 18 tests)
+
+**Integrated into HubApiExplorer:**
+- Removed inline PathDisplay function (7 lines)
+- Replaced 2 usages with `<PathDisplay path={...} />`
+- Added import statement (1 line)
+- Net: HubApiExplorer reduced 415 → 409 lines
+
 **Test coverage:**
 - Rendering: 4 tests ✓
-- Styling: 9 tests ✓
-- Method types: 6 tests ✓
-- Custom style merging: 3 tests ✓
-- **Total: 22/22 passing**
+- Parameter highlighting: 6 tests ✓
+- Path segments: 5 tests ✓
+- Real-world API paths: 3 tests ✓
+- Data-testid assignment: 2 tests ✓
+- **Total: 18/18 passing**
 
-**Next component (#4):** PathDisplay — Similar size/complexity, ready to extract
+**Combined progress:**
+- MethodBadge: 22/22 ✓
+- PathDisplay: 18/18 ✓
+- **Total extracted: 40/40 tests passing**
+
+**Next component (#5):** StatusIndicator — Status badges for endpoint health/state
 
 ---
 
