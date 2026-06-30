@@ -3,6 +3,7 @@ import MethodBadge from "./MethodBadge";
 import PathDisplay from "./PathDisplay";
 import StatusIndicator from "./StatusIndicator";
 import ResponseDisplay from "./ResponseDisplay";
+import ParamInput from "./ParamInput";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -368,24 +369,12 @@ export default function HubApiExplorer() {
                       </thead>
                       <tbody>
                         {ep.params.map(p => (
-                          <tr key={p.name}>
-                            <td style={{ padding: "5px 8px", borderBottom: "1px solid #2a2a28" }}>
-                              <span style={{ color: "var(--accent)", fontFamily: "var(--mono)", fontSize: 11 }}>{p.name}</span>
-                              {p.required && <span style={{ color: "#d9534f", fontSize: 10 }}> *</span>}
-                            </td>
-                            <td style={{ padding: "5px 8px", borderBottom: "1px solid #2a2a28", color: "var(--text-dim)", fontSize: 11 }}>{p._in}</td>
-                            <td style={{ padding: "5px 8px", borderBottom: "1px solid #2a2a28" }}>
-                              <span style={{ color: "#e0b84c", fontFamily: "var(--mono)", fontSize: 10 }}>{p.type}</span>
-                            </td>
-                            <td style={{ padding: "5px 8px", borderBottom: "1px solid #2a2a28" }}>
-                              <input
-                                style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border-soft)", color: "var(--text)", borderRadius: 3, padding: "3px 7px", fontFamily: "var(--mono)", fontSize: 11, outline: "none" }}
-                                placeholder={p.hint || ""}
-                                value={paramValues[p.name] || ""}
-                                onChange={e => setParamValues(prev => ({ ...prev, [p.name]: e.target.value }))}
-                              />
-                            </td>
-                          </tr>
+                          <ParamInput
+                            key={p.name}
+                            param={p}
+                            value={paramValues[p.name] || ""}
+                            onChange={value => setParamValues(prev => ({ ...prev, [p.name]: value }))}
+                          />
                         ))}
                       </tbody>
                     </table>
