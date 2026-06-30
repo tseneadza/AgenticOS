@@ -2,6 +2,7 @@
  * ResponseDisplay Component
  *
  * Renders an API response with status, duration, and formatted text.
+ * All colors use theme variables for full theme compatibility.
  * Handles loading states, success/error styling, and scrollable text area.
  *
  * @param {object} response - Response object with shape:
@@ -15,58 +16,75 @@
 
 import StatusIndicator from "./StatusIndicator";
 
+const styles = `
+.response-container {
+  background: var(--bg-inset);
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  min-height: 80px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.response-container.default {
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+}
+
+.response-container.loading {
+  border: 1px solid var(--border-soft);
+  color: var(--yellow);
+}
+
+.response-container.success {
+  border: 1px solid rgba(127, 176, 105, 0.4);
+  color: var(--green);
+}
+
+.response-container.error {
+  border: 1px solid rgba(217, 83, 79, 0.4);
+  color: var(--red);
+}
+
+.response-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.response-duration {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+`;
+
 export default function ResponseDisplay({ response, loading = false, customStyle }) {
-  // Determine border color based on state
-  let borderColor = "#4a4a46"; // default (no response)
+  // Determine state class for styling
+  let stateClass = "default"; // default (no response)
   if (loading) {
-    borderColor = "#4a4a46"; // loading
+    stateClass = "loading";
   } else if (response?.ok) {
-    borderColor = "#2a4a2a"; // success (dark green)
+    stateClass = "success";
   } else if (response) {
-    borderColor = "#4a2a2a"; // error (dark red)
+    stateClass = "error";
   }
-
-  // Determine text color based on state
-  let textColor = "var(--text-dim)"; // default
-  if (loading) {
-    textColor = "#e0b84c"; // yellow (loading)
-  } else if (response?.ok) {
-    textColor = "#7fb069"; // green (success)
-  } else if (response) {
-    textColor = "#d9534f"; // red (error)
-  }
-
-  const containerStyle = {
-    background: "var(--bg-inset)",
-    border: `1px solid ${borderColor}`,
-    borderRadius: 4,
-    padding: "10px 12px",
-    fontFamily: "var(--mono)",
-    fontSize: 11,
-    lineHeight: 1.6,
-    whiteSpace: "pre-wrap",
-    overflowX: "auto",
-    minHeight: 80,
-    maxHeight: 300,
-    overflowY: "auto",
-    color: textColor,
-    ...customStyle,
-  };
 
   return (
     <div>
+      <style>{styles}</style>
+      <div className="response-label">Response</div>
       <div
-        style={{
-          fontSize: 10,
-          textTransform: "uppercase",
-          letterSpacing: 1,
-          color: "var(--text-dim)",
-          marginBottom: 6,
-        }}
+        className={`response-container ${stateClass}`}
+        style={customStyle}
+        data-testid="response-display"
       >
-        Response
-      </div>
-      <div style={containerStyle} data-testid="response-display">
         {loading ? (
           "Sending request…"
         ) : response ? (
@@ -75,9 +93,7 @@ export default function ResponseDisplay({ response, loading = false, customStyle
               status={response.status || "ERR"}
               ok={response.ok}
             />
-            <span style={{ color: "var(--text-dim)", fontSize: 10 }}>
-              {response.dur}ms
-            </span>
+            <span className="response-duration">{response.dur}ms</span>
             {"\n\n"}
             {response.text}
           </>

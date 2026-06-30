@@ -2,9 +2,9 @@
  * MethodBadge Component
  *
  * Renders an HTTP method badge with color coding.
- * Colors are semantic:
+ * Colors are semantic and theme-aware:
  * - GET: Green (read/safe)
- * - POST: Orange (create)
+ * - POST: Accent/Orange (create)
  * - PUT: Yellow (update)
  * - DELETE: Red (destructive)
  *
@@ -12,37 +12,61 @@
  * @param {object} [style] - Additional inline styles to merge
  */
 
-const METHOD_COLOR = {
-  GET:    { background: "#1c3a2a", color: "#7fb069" },
-  POST:   { background: "#3a2a1c", color: "#d97b4f" },
-  DELETE: { background: "#3a1c1c", color: "#d9534f" },
-  PUT:    { background: "#2a2a1c", color: "#e0b84c" },
-  PATCH:  { background: "#2a1c3a", color: "#b07fd9" },
-};
+const styles = `
+.method-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  min-width: 44px;
+  text-align: center;
+  display: inline-block;
+  user-select: none;
+  animation: fadeIn 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-const defaultBadgeStyle = {
-  fontFamily: "var(--mono)",
-  fontSize: 10,
-  fontWeight: 700,
-  padding: "2px 6px",
-  borderRadius: 3,
-  minWidth: 44,
-  textAlign: "center",
-  display: "inline-block",
-  userSelect: "none",
-};
+.method-badge.get {
+  background: rgba(127, 176, 105, 0.16);
+  color: var(--green);
+  border: 1px solid rgba(127, 176, 105, 0.3);
+}
+
+.method-badge.post {
+  background: rgba(217, 123, 79, 0.16);
+  color: var(--accent);
+  border: 1px solid rgba(217, 123, 79, 0.3);
+}
+
+.method-badge.delete {
+  background: rgba(217, 83, 79, 0.16);
+  color: var(--red);
+  border: 1px solid rgba(217, 83, 79, 0.3);
+}
+
+.method-badge.put {
+  background: rgba(224, 184, 76, 0.16);
+  color: var(--yellow);
+  border: 1px solid rgba(224, 184, 76, 0.3);
+}
+
+.method-badge.patch {
+  background: rgba(176, 127, 217, 0.16);
+  color: var(--accent2);
+  border: 1px solid rgba(176, 127, 217, 0.3);
+}
+`;
 
 export default function MethodBadge({ method, style }) {
-  const colors = METHOD_COLOR[method] || METHOD_COLOR.GET;
-  const badgeStyle = {
-    ...defaultBadgeStyle,
-    ...colors,
-    ...style,
-  };
+  const methodClass = method?.toLowerCase() || "get";
+  const className = `method-badge ${methodClass}`;
 
   return (
-    <span style={badgeStyle} data-testid={`method-badge-${method}`}>
-      {method}
-    </span>
+    <>
+      <style>{styles}</style>
+      <span className={className} style={style} data-testid={`method-badge-${method}`}>
+        {method}
+      </span>
+    </>
   );
 }

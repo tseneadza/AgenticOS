@@ -16,6 +16,9 @@ import WorkflowsWorkspace from "./components/WorkflowsWorkspace";
 import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
 
+// Phase 9 Views
+import SettingsView from "./views/SettingsView";
+
 // Adaptive polling hook.
 //   ms      — normal interval when service is available
 //   fastMs  — recovery interval when service is down (default 2 s)
@@ -1291,17 +1294,19 @@ function AgentView({ ctx }) {
 // Dashboard registry (FR-46) — single source of truth for the nav + native menu.
 // Order locked 2026-06-14: SysOps, Workflows, the four placeholders, then Agent
 // (⌘7). Agent is appended last so the ⌘1–6 bindings stay stable.
+// Phase 9: Settings added as full-page view.
 const VIEWS = [
   { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
   { id: "workflows", label: "Workflows", component: WorkflowsWorkspace },
   { id: "web-news", label: "Web News", component: WebNewsView },
-  
+
   { id: "scripts", label: "Scripts", component: ScriptsExplorer },
   { id: "zsh-config", label: "Zsh Config Editor", placeholder: true,
     purpose: "Edit and version your zsh configuration with safe rollbacks." },
   { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
     purpose: "Read and search the Brain2 Obsidian vault inside the app." },
   { id: "hub-api", label: "Hub API", component: HubApiExplorer },
+  { id: "settings", label: "Settings", component: SettingsView },
   { id: "agent", label: "Agent", component: AgentView, badge: "approvals" },
 ];
 

@@ -1,11 +1,18 @@
 /* Agentic OS — theme token contract (FR-60)
  *
  * Single source of truth for every visual token, and the home of ALL themes.
- * Theming is purely additive: :root is the default look (terracotta), and each
+ * Theming is purely additive: :root is the default look (terracotta dark), and each
  * other theme is one `[data-theme="<key>"] { … }` block below. theme.js sets
  * `document.documentElement[data-theme]`; unknown/unset keys fall back to :root.
  *
- * Switch live from the native View ▸ Theme menu (lib.rs → __agenticOsSetTheme).
+ * Phase 8: Expanded to 8 light/dark variants for all 4 themes:
+ *   terracotta-light, terracotta-dark
+ *   cyber-light, cyber-dark
+ *   future-light, future-dark
+ *   term-light, term-dark
+ *
+ * Legacy dark-only keys (terra, cyber, future, term) remain as aliases to their
+ * -dark counterparts for backward compatibility.
  *
  * Token roles:
  *   surfaces  --bg --bg-panel --bg-inset
@@ -17,9 +24,46 @@
  *   density   --density-pad --gap
  */
 
+/* ── Animations & Transitions ──────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chevronRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(180deg); }
+}
+
+/* Respect motion preferences across all animations */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Default theme transition for theme switcher */
+:root {
+  --theme-transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* ── Terracotta Dark (default) ─────────────────────────────────────────────── */
 :root,
-:root[data-theme="terra"] {
+:root[data-theme="terra"],
+[data-theme="terracotta-dark"] {
   --bg:        #1b1b19;
   --bg-panel:  #222220;
   --bg-inset:  #191917;
@@ -47,8 +91,38 @@
   --gap:         10px;
 }
 
-/* ── Cyber Neon (near-black · mint / magenta) ──────────────────────────────── */
-[data-theme="cyber"] {
+/* ── Terracotta Light ──────────────────────────────────────────────────────── */
+[data-theme="terracotta-light"] {
+  --bg:        #faf8f6;
+  --bg-panel:  #f3f0ec;
+  --bg-inset:  #f9f7f5;
+
+  --border:      #d4cfc7;
+  --border-soft: #e8e3db;
+  --border-w:    1px;
+
+  --text:     #2c1810;
+  --text-dim: #6b5a4f;
+  --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+
+  --accent:  #d97b4f;
+  --accent2: #d9a24f;
+
+  --green:  #5a8c40;
+  --red:    #c41e3a;
+  --yellow: #b8860b;
+
+  --radius: 8px;
+  --glow:   0 2px 8px rgba(0, 0, 0, 0.08);
+
+  --density-pad: 14px;
+  --gap:         10px;
+}
+
+/* ── Cyber Neon Dark (near-black · mint / magenta) ────────────────────────── */
+[data-theme="cyber"],
+[data-theme="cyber-dark"] {
   --bg:        #080b0d;
   --bg-panel:  #0e1316;
   --bg-inset:  #05080a;
@@ -76,8 +150,38 @@
   --gap:         10px;
 }
 
-/* ── Bold Futuristic (indigo glass · violet / cyan) ────────────────────────── */
-[data-theme="future"] {
+/* ── Cyber Neon Light ──────────────────────────────────────────────────────── */
+[data-theme="cyber-light"] {
+  --bg:        #f5fffe;
+  --bg-panel:  #eff5f4;
+  --bg-inset:  #fafbfb;
+
+  --border:      #c4e0de;
+  --border-soft: #ddf0ee;
+  --border-w:    1px;
+
+  --text:     #0a2625;
+  --text-dim: #4a7875;
+  --sans: "Space Grotesk", -apple-system, system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --accent:  #0ca584;
+  --accent2: #d91e63;
+
+  --green:  #00a86b;
+  --red:    #d91e63;
+  --yellow: #ff9800;
+
+  --radius: 6px;
+  --glow:   0 2px 8px rgba(12, 165, 132, 0.12);
+
+  --density-pad: 14px;
+  --gap:         10px;
+}
+
+/* ── Bold Futuristic Dark (indigo glass · violet / cyan) ────────────────────── */
+[data-theme="future"],
+[data-theme="future-dark"] {
   --bg:        #0c0d1e;
   --bg-panel:  #15172d;
   --bg-inset:  #090a16;
@@ -105,8 +209,38 @@
   --gap:         10px;
 }
 
-/* ── Terminal Green (CRT phosphor) ─────────────────────────────────────────── */
-[data-theme="term"] {
+/* ── Bold Futuristic Light ─────────────────────────────────────────────────── */
+[data-theme="future-light"] {
+  --bg:        #f8f6ff;
+  --bg-panel:  #f0edff;
+  --bg-inset:  #fdfbff;
+
+  --border:      #d9d0f0;
+  --border-soft: #ede8f7;
+  --border-w:    1px;
+
+  --text:     #1f1a35;
+  --text-dim: #6b648f;
+  --sans: "Space Grotesk", -apple-system, system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --accent:  #6b5ac7;
+  --accent2: #0da5a8;
+
+  --green:  #3da874;
+  --red:    #c41e50;
+  --yellow: #daa520;
+
+  --radius: 14px;
+  --glow:   0 2px 12px rgba(107, 90, 199, 0.15);
+
+  --density-pad: 14px;
+  --gap:         10px;
+}
+
+/* ── Terminal Green Dark (CRT phosphor) ────────────────────────────────────── */
+[data-theme="term"],
+[data-theme="term-dark"] {
   --bg:        #050705;
   --bg-panel:  #0a0f0a;
   --bg-inset:  #020402;
@@ -129,6 +263,35 @@
 
   --radius: 2px;
   --glow:   0 0 8px rgba(59, 237, 106, 0.22);
+
+  --density-pad: 14px;
+  --gap:         10px;
+}
+
+/* ── Terminal Green Light ──────────────────────────────────────────────────── */
+[data-theme="term-light"] {
+  --bg:        #f5fdf5;
+  --bg-panel:  #eef7ee;
+  --bg-inset:  #fafcfa;
+
+  --border:      #c0dac0;
+  --border-soft: #dceadc;
+  --border-w:    1px;
+
+  --text:     #1a4d2e;
+  --text-dim: #4d8d5f;
+  --sans: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --accent:  #2d8659;
+  --accent2: #6ba547;
+
+  --green:  #2d8659;
+  --red:    #d32f2f;
+  --yellow: #f57f17;
+
+  --radius: 2px;
+  --glow:   0 2px 8px rgba(45, 134, 89, 0.12);
 
   --density-pad: 14px;
   --gap:         10px;

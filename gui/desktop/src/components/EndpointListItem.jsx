@@ -3,6 +3,7 @@
  *
  * Renders a single endpoint in the explorer list with method and path.
  * Shows selection state via left border and background highlight.
+ * All colors use theme variables for full theme compatibility.
  *
  * @param {object} endpoint - Endpoint object with shape:
  *   - method: string (HTTP method)
@@ -13,6 +14,36 @@
 
 import MethodBadge from "./MethodBadge";
 import PathDisplay from "./PathDisplay";
+
+const styles = `
+.endpoint-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  background: transparent;
+  transition: background-color 100ms, border-left-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.endpoint-list-item:hover {
+  background-color: rgba(127, 127, 127, 0.06);
+}
+
+.endpoint-list-item.selected {
+  border-left-color: var(--accent);
+  background-color: var(--bg-panel);
+}
+
+.endpoint-path {
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+`;
 
 export default function EndpointListItem({
   endpoint,
@@ -33,44 +64,31 @@ export default function EndpointListItem({
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "6px 12px",
-        cursor: "pointer",
-        borderLeft: isSelected
-          ? "3px solid var(--accent)"
-          : "3px solid transparent",
-        background: isSelected ? "#272724" : "transparent",
-      }}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      data-testid={`endpoint-list-item-${endpoint.method}-${endpoint.path}`}
-      role="button"
-      tabIndex={0}
-      aria-selected={isSelected}
-      aria-label={`${endpoint.method} ${endpoint.path}`}
-    >
-      {/* HTTP Method Badge */}
-      <div data-testid={`endpoint-method-${endpoint.method}`}>
-        <MethodBadge method={endpoint.method} />
-      </div>
-
-      {/* API Path with Parameter Highlighting */}
-      <span
-        style={{
-          fontFamily: "var(--mono)",
-          fontSize: 11,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-        data-testid={`endpoint-path-${endpoint.path}`}
+    <>
+      <style>{styles}</style>
+      <div
+        className={`endpoint-list-item ${isSelected ? "selected" : ""}`}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        data-testid={`endpoint-list-item-${endpoint.method}-${endpoint.path}`}
+        role="button"
+        tabIndex={0}
+        aria-selected={isSelected}
+        aria-label={`${endpoint.method} ${endpoint.path}`}
       >
-        <PathDisplay path={endpoint.path} />
-      </span>
-    </div>
+        {/* HTTP Method Badge */}
+        <div data-testid={`endpoint-method-${endpoint.method}`}>
+          <MethodBadge method={endpoint.method} />
+        </div>
+
+        {/* API Path with Parameter Highlighting */}
+        <span
+          className="endpoint-path"
+          data-testid={`endpoint-path-${endpoint.path}`}
+        >
+          <PathDisplay path={endpoint.path} />
+        </span>
+      </div>
+    </>
   );
 }

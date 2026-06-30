@@ -9,6 +9,7 @@ import FilterBar from "./FilterBar";
 import CallLogEntry from "./CallLogEntry";
 import TabSwitcher from "./TabSwitcher";
 import EndpointListItem from "./EndpointListItem";
+import LogsExplorer from "./LogsExplorer";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -58,6 +59,41 @@ const ENDPOINTS_HARDCODED = [
   { group:"News (Sidecar)", server:"sidecar", method:"POST",   path:"/api/news/rank",            desc:"AI-rank articles via the app's active model", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"articles":[{"title":"…"}],"domains":[],"keywords":[]}'}] },
   { group:"System", server:"sidecar", method:"GET", path:"/api/health", desc:"Sidecar health", params:[] },
 ];
+
+// Generate mock logs for initial display
+function generateMockLogs() {
+  const now = new Date();
+  const mockMessages = [
+    "Fetching news feed from RSS source",
+    "Processing article: Quantum Computing Breakthrough",
+    "Successfully ranked 12 articles",
+    "API request failed with timeout",
+    "Cache hit for category: Technology",
+    "Invalid parameter in request",
+    "Sidecar health check passed",
+    "Starting news fetch operation",
+    "Completed news fetch in 234ms",
+    "Error: Connection refused to external service",
+    "Filtering articles by keyword",
+    "Database query executed",
+    "Response sent successfully",
+  ];
+
+  const logs = [];
+  const levels = ["DEBUG", "INFO", "WARN", "ERROR"];
+
+  for (let i = 0; i < 25; i++) {
+    const time = new Date(now.getTime() - i * 1000);
+    const timestamp = time.toISOString().split('T')[1].substring(0, 8);
+    logs.push({
+      timestamp,
+      level: levels[Math.floor(Math.random() * levels.length)],
+      message: mockMessages[Math.floor(Math.random() * mockMessages.length)],
+    });
+  }
+
+  return logs.reverse();
+}
 
 // Convert OpenAPI spec to explorer format
 function convertOpenAPIToEndpoints(spec) {
@@ -129,6 +165,7 @@ export default function HubApiExplorer() {
   const [response, setResponse]     = useState(null);
   const [loading, setLoading]       = useState(false);
   const [callLog, setCallLog]       = useState([]);
+  const [logs, setLogs]             = useState(() => generateMockLogs());
   const [hubColor, setHubColor]     = useState("#e0b84c");
   const [hubLabel, setHubLabel]     = useState("localhost:8085");
   const [sidecarColor, setSidecarColor] = useState("#e0b84c");
@@ -225,7 +262,11 @@ export default function HubApiExplorer() {
       {/* ── sub-topbar ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", background: "var(--bg-inset)", flexShrink: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 13, letterSpacing: .4 }}>Codehome <span style={{ color: "var(--accent)" }}>API Explorer</span></div>
-        <TabSwitcher activeTab={tab} onTabChange={setTab} callLogCount={callLog.length} />
+        <TabSwitcher activeTab={tab} onTabChange={setTab} callLogCount={callLog.length} tabs={[
+          { id: "explorer", label: "Explorer" },
+          { id: "logs", label: "Logs" },
+          { id: "calllog", label: `Call Log${callLog.length ? ` (${callLog.length})` : ""}` },
+        ]} />
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: "var(--text-dim)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: hubColor }} />
@@ -287,9 +328,13 @@ export default function HubApiExplorer() {
           </div>
         </div>
 
-        {/* RIGHT: detail or call log */}
+        {/* RIGHT: detail, logs, or call log */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {tab === "calllog" ? (
+          {tab === "logs" ? (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <LogsExplorer logs={logs} />
+            </div>
+          ) : tab === "calllog" ? (
             callLog.length ? (
               <div style={{ padding: 14, flex: 1, overflowY: "auto" }}>
                 <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "var(--text-dim)", marginBottom: 8 }}>Recent calls · {callLog.length} total</div>

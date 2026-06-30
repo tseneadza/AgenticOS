@@ -9,27 +9,55 @@
 // the existing __agenticOsSetView view-switch bridge (FR-51).
 
 export const THEMES = [
-  { key: "terra",  label: "Terracotta Dark" },
-  { key: "cyber",  label: "Cyber Neon" },
-  { key: "future", label: "Bold Futuristic" },
-  { key: "term",   label: "Terminal Green" },
+  // Terracotta
+  { key: "terracotta-light", label: "Terracotta Light" },
+  { key: "terracotta-dark",  label: "Terracotta Dark" },
+
+  // Cyber
+  { key: "cyber-light",      label: "Cyber Neon Light" },
+  { key: "cyber-dark",       label: "Cyber Neon Dark" },
+
+  // Future
+  { key: "future-light",     label: "Bold Futuristic Light" },
+  { key: "future-dark",      label: "Bold Futuristic Dark" },
+
+  // Terminal
+  { key: "term-light",       label: "Terminal Green Light" },
+  { key: "term-dark",        label: "Terminal Green Dark" },
 ];
 
-const LS_KEY = "agentic-os.theme";
-const DEFAULT = "terra";
+// Legacy theme aliases (for backward compatibility)
+const LEGACY_THEMES = {
+  "terra": "terracotta-dark",
+  "cyber": "cyber-dark",
+  "future": "future-dark",
+  "term": "term-dark",
+};
 
-const isKnown = (key) => THEMES.some((t) => t.key === key);
+const LS_KEY = "agentic-os.theme";
+const DEFAULT = "terracotta-dark";
+
+const isKnown = (key) => THEMES.some((t) => t.key === key) || LEGACY_THEMES.hasOwnProperty(key);
 
 export function loadTheme() {
   try {
     const saved = localStorage.getItem(LS_KEY);
-    if (saved && isKnown(saved)) return saved;
+    if (saved && isKnown(saved)) {
+      // Upgrade legacy keys to new names
+      return LEGACY_THEMES[saved] || saved;
+    }
   } catch {}
   return DEFAULT;
 }
 
 export function applyTheme(key) {
-  const next = isKnown(key) ? key : DEFAULT;
+  let next = key;
+  // Upgrade legacy keys to new names
+  if (LEGACY_THEMES.hasOwnProperty(next)) {
+    next = LEGACY_THEMES[next];
+  }
+  // Validate and fall back to default
+  next = THEMES.some((t) => t.key === next) ? next : DEFAULT;
   document.documentElement.setAttribute("data-theme", next);
   try { localStorage.setItem(LS_KEY, next); } catch {}
   return next;
