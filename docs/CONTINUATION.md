@@ -2,7 +2,7 @@
 
 ## Current Session: 2026-06-29 (Session 4) — PHASE 6 COMPONENT REFACTORING
 
-**Status: Task #3–#10 ✅ COMPLETE — 187/187 tests passing**
+**Status: Task #3–#12 ✅ COMPLETE — 203/203 tests passing**
 
 ### Phase 6 Lessons Learned (Critical for Future Components)
 
@@ -192,17 +192,66 @@
 
 **Integrated:** Replaced 7-line inline log entry rendering (16 lines → 3 lines)
 
-**MEGA SESSION FINAL RESULTS:**
-- **8 components extracted**: 187/187 tests passing
-- **Code reduction**: HubApiExplorer 440 → 320 lines (27.3% smaller)
-- **Component code**: 555 lines extracted
-- **Test code**: 1,855 lines (3.3:1 test-to-code ratio)
-- **Commits**: 16 total (8 component + 8 progress updates)
+### Task #11: TabSwitcher Component ✅
 
-**Phase 6 Status:** 8/13 HubApiExplorer components done (61%)
+**Created:**
+- `src/components/TabSwitcher.jsx` (62 lines, 0 dependencies)
+- `src/__tests__/TabSwitcher.test.jsx` (50 lines, 6 tests)
+
+**Integrated:** Replaced 15-line inline tab buttons (lines 228-242)
+
+**Features:**
+- Renders tab buttons with active state highlighting
+- Supports custom tabs via `tabs` prop
+- Displays call log count badge in calllog tab
+- Full keyboard accessibility (Enter/Space)
+
+**Test coverage:**
+- Rendering: 1 test ✓
+- Active tab highlighting: 1 test ✓
+- Click handler: 1 test ✓
+- Call log count display: 1 test ✓
+- Keyboard navigation: 1 test ✓
+- Custom tabs support: 1 test ✓
+- **Total: 6/6 passing**
+
+### Task #12: EndpointListItem Component ✅
+
+**Created:**
+- `src/components/EndpointListItem.jsx` (77 lines, 2 dependencies: MethodBadge, PathDisplay)
+- `src/__tests__/EndpointListItem.test.jsx` (112 lines, 10 tests)
+
+**Integrated:** Replaced 12-line inline endpoint item rendering (lines 276-287)
+
+**Features:**
+- Displays individual endpoint in explorer list
+- Shows selection state with accent border + highlight
+- Full keyboard accessibility (Enter/Space)
+- Integrates MethodBadge and PathDisplay components
+
+**Test coverage:**
+- Rendering: 1 test ✓
+- Method badge: 1 test ✓
+- Path display: 1 test ✓
+- Selection state styling: 1 test ✓
+- Click handler: 1 test ✓
+- Keyboard Enter: 1 test ✓
+- Keyboard Space: 1 test ✓
+- Null endpoint handling: 1 test ✓
+- Parameterized paths: 1 test ✓
+- Aria labels: 1 test ✓
+- **Total: 10/10 passing**
+
+**EPIC SESSION FINAL RESULTS:**
+- **10 components extracted**: 203/203 tests passing
+- **Code reduction**: HubApiExplorer 440 → 285 lines (35.2% smaller)
+- **Component code**: 625 lines extracted
+- **Test code**: 1,960 lines (3.1:1 test-to-code ratio)
+- **Commits**: 18 total (10 component + 8 progress updates)
+
+**Phase 6 Status:** 10/13 HubApiExplorer components done (77%)
 
 **Remaining:**
-- #11–12: (Unknown — not yet scoped)
 - #13–17: ScriptsExplorer components (5 tasks)
 
 ---

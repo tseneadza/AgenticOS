@@ -7,6 +7,8 @@ import ParamInput from "./ParamInput";
 import GroupHeader from "./GroupHeader";
 import FilterBar from "./FilterBar";
 import CallLogEntry from "./CallLogEntry";
+import TabSwitcher from "./TabSwitcher";
+import EndpointListItem from "./EndpointListItem";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -223,21 +225,7 @@ export default function HubApiExplorer() {
       {/* ── sub-topbar ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", background: "var(--bg-inset)", flexShrink: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 13, letterSpacing: .4 }}>Codehome <span style={{ color: "var(--accent)" }}>API Explorer</span></div>
-        <div style={{ display: "flex", marginLeft: 12 }}>
-          {["explorer", "calllog"].map((t, i) => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: "3px 12px", fontSize: 11, cursor: "pointer",
-              border: "1px solid var(--border-soft)",
-              borderRight: i === 0 ? "none" : "1px solid var(--border-soft)",
-              borderRadius: i === 0 ? "4px 0 0 4px" : "0 4px 4px 0",
-              background: tab === t ? "var(--accent)" : "none",
-              color: tab === t ? "#1b1b19" : "var(--text-dim)",
-              fontWeight: tab === t ? 700 : 400,
-            }}>
-              {t === "explorer" ? "Explorer" : `Call Log${callLog.length ? ` (${callLog.length})` : ""}`}
-            </button>
-          ))}
-        </div>
+        <TabSwitcher activeTab={tab} onTabChange={setTab} callLogCount={callLog.length} />
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: "var(--text-dim)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: hubColor }} />
@@ -286,16 +274,12 @@ export default function HubApiExplorer() {
                     itemCount={items.length}
                   />
                   {groupOpen[g] && items.map(e => (
-                    <div
+                    <EndpointListItem
                       key={e._i}
-                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", cursor: "pointer", borderLeft: selected === e._i ? "3px solid var(--accent)" : "3px solid transparent", background: selected === e._i ? "#272724" : "transparent" }}
-                      onClick={() => selectEndpoint(e._i)}
-                    >
-                      <MethodBadge method={e.method} />
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        <PathDisplay path={e.path} />
-                      </span>
-                    </div>
+                      endpoint={e}
+                      isSelected={selected === e._i}
+                      onSelect={() => selectEndpoint(e._i)}
+                    />
                   ))}
                 </div>
               );
