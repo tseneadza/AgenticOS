@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import MethodBadge from "./MethodBadge";
 import PathDisplay from "./PathDisplay";
+import StatusIndicator from "./StatusIndicator";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -315,7 +316,7 @@ export default function HubApiExplorer() {
                       <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", minWidth: 64 }}>{l.ts.toLocaleTimeString("en-US", { hour12: false })}</span>
                       <MethodBadge method={l.method} />
                       <span style={{ fontFamily: "var(--mono)", fontSize: 11, flex: 1 }}>{l.path}</span>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: l.ok ? "#7fb069" : "#d9534f" }}>{l.status || "ERR"}</span>
+                      <StatusIndicator status={l.status || "ERR"} ok={l.ok} style="text" customStyle={{ marginRight: 0 }} />
                       <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)" }}>{l.dur}ms</span>
                     </div>
                   ))}
@@ -403,7 +404,7 @@ export default function HubApiExplorer() {
                   }}>
                     {loading ? "Sending request…" : response ? (
                       <>
-                        <span style={{ display: "inline-block", fontFamily: "var(--mono)", fontSize: 11, padding: "2px 8px", borderRadius: 3, marginRight: 8, background: response.ok ? "#1c3a2a" : "#3a1c1c", color: response.ok ? "#7fb069" : "#d9534f" }}>{response.status || "ERR"}</span>
+                        <StatusIndicator status={response.status || "ERR"} ok={response.ok} />
                         <span style={{ color: "var(--text-dim)", fontSize: 10 }}>{response.dur}ms</span>
                         {"\n\n"}
                         {response.text}
