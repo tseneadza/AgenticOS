@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import MethodBadge from "./MethodBadge";
 
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
@@ -92,13 +93,6 @@ function convertOpenAPIToEndpoints(spec) {
   }
   return endpoints;
 }
-
-const METHOD_COLOR = {
-  GET:    { bg:"#1c3a2a", color:"#7fb069" },
-  POST:   { bg:"#3a2a1c", color:"#d97b4f" },
-  DELETE: { bg:"#3a1c1c", color:"#d9534f" },
-  PUT:    { bg:"#2a2a1c", color:"#e0b84c" },
-};
 
 function buildUrl(ep, paramValues) {
   let path = ep.path;
@@ -224,12 +218,6 @@ export default function HubApiExplorer() {
       (!filter || e.path.toLowerCase().includes(filter) || e.method.toLowerCase().includes(filter) || e.desc.toLowerCase().includes(filter))
     );
 
-  const badge = (m) => ({
-    fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700,
-    padding: "2px 6px", borderRadius: 3, minWidth: 44, textAlign: "center",
-    display: "inline-block", ...(METHOD_COLOR[m] || METHOD_COLOR.GET),
-  });
-
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
@@ -310,7 +298,7 @@ export default function HubApiExplorer() {
                       style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", cursor: "pointer", borderLeft: selected === e._i ? "3px solid var(--accent)" : "3px solid transparent", background: selected === e._i ? "#272724" : "transparent" }}
                       onClick={() => selectEndpoint(e._i)}
                     >
-                      <span style={badge(e.method)}>{e.method}</span>
+                      <MethodBadge method={e.method} />
                       <span style={{ fontFamily: "var(--mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         <PathDisplay path={e.path} />
                       </span>
@@ -332,7 +320,7 @@ export default function HubApiExplorer() {
                   {callLog.map((l, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "5px 10px", background: "var(--bg-inset)", borderRadius: 4, borderLeft: `3px solid ${l.ok ? "#7fb069" : "#d9534f"}`, fontSize: 12 }}>
                       <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", minWidth: 64 }}>{l.ts.toLocaleTimeString("en-US", { hour12: false })}</span>
-                      <span style={badge(l.method)}>{l.method}</span>
+                      <MethodBadge method={l.method} />
                       <span style={{ fontFamily: "var(--mono)", fontSize: 11, flex: 1 }}>{l.path}</span>
                       <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: l.ok ? "#7fb069" : "#d9534f" }}>{l.status || "ERR"}</span>
                       <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)" }}>{l.dur}ms</span>
@@ -349,7 +337,7 @@ export default function HubApiExplorer() {
             <>
               <div style={{ padding: "11px 16px", borderBottom: "1px solid var(--border-soft)", background: "var(--bg-panel)", flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
-                  <span style={badge(ep.method)}>{ep.method}</span>
+                  <MethodBadge method={ep.method} />
                   <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}><PathDisplay path={ep.path} /></span>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{ep.desc}</div>
