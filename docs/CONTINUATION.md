@@ -1,7 +1,38 @@
-# Session Continuation — Phase 11a Foundation SHIPPED ✅
+# Session Continuation — Phase 11b SHIPPED ✅
 
-**Last Updated:** 2026-07-01 (Phase 11a Implementation Session)
-**Status:** ✅ Phase 10 SHIPPED / Phase 11 DESIGN LOCKED / **Phase 11a foundation modules BUILT (tests unrun)**
+**Last Updated:** 2026-07-01 (Phase 11a + 11b Implementation Session)
+**Status:** ✅ Phase 10 SHIPPED / Phase 11 DESIGN LOCKED / **Phase 11a + 11b BUILT & GREEN (44 tests passing)**
+
+---
+
+## ✅ Phase 11b — GitHub + git integration SHIPPED
+
+Decisions (locked with Tony): new repos default **private**; **best-effort
+auto-push** of the initial commit; token resolved from `~/.agentic-os/config.yaml`
+`github.token` FIRST, then `gh auth token` fallback (machine is already `gh`-authed
+as `tseneadza`); remotes use **HTTPS** (SSH config currently broken by a bad
+`usekeychain` line; gh credential helper handles HTTPS).
+
+### Files
+- **`gui/sidecar/github_integration.py`** (new) — `get_github_token()`,
+  `GitHubError`, `GitHubClient` (`get_auth_user`, `check_token_valid`,
+  `create_repo(private=True)` via synchronous `httpx.Client`), and
+  `setup_repo(...)` best-effort orchestration entry point. Token never logged
+  or persisted.
+- **`gui/sidecar/project_manager.py`** (extended) — added `_git(args, cwd)`
+  (check=False runner) and `init_git_repo(project_path, remote_url=None, *,
+  push=False, default_branch="main")` returning
+  `{initialized, committed, remote_added, pushed, warnings}`; never raises. All
+  Phase 11a functions preserved.
+- **`gui/sidecar/tests/test_phase11b.py`** (new) — 14 tests, no network / no gh /
+  no real token (httpx + subprocess monkeypatched; `init_git_repo` uses real git
+  in a tmp dir, push never tested).
+
+**Test status:** `44 passed` (30 × 11a + 14 × 11b). Run:
+```bash
+cd /Users/tonyseneadza/Codehome/AgenticOS
+.venv/bin/python -m pytest gui/sidecar/tests/test_phase11a.py gui/sidecar/tests/test_phase11b.py -v
+```
 
 ---
 

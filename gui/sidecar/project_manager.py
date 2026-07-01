@@ -290,3 +290,136 @@ def allocate_port(
     finally:
         if owns_session:
             session.close()
+
+
+# ── git init / commit / push (best-effort) — Phase 11b ────────────────────────
+
+def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    """Run ``git <args>`` in *cwd* without raising.
+
+    Unlike ``_run`` (which raises on non-zero exit), this uses ``check=False``
+    so callers can inspect ``returncode`` / ``stderr`` and append precise
+    warnings — the git flow is fully best-effort.
+    """
+    log.debug("init_git_repo: running git %s (cwd=%s)", args, cwd)
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def init_git_repo(
+    project_path: Path,
+    remote_url: str | None = None,
+    *,
+    push: bool = False,
+    default_branch: str = "main",
+) -> dict:
+    """Initialise a git repo in *project_path*, commit, and optionally push.
+
+    Every step is best-effort and guarded: a failing step appends a warning and
+    the function continues where sensible. This function NEVER raises (matching
+    the lenient design used elsewhere in this module) — inspect the returned
+    status dict instead.
+
+    Steps:
+        * ``git init`` (preferring ``git init -b <default_branch>``; falls back
+          to plain ``git init`` for old git).
+        * local ``user.name`` / ``user.email`` config (repo-local, not global).
+        * ``git add -A`` + ``git commit -m "Initial project scaffold"``.
+        * if *remote_url*: ``git remote add origin <remote_url>``.
+        * if *push* and *remote_url*: ``git push -u origin <default_branch>``.
+
+    Returns:
+        {"initialized": bool, "committed": bool, "remote_added": bool,
+         "pushed": bool, "warnings": [str, ...]}
+    """
+    project_path = Path(project_path)
+    status = {
+        "initialized": False,
+        "committed": False,
+        "remote_added": False,
+        "pushed": False,
+        "warnings": [],
+    }
+    warnings: list[str] = status["warnings"]
+
+    def _warn(msg: str) -> None:
+        log.warning("init_git_repo: %s", msg)
+        warnings.append(msg)
+
+    # 1. git init (prefer -b <branch>; fall back for old git).
+    res = _git(["init", "-b", default_branch], cwd=project_path)
+    if res.returncode == 0:
+        status["initialized"] = True
+    else:
+        res = _git(["init"], cwd=project_path)
+        if res.returncode == 0:
+            status["initialized"] = True
+            # Point HEAD at the desired branch for the first commit.
+            ref = _git(
+                ["symbolic-ref", "HEAD", f"refs/heads/{default_branch}"],
+                cwd=project_path,
+            )
+            if ref.returncode != 0:
+                _warn(f"could not set initial branch to {default_branch}: {ref.stderr.strip()}")
+        else:
+            _warn(f"git init failed: {res.stderr.strip()}")
+            return status  # nothing else can succeed without a repo
+
+    # 2. Repo-local identity (so the commit doesn't depend on global config).
+    name_res = _git(["config", "user.name", "AgenticOS"], cwd=project_path)
+    if name_res.returncode != 0:
+        _warn(f"git config user.name failed: {name_res.stderr.strip()}")
+    email_res = _git(
+        ["config", "user.email", "agentic@codehome.local"], cwd=project_path
+    )
+    if email_res.returncode != 0:
+        _warn(f"git config user.email failed: {email_res.stderr.strip()}")
+
+    # 3. Stage + commit.
+    add_res = _git(["add", "-A"], cwd=project_path)
+    if add_res.returncode != 0:
+        _warn(f"git add failed: {add_res.stderr.strip()}")
+    commit_res = _git(
+        ["commit", "-m", "Initial project scaffold"], cwd=project_path
+    )
+    if commit_res.returncode == 0:
+        status["committed"] = True
+        # Ensure the branch is named as requested even on the old-git path.
+        _git(["branch", "-M", default_branch], cwd=project_path)
+    else:
+        _warn(
+            "git commit failed (nothing to commit or git error): "
+            f"{commit_res.stderr.strip() or commit_res.stdout.strip()}"
+        )
+
+    # 4. Add remote.
+    if remote_url:
+        remote_res = _git(
+            ["remote", "add", "origin", remote_url], cwd=project_path
+        )
+        if remote_res.returncode == 0:
+            status["remote_added"] = True
+        else:
+            _warn(f"git remote add origin failed: {remote_res.stderr.strip()}")
+
+    # 5. Push (best-effort).
+    if push and remote_url:
+        if not status["remote_added"]:
+            _warn("skipping push: remote was not added")
+        elif not status["committed"]:
+            _warn("skipping push: nothing was committed")
+        else:
+            push_res = _git(
+                ["push", "-u", "origin", default_branch], cwd=project_path
+            )
+            if push_res.returncode == 0:
+                status["pushed"] = True
+            else:
+                _warn(f"git push failed: {push_res.stderr.strip()}")
+
+    return status
