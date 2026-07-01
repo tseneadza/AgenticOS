@@ -110,11 +110,19 @@ def test_validate_project_name_invalid(name):
 def test_scan_codehome_structure_shape(monkeypatch, tmp_path):
     home = tmp_path
     codehome = home / "Codehome"
-    (codehome / "apps").mkdir(parents=True)
-    (codehome / "tools").mkdir()
-    (codehome / "misc").mkdir()
-    (codehome / ".git").mkdir()          # hidden — skipped
-    (codehome / "node_modules").mkdir()  # noise — skipped
+    # Grouping folders: contain subdirs, no project markers (incl. spaced names).
+    (codehome / "Games" / "Queens").mkdir(parents=True)
+    (codehome / "Games" / "QueensGame").mkdir()
+    (codehome / "The Sciences" / "physics").mkdir(parents=True)
+    (codehome / "apps" / "foo").mkdir(parents=True)   # canonical bucket
+    # Individual project folder: carries markers -> excluded.
+    (codehome / "Weather" / "src").mkdir(parents=True)
+    (codehome / "Weather" / "app.json").write_text("{}")
+    # Empty dir: no subdirs -> not a grouping -> excluded.
+    (codehome / "emptycat").mkdir()
+    # Noise / hidden / file -> excluded.
+    (codehome / "node_modules" / "pkg").mkdir(parents=True)
+    (codehome / ".git").mkdir()
     (codehome / "readme.txt").write_text("not a dir")
 
     monkeypatch.setattr(pm.Path, "home", staticmethod(lambda: home))
@@ -122,10 +130,17 @@ def test_scan_codehome_structure_shape(monkeypatch, tmp_path):
 
     result = pm.scan_codehome_structure()
     assert result["custom_available"] is True
-    assert set(result["suggested"]) == {"apps", "tools"}
-    assert "misc" in result["all"]
-    assert ".git" not in result["all"]
+    # Grouping folders surface (including names with spaces).
+    assert "Games" in result["all"]
+    assert "The Sciences" in result["all"]
+    assert "apps" in result["all"]
+    # Canonical bucket is prioritised in suggested when present.
+    assert result["suggested"] == ["apps"]
+    # Excluded: projects (markers), empty dirs, noise, hidden, files.
+    assert "Weather" not in result["all"]
+    assert "emptycat" not in result["all"]
     assert "node_modules" not in result["all"]
+    assert ".git" not in result["all"]
     assert "readme.txt" not in result["all"]
 
 

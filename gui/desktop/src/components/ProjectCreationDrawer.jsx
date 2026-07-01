@@ -161,10 +161,18 @@ const EMPTY_FORM = {
   name: "",
   template: "",
   subfolder: "",
+  customSubfolder: "",
   description: "",
   customPort: "",
   private: true,
 };
+
+// Sentinel select value that reveals the free-text "new folder" input.
+const CUSTOM = "__custom__";
+
+// A subfolder name must be a single safe path segment. Spaces are allowed
+// (e.g. "The Sciences", "Mobile Apps"); path separators and leading dots aren't.
+const SUBFOLDER_RE = /^[^/\\.][^/\\]*$/;
 
 export default function ProjectCreationDrawer({ open, onClose, onCreated }) {
   useScopedStyles();
@@ -215,12 +223,19 @@ export default function ProjectCreationDrawer({ open, onClose, onCreated }) {
     wsRef.current = null;
   }, [open]);
 
+  // The effective subfolder is either the picked one or the typed custom name.
+  const isCustomSub = form.subfolder === CUSTOM;
+  const effectiveSubfolder = isCustomSub
+    ? form.customSubfolder.trim()
+    : form.subfolder;
+  const subfolderValid = SUBFOLDER_RE.test(effectiveSubfolder);
+
   const nameValid = form.name === "" || NAME_RE.test(form.name);
   const canSubmit =
     phase !== "creating" &&
     NAME_RE.test(form.name) &&
     !!form.template &&
-    !!form.subfolder;
+    subfolderValid;
 
   const portValid =
     form.customPort === "" ||
@@ -252,7 +267,7 @@ export default function ProjectCreationDrawer({ open, onClose, onCreated }) {
         JSON.stringify({
           name: form.name,
           template: form.template,
-          subfolder: form.subfolder,
+          subfolder: effectiveSubfolder,
           description: form.description || null,
           custom_port: form.customPort ? +form.customPort : null,
           private: form.private,
@@ -379,7 +394,22 @@ export default function ProjectCreationDrawer({ open, onClose, onCreated }) {
                   </option>
                 ))}
                 {subfolders.length === 0 && <option value="apps">apps</option>}
+                <option value={CUSTOM}>＋ New folder…</option>
               </select>
+              {isCustomSub && (
+                <input
+                  type="text"
+                  value={form.customSubfolder}
+                  onChange={(e) => set({ customSubfolder: e.target.value })}
+                  placeholder="e.g. The Sciences"
+                  disabled={busy}
+                  style={{ marginTop: 6 }}
+                  autoFocus
+                />
+              )}
+              {isCustomSub && form.customSubfolder && !subfolderValid && (
+                <div className="pcd-hint pcd-bad">No slashes or leading dot.</div>
+              )}
             </div>
             <div className="pcd-field">
               <label>Custom port</label>

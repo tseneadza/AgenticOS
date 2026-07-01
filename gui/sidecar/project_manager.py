@@ -85,22 +85,60 @@ def validate_project_name(name: str) -> bool:
 
 # ── Codehome structure discovery ──────────────────────────────────────────────
 
+#: Files/dirs whose presence at a folder's root marks it as a *project* (a leaf),
+#: not a category/grouping folder you'd nest new projects inside.
+_PROJECT_MARKERS: tuple[str, ...] = (
+    ".git", "app.json", "package.json", "pyproject.toml",
+    "requirements.txt", "Cargo.toml", "go.mod", "src",
+)
+
+
+def _is_grouping_folder(path: Path) -> bool:
+    """True if *path* is a category folder that holds projects.
+
+    Heuristic (validated against the real ~/Codehome layout): a grouping folder
+    contains at least one non-hidden, non-noise subdirectory AND is not itself a
+    project (no project markers like ``.git`` / ``app.json`` / ``src`` at its
+    root). Individual project folders (Weather, Cards, …) carry markers and are
+    excluded; category folders (Games, SpecProj, "The Sciences", …) are kept.
+    """
+    try:
+        entries = list(path.iterdir())
+    except OSError:
+        return False
+    has_subdir = any(
+        e.is_dir() and not e.name.startswith(".") and e.name not in _NOISE_DIRS
+        for e in entries
+    )
+    if not has_subdir:
+        return False
+    return not any((path / marker).exists() for marker in _PROJECT_MARKERS)
+
+
 def scan_codehome_structure() -> dict:
-    """Scan ``~/Codehome`` for immediate subdirectories.
+    """Discover category/grouping folders under ``~/Codehome``.
 
     Returns a dict of the shape::
 
         {
-            "suggested": ["agents", "apps", "tools"],   # subset that exists
-            "all":       [... every non-noise subdir ...],
+            "suggested": [...],   # best-guess targets (agents/apps/tools first)
+            "all":       [...],   # every detected grouping folder
             "custom_available": True,
         }
 
-    Hidden dirs and known noise dirs (``.git``, ``node_modules``,
-    ``__pycache__``, ``.venv`` …) are skipped. A missing ``~/Codehome`` is
-    handled gracefully (empty ``all``, ``suggested`` falls back to ``["apps"]``).
+    A *grouping folder* is a directory that holds other projects — it has at
+    least one subdirectory and no project markers of its own (see
+    :func:`_is_grouping_folder`). This surfaces the user's real organisational
+    folders (e.g. Games, SpecProj, "The Sciences") instead of the individual
+    project folders that sit alongside them. Hidden/noise dirs are skipped.
+
+    ``suggested`` prioritises the canonical ``agents``/``apps``/``tools`` buckets
+    when they exist, otherwise mirrors the detected groupings. A missing
+    ``~/Codehome`` (or a flat one with no groupings) degrades gracefully:
+    ``all=[]`` and ``suggested=["apps"]``, with ``custom_available`` letting the
+    caller type a brand-new folder.
     """
-    all_dirs: list[str] = []
+    groupings: list[str] = []
     if _CODEHOME.exists():
         try:
             for entry in sorted(_CODEHOME.iterdir(), key=lambda p: p.name.lower()):
@@ -108,17 +146,17 @@ def scan_codehome_structure() -> dict:
                     continue
                 if entry.name.startswith(".") or entry.name in _NOISE_DIRS:
                     continue
-                all_dirs.append(entry.name)
+                if _is_grouping_folder(entry):
+                    groupings.append(entry.name)
         except OSError as exc:  # noqa: BLE001
             log.warning("scan_codehome_structure: cannot read %s: %s", _CODEHOME, exc)
 
-    suggested = [d for d in ("agents", "apps", "tools") if d in set(all_dirs)]
-    if not suggested:
-        suggested = ["apps"]
+    canonical = [d for d in ("agents", "apps", "tools") if d in set(groupings)]
+    suggested = canonical or groupings
 
     return {
-        "suggested": suggested,
-        "all": all_dirs,
+        "suggested": suggested or ["apps"],
+        "all": groupings,
         "custom_available": True,
     }
 
