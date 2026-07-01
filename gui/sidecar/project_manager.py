@@ -85,92 +85,74 @@ def validate_project_name(name: str) -> bool:
 
 # ── Codehome structure discovery ──────────────────────────────────────────────
 
-#: Files/dirs whose presence at a folder's root marks it as a *project* (a leaf),
-#: not a category/grouping folder you'd nest new projects inside.
-_PROJECT_MARKERS: tuple[str, ...] = (
-    ".git", "app.json", "package.json", "pyproject.toml",
-    "requirements.txt", "Cargo.toml", "go.mod", "src",
-)
+def scan_codehome_structure(session=None) -> dict:
+    """Return the subfolders that already hold OSA-created projects.
 
+    We deliberately do NOT guess categories from the filesystem — that surfaced
+    unrelated folders (Docker, Golang, Artifacts, …) as clutter and could not
+    reliably tell a real category from an incidental one. Instead the picker is
+    self-curating: a subfolder appears here once you've created a project in it
+    (distinct ``Project.subfolder`` values from the ledger). The Codehome root
+    and brand-new folders are always available via the returned flags, so you
+    can target any location the first time and it's remembered afterwards.
 
-def _is_grouping_folder(path: Path) -> bool:
-    """True if *path* is a category folder that holds projects.
-
-    Heuristic (validated against the real ~/Codehome layout): a grouping folder
-    contains at least one non-hidden, non-noise subdirectory AND is not itself a
-    project (no project markers like ``.git`` / ``app.json`` / ``src`` at its
-    root). Individual project folders (Weather, Cards, …) carry markers and are
-    excluded; category folders (Games, SpecProj, "The Sciences", …) are kept.
-    """
-    try:
-        entries = list(path.iterdir())
-    except OSError:
-        return False
-    has_subdir = any(
-        e.is_dir() and not e.name.startswith(".") and e.name not in _NOISE_DIRS
-        for e in entries
-    )
-    if not has_subdir:
-        return False
-    return not any((path / marker).exists() for marker in _PROJECT_MARKERS)
-
-
-def scan_codehome_structure() -> dict:
-    """Discover category/grouping folders under ``~/Codehome``.
-
-    Returns a dict of the shape::
+    Returns::
 
         {
-            "suggested": [...],   # best-guess targets (agents/apps/tools first)
-            "all":       [...],   # every detected grouping folder
-            "custom_available": True,
+            "suggested": [...],        # folders with existing OSA projects
+            "all":       [...],        # same list
+            "custom_available": True,  # caller may type a brand-new folder
+            "root_available":   True,  # caller may create directly in ~/Codehome
         }
 
-    A *grouping folder* is a directory that holds other projects — it has at
-    least one subdirectory and no project markers of its own (see
-    :func:`_is_grouping_folder`). This surfaces the user's real organisational
-    folders (e.g. Games, SpecProj, "The Sciences") instead of the individual
-    project folders that sit alongside them. Hidden/noise dirs are skipped.
-
-    ``suggested`` prioritises the canonical ``agents``/``apps``/``tools`` buckets
-    when they exist, otherwise mirrors the detected groupings. A missing
-    ``~/Codehome`` (or a flat one with no groupings) degrades gracefully:
-    ``all=[]`` and ``suggested=["apps"]``, with ``custom_available`` letting the
-    caller type a brand-new folder.
+    Args:
+        session: optional SQLAlchemy session (tests inject sqlite); ``None`` ->
+            ``SessionLocal()``. A DB failure degrades gracefully to an empty
+            list (root + custom stay available).
     """
-    groupings: list[str] = []
-    if _CODEHOME.exists():
-        try:
-            for entry in sorted(_CODEHOME.iterdir(), key=lambda p: p.name.lower()):
-                if not entry.is_dir():
-                    continue
-                if entry.name.startswith(".") or entry.name in _NOISE_DIRS:
-                    continue
-                if _is_grouping_folder(entry):
-                    groupings.append(entry.name)
-        except OSError as exc:  # noqa: BLE001
-            log.warning("scan_codehome_structure: cannot read %s: %s", _CODEHOME, exc)
+    from gui.sidecar.db import SessionLocal
+    from gui.sidecar.models import Project
 
-    canonical = [d for d in ("agents", "apps", "tools") if d in set(groupings)]
-    suggested = canonical or groupings
+    owns_session = session is None
+    subfolders: list[str] = []
+    try:
+        if owns_session:
+            session = SessionLocal()
+        rows = session.query(Project.subfolder).distinct().all()
+        subfolders = sorted(
+            {(r[0] or "").strip() for r in rows if r[0] and r[0].strip()},
+            key=str.lower,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("scan_codehome_structure: ledger query failed: %s", exc)
+    finally:
+        if owns_session and session is not None:
+            try:
+                session.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     return {
-        "suggested": suggested or ["apps"],
-        "all": groupings,
+        "suggested": subfolders,
+        "all": subfolders,
         "custom_available": True,
+        "root_available": True,
     }
 
 
 # ── folder creation ───────────────────────────────────────────────────────────
 
 def create_project_folder(subfolder: str, project_name: str) -> Path:
-    """Create ``~/Codehome/<subfolder>/<project_name>/`` and return its Path.
+    """Create the project folder and return its Path.
+
+    An empty/blank *subfolder* targets the Codehome root (``~/Codehome/<name>``).
 
     Uses ``parents=True, exist_ok=True`` so intermediate dirs are created. If
     the target project folder already exists AND is non-empty, a
     ``FileExistsError`` is raised (we never clobber existing work).
     """
-    target = _CODEHOME / subfolder / project_name
+    sub = (subfolder or "").strip().strip("/")
+    target = (_CODEHOME / sub / project_name) if sub else (_CODEHOME / project_name)
 
     if target.exists() and any(target.iterdir()):
         raise FileExistsError(

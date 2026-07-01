@@ -107,51 +107,45 @@ def test_validate_project_name_invalid(name):
 
 # ── scan_codehome_structure tests ─────────────────────────────────────────────
 
-def test_scan_codehome_structure_shape(monkeypatch, tmp_path):
-    home = tmp_path
-    codehome = home / "Codehome"
-    # Grouping folders: contain subdirs, no project markers (incl. spaced names).
-    (codehome / "Games" / "Queens").mkdir(parents=True)
-    (codehome / "Games" / "QueensGame").mkdir()
-    (codehome / "The Sciences" / "physics").mkdir(parents=True)
-    (codehome / "apps" / "foo").mkdir(parents=True)   # canonical bucket
-    # Individual project folder: carries markers -> excluded.
-    (codehome / "Weather" / "src").mkdir(parents=True)
-    (codehome / "Weather" / "app.json").write_text("{}")
-    # Empty dir: no subdirs -> not a grouping -> excluded.
-    (codehome / "emptycat").mkdir()
-    # Noise / hidden / file -> excluded.
-    (codehome / "node_modules" / "pkg").mkdir(parents=True)
-    (codehome / ".git").mkdir()
-    (codehome / "readme.txt").write_text("not a dir")
+def test_scan_codehome_structure_from_ledger(sqlite_session):
+    """Subfolders are self-curated from the projects ledger (not the filesystem)."""
+    from gui.sidecar.models import Project
 
-    monkeypatch.setattr(pm.Path, "home", staticmethod(lambda: home))
-    monkeypatch.setattr(pm, "_CODEHOME", codehome)
+    # Fresh ledger: no project folders yet, but root + custom always offered.
+    empty = pm.scan_codehome_structure(session=sqlite_session)
+    assert empty["all"] == []
+    assert empty["suggested"] == []
+    assert empty["custom_available"] is True
+    assert empty["root_available"] is True
 
-    result = pm.scan_codehome_structure()
-    assert result["custom_available"] is True
-    # Grouping folders surface (including names with spaces).
-    assert "Games" in result["all"]
-    assert "The Sciences" in result["all"]
-    assert "apps" in result["all"]
-    # Canonical bucket is prioritised in suggested when present.
-    assert result["suggested"] == ["apps"]
-    # Excluded: projects (markers), empty dirs, noise, hidden, files.
-    assert "Weather" not in result["all"]
-    assert "emptycat" not in result["all"]
-    assert "node_modules" not in result["all"]
-    assert ".git" not in result["all"]
-    assert "readme.txt" not in result["all"]
+    # Once projects exist, their distinct subfolders surface (root "" excluded).
+    sqlite_session.add_all([
+        Project(id="a", name="a", path="/x/a", subfolder="The Sciences", template="cli", port=5201),
+        Project(id="b", name="b", path="/x/b", subfolder="Games", template="cli", port=5202),
+        Project(id="c", name="c", path="/x/c", subfolder="Games", template="cli", port=5203),
+        Project(id="d", name="d", path="/x/d", subfolder="", template="cli", port=5204),  # root
+    ])
+    sqlite_session.commit()
+
+    res = pm.scan_codehome_structure(session=sqlite_session)
+    assert set(res["all"]) == {"Games", "The Sciences"}
+    assert res["all"] == sorted(res["all"], key=str.lower)  # sorted, case-insensitive
+    assert res["root_available"] is True
 
 
-def test_scan_codehome_structure_missing(monkeypatch, tmp_path):
-    codehome = tmp_path / "Codehome"  # does not exist
-    monkeypatch.setattr(pm, "_CODEHOME", codehome)
+def test_scan_codehome_structure_db_unavailable(monkeypatch):
+    """A DB failure degrades to an empty list; root + custom stay available."""
+    import gui.sidecar.db as db
 
-    result = pm.scan_codehome_structure()
-    assert result["all"] == []
-    assert result["suggested"] == ["apps"]  # fallback
-    assert result["custom_available"] is True
+    def _boom():
+        raise RuntimeError("no db")
+
+    monkeypatch.setattr(db, "SessionLocal", _boom)
+    res = pm.scan_codehome_structure()
+    assert res["all"] == []
+    assert res["suggested"] == []
+    assert res["custom_available"] is True
+    assert res["root_available"] is True
 
 
 # ── allocate_port tests (in-memory SQLite) ────────────────────────────────────

@@ -7,6 +7,15 @@
 
 ## ✅ Phase 11d — Project Creation GUI SHIPPED
 
+> Update: subfolder discovery reworked after feedback. It no longer guesses
+> categories from the filesystem (that surfaced clutter like Docker/Golang and
+> couldn't tell a real category from an incidental one). `scan_codehome_structure`
+> is now **ledger-based**: subfolders come from distinct `Project.subfolder`
+> values, so a folder appears once you've created a project in it. The drawer
+> adds a **(Codehome root)** option (create directly under ~/Codehome) and keeps
+> **＋ New folder…** for targeting any location the first time. `create_project_folder`
+> now treats an empty subfolder as the Codehome root.
+
 The drawer that makes the whole feature usable.
 
 ### Files

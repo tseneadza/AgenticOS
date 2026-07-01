@@ -209,7 +209,7 @@ export default function ProjectCreationDrawer({ open, onClose, onCreated }) {
       setSubfolders(subs);
       set({
         template: tpls[0]?.id || "",
-        subfolder: subs[0] || "apps",
+        subfolder: subs[0] || "",  // "" = Codehome root
       });
     });
 
@@ -225,10 +225,15 @@ export default function ProjectCreationDrawer({ open, onClose, onCreated }) {
 
   // The effective subfolder is either the picked one or the typed custom name.
   const isCustomSub = form.subfolder === CUSTOM;
+  const isRootSub = form.subfolder === "";  // "(Codehome root)"
   const effectiveSubfolder = isCustomSub
     ? form.customSubfolder.trim()
+    : isRootSub
+    ? ""
     : form.subfolder;
-  const subfolderValid = SUBFOLDER_RE.test(effectiveSubfolder);
+  // Root and existing folders are always valid; only a typed custom name must
+  // be a safe single path segment.
+  const subfolderValid = isCustomSub ? SUBFOLDER_RE.test(effectiveSubfolder) : true;
 
   const nameValid = form.name === "" || NAME_RE.test(form.name);
   const canSubmit =
@@ -388,12 +393,12 @@ export default function ProjectCreationDrawer({ open, onClose, onCreated }) {
                 onChange={(e) => set({ subfolder: e.target.value })}
                 disabled={busy}
               >
+                <option value="">(Codehome root)</option>
                 {subfolders.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
                 ))}
-                {subfolders.length === 0 && <option value="apps">apps</option>}
                 <option value={CUSTOM}>＋ New folder…</option>
               </select>
               {isCustomSub && (
