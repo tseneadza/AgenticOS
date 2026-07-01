@@ -1,0 +1,146 @@
+{
+  "skill_name": "agentic-mcp-tools",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I just finished Phase 7 integration tests. Run the full test suite to verify everything passes.",
+      "expected_output": "Test suite runs successfully, confirms 238+ tests passing (unit + integration combined)",
+      "assertions": [
+        {
+          "name": "test_suite_runs",
+          "description": "Test command executes without timing out"
+        },
+        {
+          "name": "success_status_true",
+          "description": "JSON response has success: true"
+        },
+        {
+          "name": "tests_found_in_output",
+          "description": "Output contains test result summary or test names"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I need to stage all my changes and commit them with the message 'Phase 7 integration tests complete'. Show me what changed first.",
+      "expected_output": "Shows git status with modified files, then stages changes, then creates commit with specified message",
+      "assertions": [
+        {
+          "name": "git_status_works",
+          "description": "git_status tool runs and shows files"
+        },
+        {
+          "name": "git_add_succeeds",
+          "description": "git_add '.' returns success: true"
+        },
+        {
+          "name": "git_commit_succeeds",
+          "description": "git_commit with message returns success: true"
+        },
+        {
+          "name": "commit_message_used",
+          "description": "Output confirms message 'Phase 7 integration tests complete' was used"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Before I start working on Phase 8, verify the project builds and check all components are present. Show me component count and code metrics.",
+      "expected_output": "Runs build verification, lists all 13 components, shows line counts per file",
+      "assertions": [
+        {
+          "name": "build_verify_runs",
+          "description": "verify_build executes successfully"
+        },
+        {
+          "name": "components_count_correct",
+          "description": "check_components returns count >= 13"
+        },
+        {
+          "name": "component_names_present",
+          "description": "Component list includes expected names (MethodBadge, StatusIndicator, etc.)"
+        },
+        {
+          "name": "line_counts_provided",
+          "description": "count_lines returns files with line counts for each component"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Push my Phase 7 changes to GitHub. Make sure they're committed first, then push to origin main.",
+      "expected_output": "Stages changes, commits with appropriate message, pushes to origin/main branch",
+      "assertions": [
+        {
+          "name": "commit_created",
+          "description": "git_commit succeeds with commit message"
+        },
+        {
+          "name": "push_succeeds",
+          "description": "git_push origin main returns success: true"
+        },
+        {
+          "name": "no_auth_errors",
+          "description": "No 'permission denied' or auth errors in output"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Show me the recent git history to see what work has been done on AgenticOS.",
+      "expected_output": "Displays last 20 commits with hashes, authors, and commit messages",
+      "assertions": [
+        {
+          "name": "log_executes",
+          "description": "git_log_recent runs without error"
+        },
+        {
+          "name": "commit_hashes_shown",
+          "description": "Output contains git commit hashes (7+ character strings)"
+        },
+        {
+          "name": "messages_present",
+          "description": "Output includes commit messages (Phase 6, Phase 7, component names, etc.)"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Build a debug version of the app for testing, then verify the build succeeded.",
+      "expected_output": "Builds debug bundle and returns path to .app file, confirms success",
+      "assertions": [
+        {
+          "name": "build_debug_runs",
+          "description": "build_debug command executes"
+        },
+        {
+          "name": "build_succeeds",
+          "description": "Returns success: true"
+        },
+        {
+          "name": "app_path_in_output",
+          "description": "Output contains path reference (.app bundle location)"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "List all the extracted React components and tell me how many there are.",
+      "expected_output": "Shows sorted list of component names and total count (should be 13)",
+      "assertions": [
+        {
+          "name": "components_listed",
+          "description": "Response includes component names"
+        },
+        {
+          "name": "count_correct",
+          "description": "Total count is 13 or more"
+        },
+        {
+          "name": "component_names_valid",
+          "description": "Names match Phase 6 components (MethodBadge, PathDisplay, StatusIndicator, etc.)"
+        }
+      ]
+    }
+  ]
+}

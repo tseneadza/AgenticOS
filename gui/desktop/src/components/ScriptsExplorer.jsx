@@ -200,16 +200,27 @@ const SORT_OPTIONS = [
 ];
 
 export default function ScriptsExplorer() {
+  // ── localStorage helpers ────────────────────────────────────────────────────
+  const loadFromLS = (key, defaultVal) => {
+    try {
+      const stored = localStorage.getItem(`scripts-explorer-${key}`);
+      return stored ? JSON.parse(stored) : defaultVal;
+    } catch { return defaultVal; }
+  };
+  const saveToLS = (key, val) => {
+    try { localStorage.setItem(`scripts-explorer-${key}`, JSON.stringify(val)); } catch {}
+  };
+
   const [scripts, setScripts]         = useState([]);
   const [loading, setLoading]         = useState(true);
   const [fetchErr, setFetchErr]       = useState(null);
   const [tab, setTab]                 = useState("explorer");
   const [selected, setSelected]       = useState(null);
-  const [groupOpen, setGroupOpen]     = useState({});
-  const [filter, setFilter]           = useState("");
-  const [sortBy, setSortBy]           = useState("type");
-  const [sortDir, setSortDir]         = useState("asc");
-  const [groupBy, setGroupBy]         = useState("type");
+  const [groupOpen, setGroupOpen]     = useState(() => loadFromLS("groupOpen", {}));
+  const [filter, setFilter]           = useState(() => loadFromLS("filter", ""));
+  const [sortBy, setSortBy]           = useState(() => loadFromLS("sortBy", "type"));
+  const [sortDir, setSortDir]         = useState(() => loadFromLS("sortDir", "asc"));
+  const [groupBy, setGroupBy]         = useState(() => loadFromLS("groupBy", "type"));
   const [scriptInfo, setScriptInfo]   = useState(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoErr, setInfoErr]         = useState(null);
@@ -223,7 +234,7 @@ export default function ScriptsExplorer() {
   useEffect(() => {
     const check = async () => {
       try {
-        const r = await fetch("http://localhost:5130/health", { signal: AbortSignal.timeout(2000) });
+        const r = await fetch("http://localhost:5130/api/health", { signal: AbortSignal.timeout(2000) });
         setHubOk(r.ok);
       } catch { setHubOk(false); }
     };
@@ -246,7 +257,8 @@ export default function ScriptsExplorer() {
         }));
         setScripts(enriched);
         const allKeys = [...new Set([...enriched.map(s => s.type), ...enriched.map(s => s.project)])];
-        setGroupOpen(Object.fromEntries(allKeys.map(k => [k, true])));
+        // Preserve loaded state, only set new groups to open
+        setGroupOpen(prev => Object.fromEntries(allKeys.map(k => [k, prev?.[k] ?? true])));
       } catch (e) { setFetchErr(e.message); }
       setLoading(false);
     };
@@ -287,6 +299,13 @@ export default function ScriptsExplorer() {
     };
     load();
   }, [selected, scripts]);
+
+  // ── Persist filter state to localStorage ─────────────────────────────────
+  useEffect(() => { saveToLS("filter", filter); }, [filter]);
+  useEffect(() => { saveToLS("sortBy", sortBy); }, [sortBy]);
+  useEffect(() => { saveToLS("sortDir", sortDir); }, [sortDir]);
+  useEffect(() => { saveToLS("groupBy", groupBy); }, [groupBy]);
+  useEffect(() => { saveToLS("groupOpen", groupOpen); }, [groupOpen]);
 
   // ── Sort / filter / group ───────────────────────────────────────────────
   const filtered = scripts.filter(s =>

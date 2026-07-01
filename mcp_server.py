@@ -100,6 +100,32 @@ def git_log_recent():
     )
 
 
+def git_add(pattern="."):
+    """Stage files for commit using git add"""
+    return run_command(
+        f'git add "{pattern}"'
+    )
+
+
+def git_commit(message):
+    """Create a commit with the given message"""
+    # Escape quotes in message for shell safety
+    safe_message = message.replace('"', '\\"')
+    return run_command(
+        f'git commit -m "{safe_message}"'
+    )
+
+
+def git_push(remote="origin", branch=None):
+    """Push commits to remote repository"""
+    if branch:
+        cmd = f"git push {remote} {branch}"
+    else:
+        # Push current branch
+        cmd = f"git push {remote}"
+    return run_command(cmd)
+
+
 def check_components():
     """List all extracted components"""
     components_dir = GUI_DESKTOP / "src/components"
@@ -161,6 +187,52 @@ TOOLS = [
         "inputSchema": {"type": "object", "properties": {}}
     },
     {
+        "name": "git_add",
+        "description": "Stage files for commit (git add). Default: stage all files ('.')",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "File pattern to stage (e.g., '.', 'src/', 'docs/CHANGELOG.md')",
+                    "default": "."
+                }
+            }
+        }
+    },
+    {
+        "name": "git_commit",
+        "description": "Create a commit with the given message",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "Commit message (required)"
+                }
+            },
+            "required": ["message"]
+        }
+    },
+    {
+        "name": "git_push",
+        "description": "Push commits to remote repository (default: origin, current branch)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "remote": {
+                    "type": "string",
+                    "description": "Remote name (e.g., 'origin', 'upstream')",
+                    "default": "origin"
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch name (optional; if omitted, pushes current branch)"
+                }
+            }
+        }
+    },
+    {
         "name": "check_components",
         "description": "List all extracted components",
         "inputSchema": {"type": "object", "properties": {}}
@@ -174,8 +246,9 @@ TOOLS = [
 
 
 def execute_tool(tool_name, input_args=None):
-    """Execute a tool by name"""
-    tools = {
+    """Execute a tool by name with optional arguments"""
+    # Tools that don't take arguments
+    no_arg_tools = {
         "run_tests": run_tests,
         "run_tests_watch": run_tests_watch,
         "build_app": build_app,
@@ -188,22 +261,57 @@ def execute_tool(tool_name, input_args=None):
         "count_lines": count_lines,
     }
 
-    if tool_name not in tools:
-        return {"error": f"Unknown tool: {tool_name}"}
+    # Tools that take arguments
+    arg_tools = {
+        "git_add": git_add,
+        "git_commit": git_commit,
+        "git_push": git_push,
+    }
 
-    return tools[tool_name]()
+    if tool_name in no_arg_tools:
+        return no_arg_tools[tool_name]()
+    elif tool_name in arg_tools:
+        if input_args is None:
+            input_args = {}
+        return arg_tools[tool_name](**input_args)
+    else:
+        return {"error": f"Unknown tool: {tool_name}"}
 
 
 if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        print("Usage: mcp_server.py <tool_name>")
-        print("Available tools:")
+        print("Usage: mcp_server.py <tool_name> [args...]")
+        print("\nAvailable tools:")
         for tool in TOOLS:
-            print(f"  - {tool['name']}: {tool['description']}")
+            print(f"\n  {tool['name']}")
+            print(f"    {tool['description']}")
+            props = tool.get("inputSchema", {}).get("properties", {})
+            if props:
+                print(f"    Parameters:")
+                for prop_name, prop_info in props.items():
+                    print(f"      - {prop_name}: {prop_info.get('description', '')}")
+        print("\nExamples:")
+        print("  mcp_server.py git_status")
+        print("  mcp_server.py git_add .")
+        print("  mcp_server.py git_commit 'Initial commit'")
+        print("  mcp_server.py git_push origin main")
         sys.exit(1)
 
     tool_name = sys.argv[1]
-    result = execute_tool(tool_name)
+
+    # Parse arguments based on tool
+    input_args = {}
+    if tool_name == "git_add" and len(sys.argv) > 2:
+        input_args["pattern"] = sys.argv[2]
+    elif tool_name == "git_commit" and len(sys.argv) > 2:
+        input_args["message"] = sys.argv[2]
+    elif tool_name == "git_push":
+        if len(sys.argv) > 2:
+            input_args["remote"] = sys.argv[2]
+        if len(sys.argv) > 3:
+            input_args["branch"] = sys.argv[3]
+
+    result = execute_tool(tool_name, input_args)
     print(json.dumps(result, indent=2))

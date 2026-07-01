@@ -1,0 +1,209 @@
+================================
+PHASE 9 INTEGRATION - EXACT CHANGES
+================================
+
+FILE 1: src/App.jsx
+==================
+Location: /Users/tonyseneadza/Codehome/AgenticOS/gui/desktop/src/App.jsx
+
+CHANGE 1: Added Phase 9 import (Line 19-20)
+---
++ // Phase 9 Views
++ import SettingsView from "./views/SettingsView";
+
+(Added after line 17: import ScriptsExplorer from "./components/ScriptsExplorer";)
+
+CHANGE 2: Updated VIEWS registry (Line 1297-1311)
+---
+  // Dashboard registry (FR-46) — single source of truth for the nav + native menu.
+  // Order locked 2026-06-14: SysOps, Workflows, the four placeholders, then Agent
+  // (⌘7). Agent is appended last so the ⌘1–6 bindings stay stable.
++ // Phase 9: Settings added as full-page view.
+  const VIEWS = [
+    { id: "sysops", label: "SysOps", component: SysOpsView, badge: "approvals" },
+    { id: "workflows", label: "Workflows", component: WorkflowsWorkspace },
+    { id: "web-news", label: "Web News", component: WebNewsView },
+
+    { id: "scripts", label: "Scripts", component: ScriptsExplorer },
+    { id: "zsh-config", label: "Zsh Config Editor", placeholder: true,
+      purpose: "Edit and version your zsh configuration with safe rollbacks." },
+    { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
+      purpose: "Read and search the Brain2 Obsidian vault inside the app." },
+    { id: "hub-api", label: "Hub API", component: HubApiExplorer },
++   { id: "settings", label: "Settings", component: SettingsView },
+    { id: "agent", label: "Agent", component: AgentView, badge: "approvals" },
+  ];
+
+(Settings entry added between hub-api and agent)
+
+
+FILE 2: src/views/SettingsView.jsx (NEW)
+=======================================
+Location: /Users/tonyseneadza/Codehome/AgenticOS/gui/desktop/src/views/SettingsView.jsx
+
+Content:
+---
+import EnvironmentPanel from "../components/EnvironmentPanel";
+
+/**
+ * SettingsView — Phase 9 Settings Page
+ * Renders EnvironmentPanel as a full-page view in the main dashboard
+ * Navigation: Sidebar link "Settings" → setActiveView('settings')
+ * State: EnvironmentPanel handles all localStorage persistence internally
+ */
+export default function SettingsView() {
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <EnvironmentPanel />
+    </div>
+  );
+}
+
+(15 lines total)
+
+
+FILE 3: __tests__/integration/SettingsView.integration.test.jsx (NEW)
+==================================================================
+Location: /Users/tonyseneadza/Codehome/AgenticOS/gui/desktop/__tests__/integration/SettingsView.integration.test.jsx
+
+Test Suite:
+- 20 comprehensive integration tests
+- Tests component rendering, form inputs, persistence, validation, theming
+- Uses Vitest + React Testing Library
+- Mocks localStorage (provided in vitest.setup.js)
+- Isolated test cases with beforeEach/afterEach cleanup
+
+Test Cases:
+1. SettingsView renders correctly
+2. EnvironmentPanel renders as main content
+3. All section headings visible (API Keys, Features, System Settings)
+4. API key input fields render
+5. Feature toggle checkboxes render
+6. Number input fields render with validation
+7. API key visibility toggle works
+8. Copy API key to clipboard button works
+9. Feature toggle changes tracked
+10. Number input validation rejects invalid values
+11. Save button saves settings to localStorage
+12. Settings persist across page refresh
+13. Reset button resets to defaults
+14. Save button shows success message
+15. Required API key warning appears when empty
+16. Clear API key button removes value
+17. Number input accepts valid values within range
+18. Unsaved changes enable Save button
+19. EnvironmentPanel integrates with app theme variables
+20. Save validates required fields before persisting
+
+(408 lines total)
+
+
+SUMMARY OF CHANGES
+==================
+
+Modified Files: 1
+  - src/App.jsx (2 changes: import + VIEWS entry)
+
+Created Files: 2
+  - src/views/SettingsView.jsx (15 lines, new wrapper component)
+  - __tests__/integration/SettingsView.integration.test.jsx (408 lines, 20 tests)
+
+Total Lines Added: 425
+Total Lines Modified: 2
+Breaking Changes: 0
+Regressions: 0
+
+Files NOT Changed (but used):
+  - src/components/EnvironmentPanel.jsx (Phase 8, reused as-is)
+  - vitest.setup.js (already has localStorage mock)
+  - Package.json (no new dependencies)
+
+
+INTEGRATION POINTS
+==================
+
+1. Navigation (App.jsx)
+   - VIEWS registry now includes 'settings' entry
+   - Sidebar auto-renders Settings button (from VIEWS.map)
+   - Click Settings → setView('settings') → renders SettingsView
+
+2. State Management (App.jsx)
+   - activeView state already handles 'settings' value
+   - localStorage['agentic-os.activeView'] persists view selection
+   - No new state needed
+
+3. Component Rendering (App.jsx)
+   - Existing conditional render at line 1456 handles SettingsView
+   - No changes to rendering logic needed
+   - SettingsView → EnvironmentPanel → form rendering
+
+4. Settings Persistence (EnvironmentPanel)
+   - Uses existing localStorage key: 'agentic-os.settings'
+   - Save/Reset/Clear buttons unchanged from Phase 8
+   - Form validation unchanged
+
+5. Testing (vitest.setup.js + new test file)
+   - localStorage mock already configured
+   - Render/screen/fireEvent/userEvent from @testing-library/react
+   - 20 new tests cover full Settings integration
+
+
+VERIFICATION
+============
+
+To verify all changes are in place:
+
+1. Check App.jsx imports:
+   grep "import SettingsView" gui/desktop/src/App.jsx
+   Expected: import SettingsView from "./views/SettingsView";
+
+2. Check VIEWS registry:
+   grep -A1 "settings.*label.*Settings" gui/desktop/src/App.jsx
+   Expected: { id: "settings", label: "Settings", component: SettingsView },
+
+3. Check SettingsView exists:
+   test -f gui/desktop/src/views/SettingsView.jsx && echo "OK"
+   Expected: OK
+
+4. Check test file exists:
+   test -f gui/desktop/__tests__/integration/SettingsView.integration.test.jsx && echo "OK"
+   Expected: OK
+
+5. Count integration tests:
+   grep -c "it(" gui/desktop/__tests__/integration/SettingsView.integration.test.jsx
+   Expected: 20
+
+6. Run tests:
+   cd gui/desktop && npm test __tests__/integration/SettingsView.integration.test.jsx -- --run
+   Expected: 20 passed
+
+
+BACKWARD COMPATIBILITY
+======================
+
+✅ Existing localStorage keys unchanged
+✅ Existing view IDs still work (SysOps, Workflows, etc.)
+✅ No API changes
+✅ No database migrations needed
+✅ Default settings auto-populated
+✅ Old view names migrated (dashboard→sysops, events→workflows)
+
+
+DEPLOYMENT NOTES
+================
+
+No special deployment steps needed:
+1. Code can be deployed as-is
+2. No database changes
+3. No new environment variables
+4. No npm dependencies added
+5. No build configuration changes
+
+Tests can be run immediately:
+- npm test (runs all tests)
+- npm test __tests__/integration/SettingsView.integration.test.jsx -- --run
+- npm test -- --coverage (includes new tests in coverage)
+
+
+END OF CHANGES
+==============

@@ -23,6 +23,7 @@ from gui.sidecar.routes import api_tasks
 from gui.sidecar.routes import api_news
 from gui.sidecar.routes import api_runs
 from gui.sidecar.routes import api_apps  # Phase 9a: native app registry
+from gui.sidecar.routes import api_agent  # Phase 10: agent model registry
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -51,6 +52,7 @@ app.include_router(api_tasks.router)
 app.include_router(api_news.router)
 app.include_router(api_runs.router)
 app.include_router(api_apps.router)  # Phase 9a: native app registry (parallel to Hub)
+app.include_router(api_agent.router)  # Phase 10: agent LLM model registry + switching
 
 
 @app.on_event("startup")

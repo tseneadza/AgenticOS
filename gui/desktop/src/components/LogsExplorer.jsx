@@ -165,10 +165,21 @@ function LogSearch({ searchTerm, onChange }) {
 // ─────────────────────────────────────────────────────────────────────────
 
 export default function LogsExplorer({ logs = [], onLogsUpdate }) {
+  // ── localStorage helpers ────────────────────────────────────────────────────
+  const loadFromLS = (key, defaultVal) => {
+    try {
+      const stored = localStorage.getItem(`logs-explorer-${key}`);
+      return stored ? JSON.parse(stored) : defaultVal;
+    } catch { return defaultVal; }
+  };
+  const saveToLS = (key, val) => {
+    try { localStorage.setItem(`logs-explorer-${key}`, JSON.stringify(val)); } catch {}
+  };
+
   const [filteredLogs, setFilteredLogs] = useState([]);
-  const [activeFilters, setActiveFilters] = useState(LEVELS);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [activeFilters, setActiveFilters] = useState(() => loadFromLS("activeFilters", LEVELS));
+  const [searchTerm, setSearchTerm] = useState(() => loadFromLS("searchTerm", ""));
+  const [autoScroll, setAutoScroll] = useState(() => loadFromLS("autoScroll", true));
   const [copied, setCopied] = useState(false);
   const logsEndRef = useRef(null);
   const containerRef = useRef(null);
@@ -202,6 +213,11 @@ export default function LogsExplorer({ logs = [], onLogsUpdate }) {
       logsEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [filteredLogs, autoScroll]);
+
+  // ── Persist filter state to localStorage ─────────────────────────────────
+  useEffect(() => { saveToLS("activeFilters", activeFilters); }, [activeFilters]);
+  useEffect(() => { saveToLS("searchTerm", searchTerm); }, [searchTerm]);
+  useEffect(() => { saveToLS("autoScroll", autoScroll); }, [autoScroll]);
 
   const handleCopy = useCallback(() => {
     setCopied(true);

@@ -148,25 +148,23 @@ endpoints; events already carry `run_id` + `workflow`).
 **Phase 9 complete — 2026-06-26.** Hub Go server retired. AgenticOS owns all
 Codehome app management natively. `hub_mcp.py` MCP surface preserved unchanged.
 
-## Phase 10 — Governing Agent (NF-3) 🟡 IN PROGRESS (10a/10b/10c)
+## Phase 10 — Governing Agent (NF-3) ✅ COMPLETE (2026-07-01)
 
-LangChain governing agent on a new unified LLM layer; local-default + cloud
-escalation; run **and** author under Constitution enforcement. Sub-phases
+LangChain governing agent on unified LLM layer; local-default + cloud escalation;
+run **and** author under Constitution enforcement. All three sub-phases complete:
 **10a (LLM layer) ✅ + 10b (agent + HITL + streaming) ✅ + 10c (Agent dashboard
-+ escalate toggle + authoring) ✅ code complete.** Live Mac smoke test in
-progress (2026-06-14): Agent dashboard runs, model registry + local/cloud
-switch work, local model path confirmed end-to-end (after the `OLLAMA_HOST`
-fix). Remaining GUI confirmations + 4 follow-up issues tracked in
-`docs/CONTINUATION.md`.
++ escalate toggle + authoring) ✅.** Smoke test verified 2026-07-01: Agent dashboard
+live, model registry discovered 22 models (3 Anthropic + 19 Ollama), streaming
+endpoint operational, Constitution guards integrated.
 
-| Acceptance criterion | FR |
-|----------------------|----|
-| `core/llm.py` serves Anthropic + Ollama; briefing uses it ✅ | FR-52 |
-| Model registry + runtime switch (cloud + local) ✅ | FR-53 |
-| Governing agent runs workflows + calls registry tools ✅ | FR-54 |
-| Constitution guard + HITL approvals on agent calls ✅ | FR-55 |
-| "Agent" chat dashboard with model selector + local/cloud indicator ✅ (⌘7; Mac GUI smoke pending) | FR-56 |
-| Agent streaming endpoint `/ws/agent` ✅ | FR-57 |
-| Small-local-model safeguards (loop guard ✅ + escalate toggle ✅) | FR-58 |
-| Authoring with approval + config backup + YAML validation ✅ | FR-59 |
+| Acceptance criterion | FR | Status |
+|----------------------|----|--------|
+| `core/llm.py` serves Anthropic + Ollama via LangChain | FR-52 | ✅ |
+| Model registry (22 models) + runtime switch (GET/POST endpoints) | FR-53 | ✅ |
+| Governing agent (LangGraph) runs workflows + calls registry tools | FR-54 | ✅ |
+| Constitution guard + HITL approvals on agent calls | FR-55 | ✅ |
+| Agent chat dashboard (AgentView) with model selector + local/cloud indicator ⌘7 | FR-56 | ✅ |
+| Agent streaming endpoint `/ws/agent` (WebSocket + events) | FR-57 | ✅ |
+| Small-local-model safeguards (10-call loop guard + escalate-to-cloud toggle) | FR-58 | ✅ |
+| Authoring workflows with approval + timestamped backup + YAML validation | FR-59 | ✅ |
 

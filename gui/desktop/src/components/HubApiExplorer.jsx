@@ -14,8 +14,26 @@ import LogsExplorer from "./LogsExplorer";
 const HUB = "http://localhost:8085/api";
 const SIDECAR = "http://localhost:5130";
 
-// All 42 Hub + Sidecar API endpoints (comprehensive list)
+// All 75+ Hub + Sidecar + App API endpoints (comprehensive list)
 const ENDPOINTS_HARDCODED = [
+  // ─── UFC App (Flask) @ :5000 ───────────────────────────────────────────
+  { group:"UFC (Flask)", method:"GET",    path:"/api/search",             desc:"Search fighters by name", params:[{name:"q",_in:"query",type:"string",required:true,hint:"e.g. Conor"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/fighters/{letter}",  desc:"Get fighters by last name letter", params:[{name:"letter",_in:"path",type:"string",required:true,hint:"a-z"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/fighter/details",    desc:"Get fighter detailed info", params:[{name:"url",_in:"query",type:"string",required:true,hint:"UFCStats URL"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/fighter/complete",   desc:"Get complete fighter info (merged sources)", params:[{name:"name",_in:"query",type:"string",required:true,hint:"e.g. Conor McGregor"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/popular",            desc:"Get data on popular UFC fighters", params:[] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/alphabet",           desc:"Get alphabet index for fighter search", params:[] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/favorites",          desc:"Get all favorite fighters", params:[] },
+  { group:"UFC (Flask)", method:"POST",   path:"/api/favorites/{name}",   desc:"Add fighter to favorites", params:[{name:"name",_in:"path",type:"string",required:true}] },
+  { group:"UFC (Flask)", method:"DELETE", path:"/api/favorites/{name}",   desc:"Remove fighter from favorites", params:[{name:"name",_in:"path",type:"string",required:true}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/cache/stats",        desc:"Get database cache statistics", params:[] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/upcoming",           desc:"Get upcoming UFC events", params:[{name:"limit",_in:"query",type:"number",required:false,hint:"10"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/completed",          desc:"Get completed UFC events", params:[{name:"limit",_in:"query",type:"number",required:false,hint:"3"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/event/details",      desc:"Get event details & fight card", params:[{name:"url",_in:"query",type:"string",required:true,hint:"UFCStats event URL"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/fight/stats",        desc:"Get detailed fight statistics", params:[{name:"url",_in:"query",type:"string",required:true,hint:"UFCStats fight URL"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/news",               desc:"Get latest UFC/MMA news", params:[{name:"limit",_in:"query",type:"number",required:false,hint:"10"}] },
+  { group:"UFC (Flask)", method:"GET",    path:"/api/health/ufcstats",    desc:"Check UFC Stats website availability", params:[] },
+
   { group:"Cards", method:"GET",    path:"/cards",                    desc:"List all registered project cards", params:[] },
   { group:"Cards", method:"GET",    path:"/cards/favorites",          desc:"Cards marked as favourite", params:[] },
   { group:"Cards", method:"GET",    path:"/cards/recent",             desc:"Recently accessed cards", params:[] },
@@ -57,6 +75,130 @@ const ENDPOINTS_HARDCODED = [
   { group:"News (Sidecar)", server:"sidecar", method:"DELETE", path:"/api/news/feeds/{id}",      desc:"Delete a feed", params:[{name:"id",_in:"path",type:"string",required:true}] },
   { group:"News (Sidecar)", server:"sidecar", method:"POST",   path:"/api/news/fetch",           desc:"Fetch + keyword-filter RSS items", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"urls":["https://..."],"keywords":["quantum"]}'}] },
   { group:"News (Sidecar)", server:"sidecar", method:"POST",   path:"/api/news/rank",            desc:"AI-rank articles via the app's active model", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"articles":[{"title":"…"}],"domains":[],"keywords":[]}'}] },
+
+  // ─── Task Management (Sidecar) ─────────────────────────────────────────
+  { group:"Tasks (Sidecar)", server:"sidecar", method:"GET",    path:"/api/tasks",        desc:"List all tasks", params:[] },
+  { group:"Tasks (Sidecar)", server:"sidecar", method:"POST",   path:"/api/tasks",        desc:"Create a new task", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"title":"Task name","status":"pending"}'}] },
+  { group:"Tasks (Sidecar)", server:"sidecar", method:"GET",    path:"/api/tasks/{task_id}", desc:"Get single task", params:[{name:"task_id",_in:"path",type:"string",required:true}] },
+  { group:"Tasks (Sidecar)", server:"sidecar", method:"PATCH",  path:"/api/tasks/{task_id}", desc:"Update task", params:[{name:"task_id",_in:"path",type:"string",required:true},{name:"body",_in:"body",type:"json",required:true,hint:'{"status":"completed"}'}] },
+  { group:"Tasks (Sidecar)", server:"sidecar", method:"DELETE", path:"/api/tasks/{task_id}", desc:"Delete task", params:[{name:"task_id",_in:"path",type:"string",required:true}] },
+  { group:"Tasks (Sidecar)", server:"sidecar", method:"GET",    path:"/api/tasks/stats",  desc:"Get task statistics", params:[] },
+
+  // ─── Configuration (Sidecar) ────────────────────────────────────────────
+  { group:"Config (Sidecar)", server:"sidecar", method:"GET",    path:"/api/config",      desc:"Get all configuration", params:[] },
+  { group:"Config (Sidecar)", server:"sidecar", method:"PUT",    path:"/api/config",      desc:"Update configuration", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"key":"value"}'}] },
+  { group:"Config (Sidecar)", server:"sidecar", method:"POST",   path:"/api/config/test",  desc:"Test configuration", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"config":"object"}'}] },
+
+  // ─── Workflows & Approvals (Sidecar) ────────────────────────────────────
+  { group:"Workflows (Sidecar)", server:"sidecar", method:"GET",  path:"/api/workflows",           desc:"List all workflows", params:[] },
+  { group:"Workflows (Sidecar)", server:"sidecar", method:"POST", path:"/api/workflows/{name}/run", desc:"Run a workflow by name", params:[{name:"name",_in:"path",type:"string",required:true}] },
+  { group:"Workflows (Sidecar)", server:"sidecar", method:"GET",  path:"/api/approvals",          desc:"Get pending approvals", params:[] },
+  { group:"Workflows (Sidecar)", server:"sidecar", method:"POST", path:"/api/approvals/{approval_id}", desc:"Respond to approval", params:[{name:"approval_id",_in:"path",type:"string",required:true},{name:"body",_in:"body",type:"json",required:true,hint:'{"approved":true}'}] },
+
+  // ─── Agent (Sidecar) ───────────────────────────────────────────────────
+  { group:"Agent (Sidecar)", server:"sidecar", method:"GET",  path:"/api/agent/models", desc:"List available LLM models", params:[] },
+  { group:"Agent (Sidecar)", server:"sidecar", method:"POST", path:"/api/agent/model",  desc:"Set active LLM model", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"model":"gpt-4"}'}] },
+  { group:"Agent (Sidecar)", server:"sidecar", method:"POST", path:"/api/agent/chat",   desc:"Chat with agent", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"message":"Hello"}'}] },
+
+  // ─── Native App Registry (Sidecar) ─────────────────────────────────────
+  { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps",           desc:"List all registered apps", params:[] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps/manifests", desc:"Get app manifests", params:[] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps/{app_id}", desc:"Get app details", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps/{app_id}/status", desc:"Get app status (running/stopped)", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/{app_id}/start", desc:"Start an app", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/{app_id}/stop",  desc:"Stop an app", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/{app_id}/restart", desc:"Restart an app", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps/{app_id}/logs",  desc:"Get app logs", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/refresh",   desc:"Refresh app registry", params:[] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/stop-all",  desc:"Stop all running apps", params:[] },
+
+  // ─── Keno (Georgia Lottery) (Flask @ :5000) ──────────────────────────
+  { group:"Keno (Flask)", method:"GET",  path:"/api/status",        desc:"API health check", params:[] },
+  { group:"Keno (Flask)", method:"GET",  path:"/api/draws/latest",  desc:"Get latest draws from database", params:[{name:"count",_in:"query",type:"number",required:false,hint:"5 (max 100)"}] },
+  { group:"Keno (Flask)", method:"POST", path:"/api/draws/fetch",   desc:"Fetch new draws from Georgia Lottery API", params:[{name:"count",_in:"query",type:"number",required:false,hint:"20 (max 200)"}] },
+  { group:"Keno (Flask)", method:"POST", path:"/api/draws/sync",    desc:"Sync database with API (fill gaps)", params:[{name:"max",_in:"query",type:"number",required:false,hint:"100 (max 500)"}] },
+  { group:"Keno (Flask)", method:"GET",  path:"/api/predictions",   desc:"Generate keno ticket predictions", params:[{name:"spots",_in:"query",type:"number",required:false,hint:"10 (max 10)"},{name:"tickets",_in:"query",type:"number",required:false,hint:"3 (max 20)"},{name:"draws",_in:"query",type:"number",required:false,hint:"25 (max 200)"}] },
+  { group:"Keno (Flask)", method:"GET",  path:"/api/stats",         desc:"Get database statistics & frequency analysis", params:[] },
+
+  // ─── DreamCatcher (FastAPI @ :5111) ────────────────────────────────────
+  { group:"DreamCatcher", method:"GET",  path:"/api/health",         desc:"Service health check", params:[] },
+  { group:"DreamCatcher", method:"POST", path:"/api/auth/register",  desc:"Register new user", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"email":"...","password":"..."}'}] },
+  { group:"DreamCatcher", method:"POST", path:"/api/auth/login",     desc:"OAuth2 token login", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"email":"...","password":"..."}'}] },
+  { group:"DreamCatcher", method:"POST", path:"/api/dreams/",        desc:"Create dream entry", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"title":"...","description":"...","tags":[]}'}] },
+  { group:"DreamCatcher", method:"GET",  path:"/api/dreams/tags",    desc:"Get all dream tags", params:[] },
+  { group:"DreamCatcher", method:"GET",  path:"/api/goals/",         desc:"List goals", params:[] },
+  { group:"DreamCatcher", method:"POST", path:"/api/goals/",         desc:"Create goal", params:[{name:"body",_in:"body",type:"json",required:true}] },
+  { group:"DreamCatcher", method:"GET",  path:"/api/ideas/",         desc:"List ideas", params:[] },
+  { group:"DreamCatcher", method:"POST", path:"/api/ideas/",         desc:"Capture new idea", params:[{name:"body",_in:"body",type:"json",required:true}] },
+  { group:"DreamCatcher", method:"POST", path:"/api/sleep/",         desc:"Log sleep session", params:[{name:"body",_in:"body",type:"json",required:true}] },
+
+  // ─── Weather (Flask @ :5000) ───────────────────────────────────────────
+  { group:"Weather (Flask)", method:"GET",  path:"/",                     desc:"Main weather dashboard", params:[] },
+  { group:"Weather (Flask)", method:"GET",  path:"/location/{id}",        desc:"Location detail page", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"Weather (Flask)", method:"GET",  path:"/api/weather/{id}",     desc:"Current daily weather", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"Weather (Flask)", method:"GET",  path:"/api/forecast/{id}",    desc:"7-day weather forecast", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"Weather (Flask)", method:"GET",  path:"/api/moon/{id}",        desc:"Moon phase & astronomy data", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"Weather (Flask)", method:"GET",  path:"/api/tides/{id}",       desc:"Tide data (US locations)", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"Weather (Flask)", method:"GET",  path:"/api/locations",        desc:"List all tracked locations", params:[] },
+  { group:"Weather (Flask)", method:"POST", path:"/api/locations",        desc:"Add new location", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"name":"...","lat":0,"lon":0}'}] },
+  { group:"Weather (Flask)", method:"GET",  path:"/api/search",           desc:"Search locations by name", params:[{name:"q",_in:"query",type:"string",required:true}] },
+  { group:"Weather (Flask)", method:"GET",  path:"/api/weekly-average/{id}", desc:"7-day weather average", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"Weather (Flask)", method:"GET",  path:"/api/health",           desc:"Weather API health check", params:[] },
+
+  // ─── AI Voice Assistant (Flask @ :5000) ────────────────────────────────
+  { group:"AI Voice", method:"GET",    path:"/",                          desc:"Serve frontend", params:[] },
+  { group:"AI Voice", method:"GET",    path:"/api/health",                desc:"Service health & feature flags", params:[] },
+  { group:"AI Voice", method:"GET",    path:"/api/llm-providers",         desc:"List available LLM providers", params:[] },
+  { group:"AI Voice", method:"GET",    path:"/api/llm-providers/{name}/models", desc:"Provider's model list", params:[{name:"name",_in:"path",type:"string",required:true,hint:"openai,anthropic,ollama"}] },
+  { group:"AI Voice", method:"GET",    path:"/api/agents",                desc:"List available agents", params:[] },
+  { group:"AI Voice", method:"GET",    path:"/api/agents/{id}",           desc:"Single agent info", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"AI Voice", method:"POST",   path:"/api/agents/recommend",      desc:"Recommend agent by message", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"message":"..."}'}] },
+  { group:"AI Voice", method:"POST",   path:"/api/chat",                  desc:"Single agent chat", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"message":"...","user_id":"...","agent_id":"..."}'}] },
+  { group:"AI Voice", method:"POST",   path:"/api/chat/parallel",         desc:"Multi-agent parallel execution", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"message":"...","agent_ids":[]}'}] },
+  { group:"AI Voice", method:"GET",    path:"/api/user",                  desc:"Get user profile", params:[{name:"user_id",_in:"query",type:"string",required:true}] },
+  { group:"AI Voice", method:"POST",   path:"/api/user",                  desc:"Update user profile", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"name":"..."}'}] },
+  { group:"AI Voice", method:"GET",    path:"/api/user/greeting",         desc:"Get personalized greeting", params:[{name:"user_id",_in:"query",type:"string",required:true}] },
+  { group:"AI Voice", method:"GET",    path:"/api/user/facts",            desc:"Get stored user facts", params:[{name:"user_id",_in:"query",type:"string",required:true}] },
+  { group:"AI Voice", method:"POST",   path:"/api/user/facts",            desc:"Set user fact", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"category":"...","key":"...","value":"..."}'}] },
+  { group:"AI Voice", method:"GET",    path:"/api/conversation",          desc:"Get conversation history", params:[{name:"user_id",_in:"query",type:"string",required:true}] },
+  { group:"AI Voice", method:"DELETE", path:"/api/conversation",          desc:"Clear conversation history", params:[{name:"user_id",_in:"query",type:"string",required:true}] },
+  { group:"AI Voice", method:"POST",   path:"/api/voice/transcribe",      desc:"Transcribe audio to text", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"audio_file":"..."}'}] },
+  { group:"AI Voice", method:"POST",   path:"/api/voice/synthesize",      desc:"Text to speech conversion", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"text":"...","voice":"..."}'}] },
+  { group:"AI Voice", method:"GET",    path:"/api/voice/voices",          desc:"List available voice options", params:[] },
+  { group:"AI Voice", method:"POST",   path:"/api/livekit/token",         desc:"Generate LiveKit token", params:[{name:"body",_in:"body",type:"json",required:true}] },
+  { group:"AI Voice", method:"POST",   path:"/api/livekit/dispatch",      desc:"Dispatch agent for real-time chat", params:[{name:"body",_in:"body",type:"json",required:true}] },
+  { group:"AI Voice", method:"GET",    path:"/api/livekit/status",        desc:"Get real-time session status", params:[] },
+  { group:"AI Voice", method:"POST",   path:"/api/filesystem/read",       desc:"Read file content", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"path":"..."}'}] },
+  { group:"AI Voice", method:"POST",   path:"/api/filesystem/create",     desc:"Create/write file", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"path":"...","content":"..."}'}] },
+  { group:"AI Voice", method:"POST",   path:"/api/filesystem/list",       desc:"List directory contents", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"path":"..."}'}] },
+
+  // ─── SongTrans (Flask @ :5000) ─────────────────────────────────────────
+  { group:"SongTrans (Flask)", method:"GET",  path:"/",                 desc:"Serve frontend", params:[] },
+  { group:"SongTrans (Flask)", method:"POST", path:"/api/translate",    desc:"Fetch & translate song lyrics", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"song_name":"...","artist_name":"...","language":"en"}'}] },
+  { group:"SongTrans (Flask)", method:"GET",  path:"/api/search-artists", desc:"Autocomplete artist search", params:[{name:"q",_in:"query",type:"string",required:true}] },
+
+  // ─── Cards/Blackjack (Flask @ :5000) ───────────────────────────────────
+  { group:"Blackjack (Flask)", method:"GET",  path:"/",                    desc:"Serve index.html", params:[] },
+  { group:"Blackjack (Flask)", method:"GET",  path:"/card-image/{rank}/{suit}", desc:"Serve card SVG files", params:[{name:"rank",_in:"path",type:"string",required:true,hint:"A,2-10,J,Q,K"},{name:"suit",_in:"path",type:"string",required:true,hint:"hearts,diamonds,clubs,spades"}] },
+  { group:"Blackjack (Flask)", method:"POST", path:"/api/new-game",       desc:"Initialize game session", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"mode":"single","players":1}'}] },
+  { group:"Blackjack (Flask)", method:"POST", path:"/api/place-bet",       desc:"Place initial bet", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"amount":10}'}] },
+
+  // ─── Cards/Shuffle (Flask @ :5000) ────────────────────────────────────
+  { group:"Shuffle (Flask)", method:"GET",  path:"/",              desc:"Serve frontend", params:[] },
+  { group:"Shuffle (Flask)", method:"POST", path:"/api/deck/new",  desc:"Create shuffled 52-card deck", params:[] },
+  { group:"Shuffle (Flask)", method:"POST", path:"/api/deck/deal",  desc:"Deal cards to dealer/player", params:[] },
+
+  // ─── BatTester (FastAPI @ :8000) ──────────────────────────────────────
+  { group:"BatTester", method:"GET",  path:"/",                  desc:"Battery test dashboard", params:[] },
+  { group:"BatTester", method:"GET",  path:"/api/health",        desc:"Service health & active test ID", params:[] },
+  { group:"BatTester", method:"GET",  path:"/api/tests",         desc:"List all battery tests", params:[] },
+  { group:"BatTester", method:"POST", path:"/api/tests",         desc:"Create new test", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"chemistry":"LiPo","voltage":12,"capacity":5000}'}] },
+  { group:"BatTester", method:"GET",  path:"/api/tests/{id}",    desc:"Get test details", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"BatTester", method:"POST", path:"/api/tests/{id}/start", desc:"Start discharge test", params:[{name:"id",_in:"path",type:"string",required:true},{name:"body",_in:"body",type:"json",required:true,hint:'{"rate":"1C"}'}] },
+  { group:"BatTester", method:"POST", path:"/api/tests/{id}/stop", desc:"Stop active test", params:[{name:"id",_in:"path",type:"string",required:true}] },
+  { group:"BatTester", method:"GET",  path:"/api/tests/{id}/readings", desc:"Tail test readings", params:[{name:"id",_in:"path",type:"string",required:true}] },
+
+  // ─── System (Sidecar) ──────────────────────────────────────────────────
   { group:"System", server:"sidecar", method:"GET", path:"/api/health", desc:"Sidecar health", params:[] },
 ];
 
@@ -152,15 +294,29 @@ function buildUrl(ep, paramValues) {
 }
 
 export default function HubApiExplorer() {
+  // ── localStorage helpers ────────────────────────────────────────────────────
+  const loadFromLS = (key, defaultVal) => {
+    try {
+      const stored = localStorage.getItem(`hub-api-explorer-${key}`);
+      return stored ? JSON.parse(stored) : defaultVal;
+    } catch { return defaultVal; }
+  };
+  const saveToLS = (key, val) => {
+    try { localStorage.setItem(`hub-api-explorer-${key}`, JSON.stringify(val)); } catch {}
+  };
+
   const [endpoints, setEndpoints]   = useState(ENDPOINTS_HARDCODED);
-  const [tab, setTab]               = useState("explorer");
+  const [tab, setTab]               = useState(() => loadFromLS("tab", "explorer"));
   const [selected, setSelected]     = useState(null);
-  const [groupOpen, setGroupOpen]   = useState(() =>
-    Object.fromEntries(
+  const [groupOpen, setGroupOpen]   = useState(() => {
+    const saved = loadFromLS("groupOpen", null);
+    if (saved) return saved;
+    // Default: open all groups
+    return Object.fromEntries(
       [...new Set(ENDPOINTS_HARDCODED.map(e => e.group))].map(g => [g, true])
-    )
-  );
-  const [filter, setFilter]         = useState("");
+    );
+  });
+  const [filter, setFilter]         = useState(() => loadFromLS("filter", ""));
   const [paramValues, setParamValues] = useState({});
   const [response, setResponse]     = useState(null);
   const [loading, setLoading]       = useState(false);
@@ -203,6 +359,11 @@ export default function HubApiExplorer() {
     const id = setInterval(check, 5000);
     return () => clearInterval(id);
   }, []);
+
+  // ── Persist filter state to localStorage ─────────────────────────────────
+  useEffect(() => { saveToLS("tab", tab); }, [tab]);
+  useEffect(() => { saveToLS("filter", filter); }, [filter]);
+  useEffect(() => { saveToLS("groupOpen", groupOpen); }, [groupOpen]);
 
   const groups = [...new Set(endpoints.map(e => e.group))];
   const ep  = selected !== null ? endpoints[selected] : null;
