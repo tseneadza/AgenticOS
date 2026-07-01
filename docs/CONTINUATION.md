@@ -1,7 +1,42 @@
-# Session Continuation — Phase 11c SHIPPED ✅
+# Session Continuation — Phase 11 COMPLETE ✅ (11a–11d shipped)
 
-**Last Updated:** 2026-07-01 (Phase 11a + 11b + 11c Implementation Session)
-**Status:** ✅ Phase 10 SHIPPED / Phase 11 DESIGN LOCKED / **Phase 11a + 11b + 11c BUILT & GREEN (48 tests passing)**. Only Phase 11d (GUI drawer) remains.
+**Last Updated:** 2026-07-01 (Phase 11a–11d Implementation Session)
+**Status:** ✅ Phase 10 SHIPPED / **Phase 11 (Project Creation Scaffolding) COMPLETE — 11a+11b+11c backend GREEN (48 tests), 11d GUI drawer built + `vite build` clean.**
+
+---
+
+## ✅ Phase 11d — Project Creation GUI SHIPPED
+
+The drawer that makes the whole feature usable.
+
+### Files
+- **`gui/desktop/src/components/ProjectCreationDrawer.jsx`** (new) — right-side
+  drawer. Loads `/api/projects/templates` + `/subfolders` on open; form (name
+  with live slug validation mirroring the backend regex, template, subfolder,
+  description, optional custom port, private checkbox); on submit opens
+  `ws://localhost:5130/api/projects/ws/create`, streams the step events
+  (validate→…→register) into a live checklist, then renders the result (path,
+  port, GitHub link + pushed state, warnings) or an error. Theme tokens only;
+  hover/transition/keyframe CSS in a scoped injected `pcd-*` stylesheet per the
+  frontend conventions.
+- **`gui/desktop/src/App.jsx`** (edited) — import the drawer; `SysOpsView` owns
+  `showNewProject` state, renders a `＋ New Project` trigger pinned to the top of
+  the **Codehome Hub** panel body, and mounts `<ProjectCreationDrawer>`.
+
+### Verification
+- `npm run build` (vite) compiles clean — 68 modules, no errors.
+- Frontend `vitest` suite has **pre-existing** breakage (19 files / 188 tests)
+  UNRELATED to this work: verified identical failed/passed counts with these
+  changes stashed. This work adds zero new failures. (Separate cleanup task if
+  desired — looks like a jsdom/RTL environment issue in the integration tests.)
+- Still needs an on-device visual check: `cd gui/desktop && npm run tauri dev`
+  (sidecar must be running on :5130 — `python -m gui.sidecar`). Open SysOps →
+  Codehome Hub → ＋ New Project.
+
+### ➡️ Optional follow-ups (Phase 12+)
+- Fix the pre-existing frontend test-suite environment breakage.
+- Custom templates from Git repos; org-scoped GitHub repos; edit-after-create.
+- Consider a projects list view (the `GET /api/projects` ledger endpoint exists).
 
 ---
 

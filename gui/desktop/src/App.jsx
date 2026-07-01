@@ -12,6 +12,7 @@ import "@xterm/xterm/css/xterm.css";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import HubApiExplorer from "./components/HubApiExplorer";
+import ProjectCreationDrawer from "./components/ProjectCreationDrawer";  // Phase 11d
 import WorkflowsWorkspace from "./components/WorkflowsWorkspace";
 import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
@@ -809,14 +810,40 @@ function SysOpsView({ ctx }) {
   const exp = expandedPanel;
   const P = (title, content) => mkPanel(title, content, expandedPanel, toggle);
 
+  // Phase 11d: project-creation drawer, triggered from the Codehome Hub panel.
+  const [showNewProject, setShowNewProject] = useState(false);
+
+  // Codehome Hub panel body with a "New Project" trigger pinned to the top so
+  // it's reachable whether the hub is online, offline, or the panel is expanded.
+  const codehomeHub = (
+    <>
+      <button
+        className="btn"
+        onClick={(e) => { e.stopPropagation(); setShowNewProject(true); }}
+        style={{
+          marginBottom: 8, background: "var(--accent)", color: "#1b1b19",
+          border: "none", borderRadius: 4, padding: "5px 11px",
+          fontSize: "0.76rem", fontWeight: 600, cursor: "pointer",
+        }}
+      >
+        ＋ New Project
+      </button>
+      <HubPanel expanded={exp === "Codehome Hub"} />
+    </>
+  );
+
   return (
     <div ref={gridRef} className={`grid${exp ? " has-expanded" : ""}`}>
       {P("System Health", <SystemHealth expanded={exp === "System Health"} />)}
       {P("Agent Activity", <AgentActivity refreshKey={refreshKey} expanded={exp === "Agent Activity"} />)}
       {P("Keno Telemetry", <KenoTelemetry expanded={exp === "Keno Telemetry"} />)}
-      {P("Codehome Hub", <HubPanel expanded={exp === "Codehome Hub"} />)}
+      {P("Codehome Hub", codehomeHub)}
       {P("Approval Queue", <ApprovalQueue approvals={approvals} onDecide={decide} expanded={exp === "Approval Queue"} />)}
       {P("Terminal", <TerminalStrip expanded={exp === "Terminal"} />)}
+      <ProjectCreationDrawer
+        open={showNewProject}
+        onClose={() => setShowNewProject(false)}
+      />
     </div>
   );
 }
