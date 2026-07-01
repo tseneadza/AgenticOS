@@ -24,6 +24,7 @@ from gui.sidecar.routes import api_news
 from gui.sidecar.routes import api_runs
 from gui.sidecar.routes import api_apps  # Phase 9a: native app registry
 from gui.sidecar.routes import api_agent  # Phase 10: agent model registry
+from gui.sidecar.routes import api_projects  # Phase 11c: project creation
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -53,6 +54,7 @@ app.include_router(api_news.router)
 app.include_router(api_runs.router)
 app.include_router(api_apps.router)  # Phase 9a: native app registry (parallel to Hub)
 app.include_router(api_agent.router)  # Phase 10: agent LLM model registry + switching
+app.include_router(api_projects.router)  # Phase 11c: project scaffolding
 
 
 @app.on_event("startup")
@@ -70,6 +72,23 @@ async def _ensure_news_schema() -> None:
     except Exception:  # noqa: BLE001
         logging.getLogger("agentcos.news_db").warning(
             "News schema bootstrap skipped", exc_info=True
+        )
+
+
+@app.on_event("startup")
+async def _ensure_projects_schema() -> None:
+    """Self-bootstrap the SQLAlchemy schema (projects + ports) — Phase 11c.
+
+    Best-effort: if MySQL is down the projects routes degrade gracefully
+    (empty ledger, available=False) so a missing DB never blocks startup.
+    """
+    import logging
+    try:
+        from gui.sidecar import db
+        db.init_db()
+    except Exception:  # noqa: BLE001
+        logging.getLogger("agentcos.projects_db").warning(
+            "Projects schema bootstrap skipped", exc_info=True
         )
 
 

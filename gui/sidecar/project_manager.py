@@ -12,15 +12,18 @@ Public API (Phase 11a):
     create_venv(project_path, template_name)        -> str | None
     allocate_port(app_id, preferred_port, session)  -> int
 
-The full async orchestration (``create_project_full``) and GitHub integration
-are intentionally out of scope here — they arrive in Phase 11b / 11c. This
-module is deliberately lenient about failures for best-effort steps (venv
-creation), matching the resilient design of ``db.py`` / ``app_registry.py``:
-a missing ``uv``/``python`` or a failed install logs a warning and returns
-``None`` rather than raising.
+Phase 11b adds the best-effort git flow (``init_git_repo``); Phase 11c adds the
+full async orchestration (``create_project_full``) that ties folder + port +
+files + venv + github + git + DB registration into one resilient state machine.
+This module is deliberately lenient about failures for best-effort steps (venv
+creation, git, github), matching the resilient design of ``db.py`` /
+``app_registry.py``: a missing ``uv``/``python`` or a failed install logs a
+warning and returns ``None`` rather than raising.
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re
 import shutil
@@ -29,7 +32,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from gui.sidecar.template_registry import PYTHON_TEMPLATES
+from gui.sidecar.template_registry import (
+    PYTHON_TEMPLATES,
+    TEMPLATES,
+    generate_files,
+)
 
 log = logging.getLogger(__name__)
 
@@ -423,3 +430,225 @@ def init_git_repo(
                 _warn(f"git push failed: {push_res.stderr.strip()}")
 
     return status
+
+
+# ── full async orchestration — Phase 11c ──────────────────────────────────────
+
+async def create_project_full(
+    *,
+    name: str,
+    template: str,
+    subfolder: str,
+    description: str | None = None,
+    custom_port: int | None = None,
+    private: bool = True,
+    emit=None,          # optional async callable: emit(step, status, message=None)
+    session=None,       # optional SQLAlchemy session (tests inject sqlite); None -> SessionLocal()
+) -> dict:
+    """Scaffold a project end-to-end: folder + port + files + venv + git + DB.
+
+    A resilient state machine that ties together the Phase 11a/11b helpers.
+    CRITICAL steps (validate, folder, port, files, register) raise on failure
+    and abort the flow after emitting an ``error`` event. OPTIONAL steps (venv,
+    github, git) are best-effort: a failure appends a warning and emits a
+    ``warning`` event but never raises.
+
+    Emit protocol
+    -------------
+    If *emit* is provided it is awaited as ``emit(step, status, message=None)``
+    for each transition. The stable ``step`` names emitted (in order) are::
+
+        validate, folder, port, files, venv, github, git, register
+
+    Each step emits ``status="start"`` then either ``status="complete"`` (on
+    success), ``status="warning"`` (optional-step failure), or ``status="error"``
+    (critical-step failure). ``venv`` is only emitted for python templates.
+    An emit failure never breaks the flow.
+
+    Args:
+        name: slug-friendly project name (validated).
+        template: a key of ``TEMPLATES``.
+        subfolder: target bucket under ``~/Codehome`` (e.g. ``apps``).
+        description: optional human description.
+        custom_port: preferred port; falls back to auto-allocation if taken.
+        private: create the GitHub repo private (default True).
+        emit: optional async callable for progress events.
+        session: optional SQLAlchemy session; ``None`` -> ``SessionLocal()``.
+
+    Returns:
+        {"project_id", "path", "port", "template", "subfolder", "github_url",
+         "pushed", "warnings", "success"}
+
+    Raises:
+        ValueError: invalid name or unknown template.
+        Exception: any critical-step failure (folder / port / files / register).
+    """
+    # Lazy imports (mirrors allocate_port) to keep module import cheap and dodge
+    # import cycles.
+    from gui.sidecar.github_integration import setup_repo
+    from gui.sidecar.db import SessionLocal
+    from gui.sidecar.models import Project
+
+    warnings: list[str] = []
+
+    async def _emit(step: str, status: str, message: str | None = None) -> None:
+        """Best-effort progress emit — never lets an emit failure break the flow."""
+        if emit is None:
+            return
+        try:
+            await emit(step, status, message)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("create_project_full: emit(%s, %s) failed: %s", step, status, exc)
+
+    github_url: str | None = None
+    clone_url: str | None = None
+    pushed = False
+
+    # ── 1. validate (CRITICAL) ───────────────────────────────────────────────
+    await _emit("validate", "start")
+    if not validate_project_name(name):
+        await _emit("validate", "error", f"Invalid project name: {name!r}")
+        raise ValueError(f"Invalid project name: {name!r}")
+    if template not in TEMPLATES:
+        await _emit("validate", "error", f"Unknown template: {template!r}")
+        raise ValueError(f"Unknown template: {template!r}")
+    await _emit("validate", "complete")
+
+    # ── 2. folder (CRITICAL) ─────────────────────────────────────────────────
+    await _emit("folder", "start")
+    try:
+        project_path: Path = await asyncio.to_thread(
+            create_project_folder, subfolder, name
+        )
+    except Exception as exc:  # noqa: BLE001
+        await _emit("folder", "error", str(exc))
+        raise
+    await _emit("folder", "complete", str(project_path))
+
+    # ── 3. port (CRITICAL) — allocate BEFORE files (app.json embeds the port) ─
+    # NB: DB work runs inline on the event-loop thread (queries are fast), NOT
+    # via asyncio.to_thread — a SQLAlchemy Session is not thread-safe and must
+    # not be shared across the worker thread here and the main thread used by
+    # the register step below. Only subprocess/filesystem work is offloaded.
+    await _emit("port", "start")
+    try:
+        port: int = allocate_port(name, custom_port, session)
+    except Exception as exc:  # noqa: BLE001
+        await _emit("port", "error", str(exc))
+        raise
+    await _emit("port", "complete", str(port))
+
+    # ── 4. files (CRITICAL) — render + write every file (app.json included) ───
+    await _emit("files", "start")
+    try:
+        files = generate_files(template, name, description or "", port)
+
+        def _write_files() -> None:
+            for rel_path, content in files.items():
+                dest = project_path / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content)
+
+        await asyncio.to_thread(_write_files)
+    except Exception as exc:  # noqa: BLE001
+        await _emit("files", "error", str(exc))
+        raise
+    await _emit("files", "complete", f"{len(files)} files")
+
+    # ── 5. venv (OPTIONAL) — python templates only ───────────────────────────
+    if template in PYTHON_TEMPLATES:
+        await _emit("venv", "start")
+        try:
+            activate = await asyncio.to_thread(create_venv, project_path, template)
+            if activate is None:
+                msg = "venv creation skipped or failed (missing uv/python?)"
+                warnings.append(msg)
+                await _emit("venv", "warning", msg)
+            else:
+                await _emit("venv", "complete", activate)
+        except Exception as exc:  # noqa: BLE001
+            msg = f"venv creation error: {exc}"
+            warnings.append(msg)
+            await _emit("venv", "warning", msg)
+
+    # ── 6. github (OPTIONAL) — best-effort remote creation ───────────────────
+    await _emit("github", "start")
+    try:
+        repo = await asyncio.to_thread(setup_repo, name, description, private)
+    except Exception as exc:  # noqa: BLE001
+        repo = None
+        log.warning("create_project_full: setup_repo raised: %s", exc)
+    if repo is None:
+        msg = "GitHub repo creation skipped (no token / creation failed)"
+        warnings.append(msg)
+        await _emit("github", "warning", msg)
+    else:
+        github_url = repo.get("html_url")
+        clone_url = repo.get("clone_url")
+        await _emit("github", "complete", github_url)
+
+    # ── 7. git (OPTIONAL) — init/commit + optional push ──────────────────────
+    await _emit("git", "start")
+    try:
+        git_status = await asyncio.to_thread(
+            lambda: init_git_repo(
+                project_path, remote_url=clone_url, push=bool(clone_url)
+            )
+        )
+        for w in git_status.get("warnings", []):
+            warnings.append(w)
+        pushed = bool(git_status.get("pushed"))
+        await _emit("git", "complete", f"pushed={pushed}")
+    except Exception as exc:  # noqa: BLE001
+        msg = f"git init/commit error: {exc}"
+        warnings.append(msg)
+        await _emit("git", "warning", msg)
+
+    # ── 8. register (CRITICAL) — insert the Project ledger row ────────────────
+    await _emit("register", "start")
+    owns_session = session is None
+    reg_session = SessionLocal() if owns_session else session
+    try:
+        reg_session.add(
+            Project(
+                id=name,
+                name=name,
+                description=description,
+                path=str(project_path),
+                subfolder=subfolder,
+                template=template,
+                port=port,
+                github_repo_url=github_url,
+            )
+        )
+        reg_session.commit()
+    except Exception as exc:  # noqa: BLE001
+        try:
+            reg_session.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        await _emit("register", "error", str(exc))
+        raise
+    finally:
+        if owns_session:
+            reg_session.close()
+    await _emit("register", "complete")
+
+    # ── best-effort registry invalidation so the app shows up immediately ────
+    try:
+        from core import app_registry
+        app_registry.invalidate_cache()
+    except Exception as exc:  # noqa: BLE001
+        log.debug("create_project_full: invalidate_cache failed: %s", exc)
+
+    return {
+        "project_id": name,
+        "path": str(project_path),
+        "port": port,
+        "template": template,
+        "subfolder": subfolder,
+        "github_url": github_url,
+        "pushed": pushed,
+        "warnings": warnings,
+        "success": True,
+    }

@@ -1,7 +1,51 @@
-# Session Continuation — Phase 11b SHIPPED ✅
+# Session Continuation — Phase 11c SHIPPED ✅
 
-**Last Updated:** 2026-07-01 (Phase 11a + 11b Implementation Session)
-**Status:** ✅ Phase 10 SHIPPED / Phase 11 DESIGN LOCKED / **Phase 11a + 11b BUILT & GREEN (44 tests passing)**
+**Last Updated:** 2026-07-01 (Phase 11a + 11b + 11c Implementation Session)
+**Status:** ✅ Phase 10 SHIPPED / Phase 11 DESIGN LOCKED / **Phase 11a + 11b + 11c BUILT & GREEN (48 tests passing)**. Only Phase 11d (GUI drawer) remains.
+
+---
+
+## ✅ Phase 11c — REST API + WebSocket streaming + orchestration SHIPPED
+
+The full end-to-end scaffolding flow now exists behind the sidecar API.
+
+### Files
+- **`gui/sidecar/routes/api_projects.py`** (new) — `APIRouter(prefix="/api/projects")`:
+  `GET /` (list ledger), `GET /templates`, `GET /subfolders`, `GET /port-check`,
+  and `WS /ws/create` (streams `create_project_full`). DB-touching endpoints
+  degrade gracefully if MySQL is down.
+- **`gui/sidecar/project_manager.py`** (extended) — `async create_project_full(...)`:
+  a lenient state machine tying folder + port + files + venv + github + git + DB
+  registration. Critical steps (validate/folder/port/files/register) raise+abort;
+  optional steps (venv/github/git) warn and continue. Subprocess/filesystem work
+  is offloaded via `asyncio.to_thread`; **DB work runs inline on the event-loop
+  thread** (a SQLAlchemy Session is not thread-safe — do NOT wrap allocate_port/
+  register in to_thread). Best-effort `app_registry.invalidate_cache()` at the end.
+- **`gui/sidecar/app.py`** (edited) — `include_router(api_projects.router)` +
+  `_ensure_projects_schema` startup hook calling `db.init_db()`.
+- **`gui/desktop/src/components/HubApiExplorer.jsx`** (edited) — added a
+  "Projects (Sidecar)" group registering the 4 REST endpoints (API-registry rule).
+- **`gui/sidecar/tests/test_phase11c.py`** (new) — TestClient for the GET
+  endpoints + a full `create_project_full` orchestration test (tmp dir, sqlite
+  session, mocked GitHub, real git).
+
+### WS `/api/projects/ws/create` protocol
+- Inbound first frame: `{name, template, subfolder, description?, custom_port?, private?=true}`.
+- Outbound: progress `{step, status, message}`; success `{step:"complete", status:"success", result:{...}}`; error `{step:"error", status:"failed", error}`.
+- Stable emit step names (in order): `validate, folder, port, files, venv, github, git, register`.
+
+**Test status:** `48 passed` (30×11a + 14×11b + 4×11c). `py_compile` + import
+smoke-test of app.py/api_projects.py clean. Run:
+```bash
+cd /Users/tonyseneadza/Codehome/AgenticOS
+.venv/bin/python -m pytest gui/sidecar/tests/test_phase11a.py gui/sidecar/tests/test_phase11b.py gui/sidecar/tests/test_phase11c.py -v
+```
+
+### ➡️ Next: Phase 11d (GUI)
+`ProjectCreationDrawer.jsx` (form → `ws://localhost:5130/api/projects/ws/create`,
+stream progress), trigger button in SysOps CODEHOME HUB, end-to-end test. Follow
+the GUI conventions (theme tokens in `gui/desktop/src/theme.css`; new paradigm =
+drawer, not a new always-on panel).
 
 ---
 

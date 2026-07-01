@@ -112,6 +112,13 @@ const ENDPOINTS_HARDCODED = [
   { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/refresh",   desc:"Refresh app registry", params:[] },
   { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/stop-all",  desc:"Stop all running apps", params:[] },
 
+  // ─── Projects (Sidecar) — Phase 11c project scaffolding ──────────────
+  { group:"Projects (Sidecar)", server:"sidecar", method:"GET",  path:"/api/projects",            desc:"List scaffolded projects (DB ledger)", params:[] },
+  { group:"Projects (Sidecar)", server:"sidecar", method:"GET",  path:"/api/projects/templates",  desc:"List the 10 built-in project templates", params:[] },
+  { group:"Projects (Sidecar)", server:"sidecar", method:"GET",  path:"/api/projects/subfolders", desc:"~/Codehome subfolder discovery (suggested + all)", params:[] },
+  { group:"Projects (Sidecar)", server:"sidecar", method:"GET",  path:"/api/projects/port-check", desc:"Check if a port is free (ledger + TCP probe)", params:[{name:"port",_in:"query",type:"number",required:true,hint:"5200"}] },
+  // WS /api/projects/ws/create — streaming create_project_full (not HTTP-invocable from this Explorer)
+
   // ─── Keno (Georgia Lottery) (Flask @ :5000) ──────────────────────────
   { group:"Keno (Flask)", method:"GET",  path:"/api/status",        desc:"API health check", params:[] },
   { group:"Keno (Flask)", method:"GET",  path:"/api/draws/latest",  desc:"Get latest draws from database", params:[{name:"count",_in:"query",type:"number",required:false,hint:"5 (max 100)"}] },
