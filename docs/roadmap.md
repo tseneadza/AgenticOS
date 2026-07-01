@@ -168,3 +168,33 @@ endpoint operational, Constitution guards integrated.
 | Small-local-model safeguards (10-call loop guard + escalate-to-cloud toggle) | FR-58 | ✅ |
 | Authoring workflows with approval + timestamped backup + YAML validation | FR-59 | ✅ |
 
+## Phase 11 — Project Creation Scaffolding (NF-5) 🟨 DESIGN PHASE (2026-07-01)
+
+Interactive form (drawer from SysOps) to scaffold new Codehome projects end-to-end:
+create folder, venv, starter files, allocate port, create GitHub repo, git init.
+
+| Acceptance criterion | Feature | Status |
+|----------------------|---------|--------|
+| Project creation form in SysOps drawer panel | UI | 🟨 Design |
+| 10 templates (FastAPI, Django, React, Next.js, Svelte, Astro, Node, Full-Stack, CLI, Monorepo) | Templates | 🟨 Design |
+| Auto-scan Codehome for subfolder structure (agents/, apps/, tools/) | Discovery | 🟨 Design |
+| Create folder structure + Python venv (template-aware) | Scaffolding | 🟨 Design |
+| Auto-detect next free port (no collisions via DB) | Port allocation | 🟨 Design |
+| Generate starter files per template (README, .gitignore, requirements.txt, app.json) | Files | 🟨 Design |
+| Create GitHub repo via API (lenient: warn if token missing) | GitHub integration | 🟨 Design |
+| git init + initial commit (best-effort; degrade gracefully) | Git init | 🟨 Design |
+| Register project in `projects` table + auto-discover into `apps` | Registration | 🟨 Design |
+| Stream progress updates via WebSocket (real-time feedback to user) | Streaming | 🟨 Design |
+
+**Design decisions locked (2026-07-01):**
+- UI: Drawer panel (right sidebar) from SysOps CODEHOME HUB button
+- Tech stack: 10 templates with template-based file generation
+- Error handling: Lenient (create project locally; warn on GitHub/git failures)
+- Subfolder: Auto-scan Codehome; allow custom
+- Port collision: Auto-assign next free (no user intervention)
+- Form fields: Advanced (name, template, subfolder, description, custom port optional)
+
+**Plan:** `docs/PROJECT_CREATION_PLAN.md` (comprehensive 4-week phased implementation).
+
+**Next steps:** Phase 11a (template registry + subfolder detection + venv setup).
+
