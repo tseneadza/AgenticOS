@@ -1,3 +1,32 @@
+# Session Continuation — 2026-07-02 Session Summary ✅ (Sunset Filter + Phase 12 Closed + Port Ledger Fixed)
+
+**Status:** ✅ ALL COMMITTED & PUSHED — working tree clean across AgenticOS, worldwise, igotyou
+
+## What This Session Shipped (4 commits on AgenticOS main)
+
+1. `61c7d14` — Landed the pending Phase 12 bundle (self-diagnostics dashboard,
+   test-suite repair, MySQL auto-recovery, Anthropic usage tool, 3 skills).
+2. `4d4da4f` — **Web News sunset filter** (details in section below).
+3. `2152023` — **Phase 12 visual check DONE** — overlay verified on-device;
+   live WS run: pytest 89/89, vitest 574/574. **Phase 12 fully closed.**
+4. `b18de05` — **Port ledger fixed**: igotyou 3000→3001, worldwise 5112→5173
+   (committed+pushed in their own repos); seed_port_ledger.py now reconciles
+   from live app_registry and regenerates PORT_ASSIGNMENTS.md (generated,
+   gitignored in hub). Ledger: 28 rows, 0 conflicts.
+
+## For Next Session
+
+- **Candidates:** news_articles archive table + Archive view (deferred);
+  Phase 12+ follow-ups (projects list view, custom templates from Git repos,
+  edit-after-create); empty `projects`/`tasks` tables; broken keno views
+  (only_full_group_by).
+- **Watch:** first click on "Run diagnostics" once closed the overlay instead
+  (not reproduced); worldwise web/dist still has 5112 baked in until next build;
+  hub repo has an unrelated pre-existing app.json modification, left untouched.
+- Sidecar was restarted this session and is healthy on :5130.
+
+---
+
 # Session Continuation — Web News Article Sunset Filter ✅
 
 **Last Updated:** 2026-07-02 (Web News sunset session)
