@@ -132,6 +132,7 @@ function loadPrefs() {
     domains: ALL_DOMAINS,
     keywords: ["quantum", "neural", "LLM", "genome", "dark matter", "climate", "protein", "transformer"],
     feedIds: null, // null = all feeds for selected domains
+    maxAgeDays: 7, // sunset: hide articles older than this (server-enforced)
   };
 }
 
@@ -329,6 +330,7 @@ function SectionLabel({ children }) {
 function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors, reloadCatalogue }) {
   const [domains, setDomains] = useState(prefs.domains);
   const [keywords, setKeywords] = useState(prefs.keywords.join(", "));
+  const [maxAge, setMaxAge] = useState(prefs.maxAgeDays ?? 7);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [nf, setNf] = useState({ label: "", url: "", category_id: (categories[0] && categories[0].id) || "" });
@@ -370,7 +372,8 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
 
   const apply = () => {
     const kws = keywords.split(",").map(s => s.trim()).filter(Boolean);
-    onChange({ ...prefs, domains, keywords: kws });
+    const age = Math.max(1, Math.min(90, parseInt(maxAge, 10) || 7));
+    onChange({ ...prefs, domains, keywords: kws, maxAgeDays: age });
     onClose();
   };
   const toggleDomain = (d) =>
@@ -404,6 +407,20 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
           rows={3}
           style={{ ...FIELD_STYLE, lineHeight: 1.6, resize: "vertical" }}
         />
+
+        {/* article age cutoff (sunset) */}
+        <SectionLabel>Max Article Age (days)</SectionLabel>
+        <input
+          type="number"
+          min={1}
+          max={90}
+          value={maxAge}
+          onChange={e => setMaxAge(e.target.value)}
+          style={{ ...FIELD_STYLE, width: 90 }}
+        />
+        <div style={{ marginTop: 4, fontSize: 9.5, color: "var(--text-dim)", fontFamily: "var(--mono)", lineHeight: 1.5 }}>
+          Articles older than this — or with no valid publish date — are hidden.
+        </div>
 
         {/* domain toggles — data-driven from categories */}
         <SectionLabel>Active Domains</SectionLabel>
@@ -576,7 +593,12 @@ export default function WebNewsView() {
       const res = await fetch(`${SIDECAR}/api/news/fetch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls: feeds.map(f => f.url), keywords: [], feed_map: feedMap }),
+        body: JSON.stringify({
+          urls: feeds.map(f => f.url),
+          keywords: [],
+          feed_map: feedMap,
+          max_age_days: p.maxAgeDays ?? 7,
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();

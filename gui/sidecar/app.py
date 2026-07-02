@@ -792,6 +792,39 @@ from urllib.request import urlopen as _urlopen, Request as _Request
 _rss_cache: dict = {}
 _RSS_TTL = 900  # 15 minutes
 
+# ---- article sunset (FR-WN aging) ------------------------------------------
+# Articles older than max_age_days are dropped at fetch time. STRICT policy
+# (decision 2026-07-02): items with a missing or unparseable published date
+# are ALSO dropped — a stale-but-undated article must not slip through.
+_DEFAULT_MAX_AGE_DAYS = 7
+
+from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+from email.utils import parsedate_to_datetime as _parsedate
+
+
+def _parse_pub_date(raw: str):
+    """Parse an RSS (RFC 2822) or Atom (ISO 8601) date string.
+
+    Returns an aware UTC datetime, or None if the string is empty or
+    unparseable. Naive datetimes are assumed to be UTC.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    raw = raw.strip()
+    # RFC 2822 — "Tue, 30 Jun 2026 14:05:00 GMT" (RSS 2.0 pubDate)
+    try:
+        d = _parsedate(raw)
+        if d is not None:
+            return d if d.tzinfo else d.replace(tzinfo=_tz.utc)
+    except Exception:
+        pass
+    # ISO 8601 — "2026-06-30T14:05:00Z" (Atom published/updated, dc:date)
+    try:
+        d = _dt.fromisoformat(raw.replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=_tz.utc)
+    except Exception:
+        return None
+
 # Namespaces / patterns used for image extraction
 import re as _re_img
 _MEDIA_NS = "http://search.yahoo.com/mrss/"
@@ -1001,7 +1034,10 @@ def news_fetch(body: dict) -> dict:
     """Fetch one or more RSS feed URLs and return merged, deduplicated items.
 
     Body: { "urls": ["https://..."], "keywords": ["quantum", "llm", ...],
-            "feed_map": {"url": {"domain": ..., "label": ...}} (optional) }
+            "feed_map": {"url": {"domain": ..., "label": ...}} (optional),
+            "max_age_days": 7 (optional; <=0 disables the age filter) }
+    Items older than max_age_days (default 7) are dropped, INCLUDING items
+    whose published date is missing or unparseable (strict sunset policy).
     Returns filtered items sorted newest-first (best-effort; pub date parsing is fuzzy).
     Each item includes `feed_url` so the frontend can enrich domain/label without
     ambiguity when multiple feeds share the same hostname.
@@ -1036,6 +1072,25 @@ def news_fetch(body: dict) -> dict:
         except HTTPException as e:
             errors.append({"url": url, "error": e.detail})
 
+    # sunset filter: drop items older than max_age_days; strict — undated or
+    # unparseable-date items are dropped too. max_age_days <= 0 disables.
+    try:
+        max_age_days = int(body.get("max_age_days", _DEFAULT_MAX_AGE_DAYS))
+    except (TypeError, ValueError):
+        max_age_days = _DEFAULT_MAX_AGE_DAYS
+    dropped_old = 0
+    if max_age_days > 0:
+        cutoff = _dt.now(_tz.utc) - _td(days=max_age_days)
+
+        def _fresh(item):
+            """True if the item has a parseable date on/after the cutoff."""
+            d = _parse_pub_date(item.get("published", ""))
+            return d is not None and d >= cutoff
+
+        before = len(all_items)
+        all_items = [i for i in all_items if _fresh(i)]
+        dropped_old = before - len(all_items)
+
     # keyword pre-filter (OR logic — keep if any keyword matches title/summary)
     if keywords:
         def _matches(item):
@@ -1048,6 +1103,8 @@ def news_fetch(body: dict) -> dict:
         "items": all_items,
         "total": len(all_items),
         "errors": errors,
+        "dropped_old": dropped_old,
+        "max_age_days": max_age_days,
         "cached_until_s": _RSS_TTL,
     }
 
