@@ -33,8 +33,18 @@ run streamed both suites: backend pytest **89/89**, frontend vitest **574/574**,
 cache updated. Phase 12 is fully closed.
 
 **Optional follow-ups:** persist articles to a `news_articles` table for a
-real Archive view (explicitly deferred); port-ledger conflicts (3000, 5112)
-still outstanding — see Known Issues below.
+real Archive view (explicitly deferred).
+
+## ✅ Port-ledger conflicts RESOLVED (2026-07-02)
+
+- **igotyou 3000→3001** (app.json + package.json `next dev -p 3001`); projmanager keeps 3000.
+- **worldwise 5112→5173** (app.json + start.sh + backend CORS); astro-physics-hub keeps 5112.
+  (worldwise `web/dist` bundle still has 5112 baked in — regenerates on next build.)
+- **`seed_port_ledger.py` rewritten**: now reconciles from the LIVE `app_registry`
+  (not the doc) — inserts missing, updates changed reserved rows, prunes stale
+  reserved rows, never touches `allocated` rows, refuses to seed registry conflicts.
+  Also regenerates `hub/docs/PORT_ASSIGNMENTS.md` as a GENERATED artifact.
+- Ledger reconciled: 28 rows, 0 conflicts; suite still 89 green.
 
 ---
 
