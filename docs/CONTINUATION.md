@@ -18,8 +18,32 @@
 
 - **Candidates:** news_articles archive table + Archive view (deferred);
   Phase 12+ follow-ups (projects list view, custom templates from Git repos,
-  edit-after-create); empty `projects`/`tasks` tables; broken keno views
-  (only_full_group_by).
+  edit-after-create); broken keno views (only_full_group_by).
+- **DONE this session:** `projects` ledger backfilled from the live
+  `app_registry` — **27 rows** via new `gui/sidecar/seed_projects_ledger.py`
+  (rows marked `created_by='discovered'`, `template='imported'`; registry stays
+  the source of truth, table is a synced index). Idempotent. Payoff verified:
+  `GET /api/projects` → 27, and the drawer's `/api/projects/subfolders` now
+  discovers real buckets (Cards, CProjects, Games, Golang, SpecProj, The
+  Sciences) instead of an empty list. `tasks` table is intentionally left empty —
+  it's runtime-populated (manual/agent/project to-dos via `api_tasks`), nothing
+  to seed.
+
+### ▶ RESUME HERE TOMORROW (2026-07-03)
+1. **Projects list view (GUI)** — the `projects` ledger now has 27 rows, so build
+   a view over `GET /api/projects` (id, name, subfolder, port, template, running
+   status). New paradigm = new nav link (GUI principle #7); reuse theme tokens +
+   the `HubApiExplorer`/`ScriptsExplorer` patterns. Consider cross-linking each
+   project to its port (ledger) and app.json.
+2. Keep the two ledgers fresh: re-run `seed_port_ledger.py` +
+   `seed_projects_ledger.py` after adding/removing Codehome apps (both reconcile
+   from `app_registry`, both idempotent).
+3. Open follow-ups: broken keno views (`v_daily_stats`, `v_draw_trends` —
+   only_full_group_by); `worldwise` built `dist/` still has 5112 baked in until
+   its next build on 5173 (inside the worldwise app, not AgenticOS).
+- Verify commands: `.venv/bin/python -m gui.sidecar.seed_projects_ledger`
+  (idempotent — expect inserted 0); `.venv/bin/python -m pytest gui/sidecar/tests -q`;
+  sidecar healthy on :5130 (`curl -s localhost:5130/api/health`).
 - **Watch:** first click on "Run diagnostics" once closed the overlay instead
   (not reproduced); worldwise web/dist still has 5112 baked in until next build;
   hub repo has an unrelated pre-existing app.json modification, left untouched.
