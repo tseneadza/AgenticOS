@@ -24,8 +24,17 @@ for the cutoff.
 
 **Verification:** new file 13/13; full sidecar suite `89 passed`; `npm run build` clean.
 
-**Next session:** review diff + commit; optional follow-up = persist articles
-to a `news_articles` table for a real Archive view (explicitly deferred).
+**Committed & pushed (2026-07-02):** `61c7d14` (Phase 12 + MySQL recovery +
+usage tool) and `4d4da4f` (sunset filter). Working tree clean.
+
+**Phase 12 visual check ✅ DONE (2026-07-02):** Self-Diagnostics overlay
+verified on-device — triple-tap reveal works, 6/6 system checks OK, live WS
+run streamed both suites: backend pytest **89/89**, frontend vitest **574/574**,
+cache updated. Phase 12 is fully closed.
+
+**Optional follow-ups:** persist articles to a `news_articles` table for a
+real Archive view (explicitly deferred); port-ledger conflicts (3000, 5112)
+still outstanding — see Known Issues below.
 
 ---
 
