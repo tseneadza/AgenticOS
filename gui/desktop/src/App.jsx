@@ -13,6 +13,7 @@ import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import HubApiExplorer from "./components/HubApiExplorer";
 import ProjectCreationDrawer from "./components/ProjectCreationDrawer";  // Phase 11d
+import SelfDiagnosticsView from "./components/SelfDiagnosticsView";  // Phase 12 (hidden)
 import WorkflowsWorkspace from "./components/WorkflowsWorkspace";
 import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
@@ -1339,6 +1340,28 @@ const VIEWS = [
 
 const VIEW_KEY = "agentic-os.activeView";
 
+// Hidden reveal for the Self-Diagnostics dashboard (Phase 12): an invisible
+// hit-target pinned to the very bottom-right corner. Triple-tap within 700ms
+// opens the overlay. Deliberately undiscoverable — not in the nav or menu.
+function CornerReveal({ onReveal }) {
+  const taps = useRef([]);
+  const handle = () => {
+    const now = Date.now();
+    taps.current = [...taps.current, now].filter((t) => now - t < 700);
+    if (taps.current.length >= 3) {
+      taps.current = [];
+      onReveal();
+    }
+  };
+  return (
+    <div
+      onClick={handle}
+      aria-hidden="true"
+      style={{ position: "fixed", right: 0, bottom: 0, width: 26, height: 26, zIndex: 8000 }}
+    />
+  );
+}
+
 // ================================================================ shell
 export default function App() {
   const [workflows, setWorkflows] = useState([]);
@@ -1356,6 +1379,22 @@ export default function App() {
     if (saved === "config") saved = "scripts";        // Phase 2 migration: old config → scripts tabs
     return VIEWS.some((v) => v.id === saved) ? saved : "sysops";
   });
+
+  // Phase 12: hidden self-diagnostics overlay. Revealed by the corner gesture
+  // (CornerReveal) or the `#diag` URL-hash escape hatch when the gesture misfires.
+  const [showDiag, setShowDiag] = useState(false);
+  useEffect(() => {
+    const check = () => { if (window.location.hash === "#diag") setShowDiag(true); };
+    check();
+    window.addEventListener("hashchange", check);
+    return () => window.removeEventListener("hashchange", check);
+  }, []);
+  const closeDiag = useCallback(() => {
+    setShowDiag(false);
+    if (window.location.hash === "#diag") {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
 
   // Approvals: fast when sidecar is down; immediate re-fetch on WS approval events.
   const [approvalKey, setApprovalKey] = useState(0);
@@ -1495,6 +1534,10 @@ export default function App() {
           <span>events {feed.length}</span>
         </div>
       </main>
+
+      {/* Phase 12: hidden self-diagnostics — corner gesture reveal + overlay */}
+      <CornerReveal onReveal={() => setShowDiag(true)} />
+      {showDiag && <SelfDiagnosticsView onClose={closeDiag} />}
     </div>
   );
 }

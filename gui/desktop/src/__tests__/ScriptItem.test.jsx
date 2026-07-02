@@ -39,20 +39,22 @@ describe("ScriptItem", () => {
     expect(screen.getByText("Launcher")).toBeInTheDocument();
   });
 
-  it("shows selection state with accent border", () => {
-    const { container } = render(
+  it("shows selection state with the selected class", () => {
+    render(
       <ScriptItem script={mockScript} isSelected={true} onSelect={vi.fn()} />
     );
     const item = screen.getByTestId("script-item-script-1");
-    expect(item.style.borderLeft).toContain("var(--accent)");
+    expect(item.className).toContain("selected");
+    expect(item).toHaveAttribute("aria-selected", "true");
   });
 
-  it("highlights background when selected", () => {
-    const { container } = render(
-      <ScriptItem script={mockScript} isSelected={true} onSelect={vi.fn()} />
+  it("does not apply the selected class when not selected", () => {
+    render(
+      <ScriptItem script={mockScript} isSelected={false} onSelect={vi.fn()} />
     );
     const item = screen.getByTestId("script-item-script-1");
-    expect(item.style.background).toContain("var(--bg-panel)");
+    expect(item.className).not.toContain("selected");
+    expect(item).toHaveAttribute("aria-selected", "false");
   });
 
   it("calls onSelect when clicked", async () => {

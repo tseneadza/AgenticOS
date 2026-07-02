@@ -29,7 +29,7 @@ describe("ScriptGroupHeader", () => {
   });
 
   it("shows chevron pointing right when closed", () => {
-    const { container } = render(
+    render(
       <ScriptGroupHeader
         name="Launcher"
         isOpen={false}
@@ -37,12 +37,16 @@ describe("ScriptGroupHeader", () => {
         itemCount={3}
       />
     );
-    const chevron = screen.getByTestId("script-group-chevron-Launcher");
-    expect(chevron.style.transform).toContain("rotate(0deg)");
+    // Rotation is CSS-driven off aria-expanded on the header.
+    const header = screen.getByTestId("script-group-header-Launcher");
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("script-group-chevron-Launcher").className).toContain(
+      "script-group-chevron"
+    );
   });
 
   it("rotates chevron when open", () => {
-    const { container } = render(
+    render(
       <ScriptGroupHeader
         name="Launcher"
         isOpen={true}
@@ -50,8 +54,11 @@ describe("ScriptGroupHeader", () => {
         itemCount={3}
       />
     );
-    const chevron = screen.getByTestId("script-group-chevron-Launcher");
-    expect(chevron.style.transform).toContain("rotate(90deg)");
+    const header = screen.getByTestId("script-group-header-Launcher");
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("script-group-chevron-Launcher").className).toContain(
+      "script-group-chevron"
+    );
   });
 
   it("calls onToggle when clicked", async () => {

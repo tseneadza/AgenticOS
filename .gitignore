@@ -12,6 +12,8 @@ data/
 .env
 *.env
 env.yaml
+.env.local
+.env.*.local
 
 # ── Node / frontend (gui/desktop) ──────────────────────
 node_modules/

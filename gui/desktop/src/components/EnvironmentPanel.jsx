@@ -402,8 +402,8 @@ export default function EnvironmentPanel({ onClose }) {
   // Reset to defaults
   const handleReset = useCallback(() => {
     if (confirm("Reset all settings to defaults?")) {
+      // Auto-save effect persists the reset; no manual dirty flag needed.
       setSettings(DEFAULT_SETTINGS);
-      setHasUnsavedChanges(true);
       setSaveSuccess(false);
     }
   }, []);

@@ -50,34 +50,38 @@ describe("CallLogEntry Component", () => {
   });
 
   describe("success/error styling", () => {
-    it("should have green border for successful call", () => {
+    it("should have the success class for a successful call", () => {
       const { container } = render(<CallLogEntry entry={mockEntry} />);
       const entry = container.querySelector('[data-testid="call-log-entry"]');
-      expect(entry.style.borderLeftColor).toBeTruthy();
+      expect(entry.className).toContain("success");
+      expect(entry.className).not.toContain("error");
     });
 
-    it("should have red border for failed call", () => {
+    it("should have the error class for a failed call", () => {
       const failedEntry = { ...mockEntry, ok: false, status: 500 };
       const { container } = render(<CallLogEntry entry={failedEntry} />);
       const entry = container.querySelector('[data-testid="call-log-entry"]');
-      expect(entry.style.borderLeftColor).toBeTruthy();
+      expect(entry.className).toContain("error");
+      expect(entry.className).not.toContain("success");
     });
   });
 
   describe("onSelect handler", () => {
-    it("should not have click handler without onSelect prop", () => {
+    it("should not be a button without onSelect prop", () => {
       const { container } = render(<CallLogEntry entry={mockEntry} />);
       const entry = container.querySelector('[data-testid="call-log-entry"]');
-      expect(entry.style.cursor).not.toBe("pointer");
+      expect(entry).not.toHaveAttribute("role", "button");
+      expect(entry).not.toHaveAttribute("tabindex");
     });
 
-    it("should have pointer cursor with onSelect", () => {
+    it("should be an interactive button with onSelect", () => {
       const onSelect = vi.fn();
       const { container } = render(
         <CallLogEntry entry={mockEntry} onSelect={onSelect} />
       );
       const entry = container.querySelector('[data-testid="call-log-entry"]');
-      expect(entry.style.cursor).toBe("pointer");
+      expect(entry).toHaveAttribute("role", "button");
+      expect(entry).toHaveAttribute("tabindex", "0");
     });
 
     it("should call onSelect when clicked", async () => {

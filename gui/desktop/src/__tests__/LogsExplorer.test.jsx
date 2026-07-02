@@ -11,6 +11,22 @@ function createMockLog(timestamp, level, message) {
   return { timestamp, level, message };
 }
 
+// The "Showing N of M logs" count is rendered from interpolated JSX, so the
+// number sits in its own text node. A plain getByText(/Showing 5/) can't match
+// across those node boundaries — this helper matches on the element's full,
+// whitespace-normalized textContent instead.
+function getByNormalizedText(pattern) {
+  return screen.getByText((_, element) => {
+    if (!element) return false;
+    // Only match leaf-ish elements to avoid matching ancestors too.
+    const hasMatchingChild = Array.from(element.children).some(
+      (child) => pattern.test(child.textContent.replace(/\s+/g, " ").trim())
+    );
+    if (hasMatchingChild) return false;
+    return pattern.test(element.textContent.replace(/\s+/g, " ").trim());
+  });
+}
+
 function createMockLogs(count = 50) {
   const levels = ["DEBUG", "INFO", "WARN", "ERROR"];
   const logs = [];
@@ -40,6 +56,13 @@ function createMockLogs(count = 50) {
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("LogsExplorer Component", () => {
+  // LogsExplorer persists filter/search/auto-scroll state to localStorage.
+  // Clear it between tests so persisted state from one test doesn't leak into
+  // the next (the test-env localStorage mock is shared across the file).
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   // ─────────────────────────────────────────────────────────────────────────
   // Rendering Tests
   // ─────────────────────────────────────────────────────────────────────────
@@ -87,9 +110,14 @@ describe("LogsExplorer Component", () => {
   describe("log display", () => {
     it("should display logs from mock data", () => {
       const mockLogs = createMockLogs(5);
-      render(<LogsExplorer logs={mockLogs} />);
+      const { container } = render(<LogsExplorer logs={mockLogs} />);
+      // Message text may be split across highlight spans, so match on the
+      // concatenated textContent of the logs container.
+      const containerText = container
+        .querySelector('[data-testid="logs-container"]')
+        .textContent.replace(/\s+/g, " ");
       mockLogs.forEach((log) => {
-        expect(screen.getByText(new RegExp(log.message))).toBeInTheDocument();
+        expect(containerText).toContain(log.message);
       });
     });
 
@@ -131,7 +159,7 @@ describe("LogsExplorer Component", () => {
 
       // Should only show ERROR logs
       const errorLogs = mockLogs.filter((log) => log.level === "ERROR");
-      const logCount = screen.getByText(new RegExp(`Showing ${errorLogs.length}`));
+      const logCount = getByNormalizedText(new RegExp(`Showing ${errorLogs.length}`));
       expect(logCount).toBeInTheDocument();
     });
 
@@ -148,7 +176,7 @@ describe("LogsExplorer Component", () => {
       const filtered = mockLogs.filter(
         (log) => log.level === "ERROR" || log.level === "WARN"
       );
-      const logCount = screen.getByText(new RegExp(`Showing ${filtered.length}`));
+      const logCount = getByNormalizedText(new RegExp(`Showing ${filtered.length}`));
       expect(logCount).toBeInTheDocument();
     });
 
@@ -166,7 +194,7 @@ describe("LogsExplorer Component", () => {
       await user.click(screen.getByTestId("filter-btn-DEBUG"));
 
       // Should show 2 logs (ERROR + WARN)
-      expect(screen.getByText(new RegExp("Showing 2 of 3"))).toBeInTheDocument();
+      expect(getByNormalizedText(new RegExp("Showing 2 of 3"))).toBeInTheDocument();
     });
 
     it("should update display when filter state changes", async () => {
@@ -175,7 +203,7 @@ describe("LogsExplorer Component", () => {
       render(<LogsExplorer logs={mockLogs} />);
 
       // Initially all levels should be visible
-      expect(screen.getByText(new RegExp("Showing 10 of 10"))).toBeInTheDocument();
+      expect(getByNormalizedText(new RegExp("Showing 10 of 10"))).toBeInTheDocument();
 
       // Filter to ERROR only
       await user.click(screen.getByTestId("filter-btn-DEBUG"));
@@ -185,7 +213,7 @@ describe("LogsExplorer Component", () => {
       // Should update count
       const errorCount = mockLogs.filter((log) => log.level === "ERROR").length;
       expect(
-        screen.getByText(new RegExp(`Showing ${errorCount} of 10`))
+        getByNormalizedText(new RegExp(`Showing ${errorCount} of 10`))
       ).toBeInTheDocument();
     });
 
@@ -221,7 +249,7 @@ describe("LogsExplorer Component", () => {
       const searchInput = screen.getByTestId("log-search-input");
       await user.type(searchInput, "Database");
 
-      expect(screen.getByText(new RegExp("Showing 1 of 2"))).toBeInTheDocument();
+      expect(getByNormalizedText(new RegExp("Showing 1 of 2"))).toBeInTheDocument();
     });
 
     it("should search case-insensitively", async () => {
@@ -234,7 +262,7 @@ describe("LogsExplorer Component", () => {
       const searchInput = screen.getByTestId("log-search-input");
       await user.type(searchInput, "error");
 
-      expect(screen.getByText(new RegExp("Showing 1 of 1"))).toBeInTheDocument();
+      expect(getByNormalizedText(new RegExp("Showing 1 of 1"))).toBeInTheDocument();
     });
 
     it("should clear search and show all again", async () => {
@@ -247,7 +275,7 @@ describe("LogsExplorer Component", () => {
       expect(screen.getByText("No logs match your filter")).toBeInTheDocument();
 
       await user.clear(searchInput);
-      expect(screen.getByText(new RegExp("Showing 5 of 5"))).toBeInTheDocument();
+      expect(getByNormalizedText(new RegExp("Showing 5 of 5"))).toBeInTheDocument();
     });
 
     it("should highlight matching search terms", async () => {
@@ -260,9 +288,18 @@ describe("LogsExplorer Component", () => {
       const searchInput = screen.getByTestId("log-search-input");
       await user.type(searchInput, "Database");
 
-      // The matching text should be highlighted with special styling
+      // Regression guard: the matched term must be wrapped in exactly one
+      // highlight <span> (yellow background) — not exploded char-by-char, and
+      // not collapsed to plain text (the two bugs this fixed).
+      const highlights = [...document.body.querySelectorAll("span")].filter(
+        (s) => s.style.backgroundColor === "var(--yellow)"
+      );
+      expect(highlights).toHaveLength(1);
+      expect(highlights[0].textContent).toBe("Database");
+
+      // The full message is still present and intact.
       const logEntry = screen.getByTestId("log-entry-INFO");
-      expect(logEntry).toBeInTheDocument();
+      expect(logEntry.textContent).toContain("Database connection");
     });
   });
 
@@ -294,8 +331,10 @@ describe("LogsExplorer Component", () => {
       render(<LogsExplorer logs={createMockLogs(5)} />);
       const button = screen.getByTestId("toggle-autoscroll");
 
+      // Starts ON; clicking pauses (label switches to OFF).
+      expect(button.textContent).toContain("ON");
       await user.click(button);
-      expect(button).toHaveAttribute("aria-pressed", "false");
+      expect(button.textContent).toContain("OFF");
     });
 
     it("should maintain scroll position when paused", async () => {
@@ -317,11 +356,15 @@ describe("LogsExplorer Component", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("export functionality", () => {
+    let originalCreateElement;
     beforeEach(() => {
       // Mock URL and download functions
       global.URL.createObjectURL = vi.fn(() => "blob:mock");
       global.URL.revokeObjectURL = vi.fn();
-      document.createElement = vi.fn((tag) => {
+      // Capture the real createElement so the mock can delegate for non-anchor
+      // tags without recursing into itself.
+      originalCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag) => {
         if (tag === "a") {
           return {
             href: "",
@@ -329,12 +372,12 @@ describe("LogsExplorer Component", () => {
             click: vi.fn(),
           };
         }
-        return document.createElement(tag);
+        return originalCreateElement(tag);
       });
     });
 
     afterEach(() => {
-      vi.clearAllMocks();
+      vi.restoreAllMocks();
     });
 
     it("should export filtered logs as .txt", async () => {
@@ -383,25 +426,31 @@ describe("LogsExplorer Component", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("copy to clipboard", () => {
-    beforeEach(() => {
-      Object.assign(navigator, {
-        clipboard: {
-          writeText: vi.fn(() => Promise.resolve()),
-        },
+    // Install our clipboard stub AFTER userEvent.setup() so it wins over
+    // userEvent's own clipboard shim. navigator.clipboard is getter-only in
+    // jsdom, so it must be (re)defined rather than assigned.
+    const installClipboard = () => {
+      const writeText = vi.fn(() => Promise.resolve());
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        writable: true,
+        value: { writeText },
       });
-    });
+      return writeText;
+    };
 
     it("should copy log entry to clipboard on click", async () => {
       const mockLogs = [
         createMockLog("2026-06-30 10:00:00", "INFO", "Test message"),
       ];
       const user = userEvent.setup();
+      const writeTextSpy = installClipboard();
       render(<LogsExplorer logs={mockLogs} />);
 
       const logEntry = screen.getByTestId("log-entry-INFO");
       await user.click(logEntry);
 
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect(writeTextSpy).toHaveBeenCalledWith(
         expect.stringContaining("Test message")
       );
     });
@@ -503,12 +552,12 @@ describe("LogsExplorer Component", () => {
       const initialLogs = createMockLogs(5);
       const { rerender } = render(<LogsExplorer logs={initialLogs} />);
 
-      expect(screen.getByText(new RegExp("Showing 5 of 5"))).toBeInTheDocument();
+      expect(getByNormalizedText(new RegExp("Showing 5 of 5"))).toBeInTheDocument();
 
       const updatedLogs = createMockLogs(10);
       rerender(<LogsExplorer logs={updatedLogs} />);
 
-      expect(screen.getByText(new RegExp("Showing 10 of 10"))).toBeInTheDocument();
+      expect(getByNormalizedText(new RegExp("Showing 10 of 10"))).toBeInTheDocument();
     });
 
     it("should maintain filter state when logs update", async () => {
@@ -521,7 +570,7 @@ describe("LogsExplorer Component", () => {
       await user.click(screen.getByTestId("filter-btn-INFO"));
       await user.click(screen.getByTestId("filter-btn-WARN"));
 
-      const beforeUpdate = screen.getByText(new RegExp(/Showing \d+ of 10/));
+      const beforeUpdate = getByNormalizedText(new RegExp(/Showing \d+ of 10/));
 
       // Update logs
       const updatedLogs = createMockLogs(15);
@@ -529,7 +578,7 @@ describe("LogsExplorer Component", () => {
 
       // Filter should still be applied
       const errorCount = updatedLogs.filter((l) => l.level === "ERROR").length;
-      expect(screen.getByText(new RegExp(`Showing ${errorCount}`))).toBeInTheDocument();
+      expect(getByNormalizedText(new RegExp(`Showing ${errorCount}`))).toBeInTheDocument();
     });
 
     it("should maintain search state when logs update", async () => {
@@ -564,7 +613,11 @@ describe("LogsExplorer Component", () => {
       ];
       const { container } = render(<LogsExplorer logs={mockLogs} />);
       const logEntry = container.querySelector('[data-testid^="log-entry-"]');
-      expect(logEntry.style.color).toBeTruthy();
+      // The level column carries the level-specific theme color var.
+      const colored = Array.from(logEntry.querySelectorAll("div")).find(
+        (d) => d.style.color && d.style.color.includes("var(--")
+      );
+      expect(colored).toBeTruthy();
     });
 
     it("should render in all themes without errors", () => {

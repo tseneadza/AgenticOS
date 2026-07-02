@@ -151,9 +151,9 @@ describe("SettingsView Integration", () => {
     render(<SettingsView />);
     const refreshInput = screen.getByTestId("number-input-log_refresh_interval");
 
-    // Try to set value below minimum (< 1)
-    await userEvent.clear(refreshInput);
-    await userEvent.type(refreshInput, "0");
+    // The controlled number input only commits valid values, so emit the
+    // out-of-range value in a single change event.
+    fireEvent.change(refreshInput, { target: { value: "0" } });
 
     // Error message should appear
     await waitFor(() => {
@@ -164,24 +164,15 @@ describe("SettingsView Integration", () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Test 11: Save button saves settings to localStorage
+  // Test 11: Changes auto-save to localStorage (debounced)
   // ─────────────────────────────────────────────────────────────────────────
-  it("should save settings to localStorage when Save button is clicked", async () => {
+  it("should auto-save settings to localStorage when a field changes", async () => {
     render(<SettingsView />);
 
     const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
     await userEvent.type(apiKeyInput, "sk-test-key-456");
 
-    // Save button should be enabled now (unsaved changes)
-    const saveButton = screen.getByTestId("save-settings");
-    await waitFor(() => {
-      expect(saveButton).not.toHaveAttribute("disabled");
-    });
-
-    // Click save
-    fireEvent.click(saveButton);
-
-    // Check localStorage was updated
+    // Auto-save (debounced) persists to localStorage without a manual button.
     await waitFor(() => {
       const stored = localStorage.getItem("agentic-os.settings");
       expect(stored).toBeTruthy();
@@ -246,26 +237,23 @@ describe("SettingsView Integration", () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Test 14: Save button shows success message
+  // Test 14: Auto-save shows the ✓ Saved indicator
   // ─────────────────────────────────────────────────────────────────────────
-  it("should show success message after saving", async () => {
+  it("should show the ✓ Saved indicator after an auto-save", async () => {
     render(<SettingsView />);
 
     const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
     await userEvent.type(apiKeyInput, "sk-test-success");
 
-    const saveButton = screen.getByTestId("save-settings");
-    fireEvent.click(saveButton);
-
-    // Success message should appear
+    // The ✓ Saved indicator should appear after the debounced save.
     await waitFor(() => {
-      expect(screen.getByText("Settings saved!")).toBeInTheDocument();
+      expect(screen.getByText("✓ Saved")).toBeInTheDocument();
     });
 
-    // Message should disappear after 2 seconds
+    // Indicator should disappear again after its timeout.
     await waitFor(
       () => {
-        expect(screen.queryByText("Settings saved!")).not.toBeInTheDocument();
+        expect(screen.queryByText("✓ Saved")).not.toBeInTheDocument();
       },
       { timeout: 2500 }
     );
@@ -314,9 +302,8 @@ describe("SettingsView Integration", () => {
     render(<SettingsView />);
     const refreshInput = screen.getByTestId("number-input-log_refresh_interval");
 
-    // Set a valid value
-    await userEvent.clear(refreshInput);
-    await userEvent.type(refreshInput, "15");
+    // Commit a valid value via a single change event.
+    fireEvent.change(refreshInput, { target: { value: "15" } });
 
     await waitFor(() => {
       expect(refreshInput).toHaveValue(15);
@@ -328,22 +315,21 @@ describe("SettingsView Integration", () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Test 18: Unsaved changes disable Save button until changes made
+  // Test 18: Auto-save persists changes without a manual save button
   // ─────────────────────────────────────────────────────────────────────────
-  it("should enable Save button only when there are unsaved changes", async () => {
+  it("should auto-save changes without a manual Save button", async () => {
     render(<SettingsView />);
 
-    const saveButton = screen.getByTestId("save-settings");
-    // Initially disabled (no changes)
-    expect(saveButton).toHaveAttribute("disabled");
+    // The auto-save UI has no manual save button.
+    expect(screen.queryByTestId("save-settings")).not.toBeInTheDocument();
 
-    // Make a change
+    // Make a change; it should be persisted automatically.
     const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
     await userEvent.type(apiKeyInput, "sk-test");
 
-    // Save button should be enabled
     await waitFor(() => {
-      expect(saveButton).not.toHaveAttribute("disabled");
+      const stored = JSON.parse(localStorage.getItem("agentic-os.settings"));
+      expect(stored.anthropic_api_key).toBe("sk-test");
     });
   });
 
@@ -362,34 +348,26 @@ describe("SettingsView Integration", () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Test 20: Save validates required fields before persisting
+  // Test 20: Missing required key surfaces a warning while auto-save continues
   // ─────────────────────────────────────────────────────────────────────────
-  it("should not save settings if required fields are missing", async () => {
+  it("should warn about the missing required key while still auto-saving other fields", async () => {
     localStorage.clear();
     render(<SettingsView />);
 
-    // Leave API key empty and try to save
-    const saveButton = screen.getByTestId("save-settings");
+    // The required-key warning is shown because no Anthropic key is set.
+    expect(screen.getByTestId("required-warning")).toBeInTheDocument();
 
-    // First, make some other change to enable save button
+    // Changing another field still auto-saves, but the API key stays empty.
     const refreshInput = screen.getByTestId("number-input-log_refresh_interval");
-    await userEvent.clear(refreshInput);
-    await userEvent.type(refreshInput, "10");
-
-    fireEvent.click(saveButton);
+    fireEvent.change(refreshInput, { target: { value: "10" } });
 
     await waitFor(() => {
-      // Warning should show
-      const warning = screen.getByTestId("required-warning");
-      expect(warning).toBeInTheDocument();
-
-      // localStorage should not be updated
-      const stored = localStorage.getItem("agentic-os.settings");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // anthropic_api_key should be empty
-        expect(!parsed.anthropic_api_key || parsed.anthropic_api_key === "").toBeTruthy();
-      }
+      const stored = JSON.parse(localStorage.getItem("agentic-os.settings"));
+      expect(stored.log_refresh_interval).toBe(10);
+      expect(stored.anthropic_api_key || "").toBe("");
     });
+
+    // Warning remains until a key is entered.
+    expect(screen.getByTestId("required-warning")).toBeInTheDocument();
   });
 });

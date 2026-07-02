@@ -38,58 +38,52 @@ describe("MethodBadge Component", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("styling", () => {
-    it("should have monospace font", () => {
+    it("should carry the base method-badge class", () => {
       const { container } = render(<MethodBadge method="GET" />);
       const span = container.querySelector("span");
-      expect(span.style.fontFamily).toBe("var(--mono)");
+      expect(span.className).toContain("method-badge");
     });
 
-    it("should have correct font size", () => {
+    it("should apply the GET method class", () => {
       const { container } = render(<MethodBadge method="GET" />);
       const span = container.querySelector("span");
-      expect(span.style.fontSize).toBe("10px");
+      expect(span.className).toContain("get");
     });
 
-    it("should be bold", () => {
-      const { container } = render(<MethodBadge method="GET" />);
+    it("should apply the POST method class", () => {
+      const { container } = render(<MethodBadge method="POST" />);
       const span = container.querySelector("span");
-      expect(span.style.fontWeight).toBe("700");
+      expect(span.className).toContain("post");
     });
 
-    it("should have rounded corners", () => {
-      const { container } = render(<MethodBadge method="GET" />);
+    it("should apply the PUT method class", () => {
+      const { container } = render(<MethodBadge method="PUT" />);
       const span = container.querySelector("span");
-      expect(span.style.borderRadius).toBe("3px");
+      expect(span.className).toContain("put");
     });
 
-    it("should be displayed as inline-block", () => {
-      const { container } = render(<MethodBadge method="GET" />);
+    it("should apply the DELETE method class", () => {
+      const { container } = render(<MethodBadge method="DELETE" />);
       const span = container.querySelector("span");
-      expect(span.style.display).toBe("inline-block");
+      expect(span.className).toContain("delete");
     });
 
-    it("should have minimum width for alignment", () => {
-      const { container } = render(<MethodBadge method="GET" />);
+    it("should apply the PATCH method class", () => {
+      const { container } = render(<MethodBadge method="PATCH" />);
       const span = container.querySelector("span");
-      expect(span.style.minWidth).toBe("44px");
+      expect(span.className).toContain("patch");
     });
 
-    it("should center text", () => {
+    it("should lowercase the method for the class name", () => {
       const { container } = render(<MethodBadge method="GET" />);
       const span = container.querySelector("span");
-      expect(span.style.textAlign).toBe("center");
+      expect(span.className).toBe("method-badge get");
     });
 
-    it("should have padding", () => {
-      const { container } = render(<MethodBadge method="GET" />);
+    it("should default to the get class when method is missing", () => {
+      const { container } = render(<MethodBadge method={undefined} />);
       const span = container.querySelector("span");
-      expect(span.style.padding).toBe("2px 6px");
-    });
-
-    it("should prevent text selection", () => {
-      const { container } = render(<MethodBadge method="GET" />);
-      const span = container.querySelector("span");
-      expect(span.style.userSelect).toBe("none");
+      expect(span.className).toContain("get");
     });
   });
 
@@ -140,9 +134,9 @@ describe("MethodBadge Component", () => {
       );
       const span = container.querySelector("span");
       expect(span.style.fontSize).toBe("12px");
-      // Should still have other default styles
-      expect(span.style.fontWeight).toBe("700");
-      expect(span.style.color).toBeTruthy();
+      // Should still carry the semantic method classes
+      expect(span.className).toContain("method-badge");
+      expect(span.className).toContain("get");
     });
 
     it("should allow overriding padding", () => {

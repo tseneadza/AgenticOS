@@ -50,18 +50,24 @@ describe("GroupHeader Component", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("open/closed state", () => {
-    it("should show chevron rotated 90deg when open", () => {
+    it("should mark header expanded when open (drives chevron rotation via CSS)", () => {
       const onToggle = vi.fn();
       render(<GroupHeader name="Cards" isOpen={true} onToggle={onToggle} />);
-      const chevron = screen.getByTestId("group-chevron-Cards");
-      expect(chevron.style.transform).toContain("rotate(90deg)");
+      const header = screen.getByTestId("group-header-Cards");
+      expect(header).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByTestId("group-chevron-Cards").className).toContain(
+        "group-chevron"
+      );
     });
 
-    it("should show chevron not rotated when closed", () => {
+    it("should mark header collapsed when closed", () => {
       const onToggle = vi.fn();
       render(<GroupHeader name="Cards" isOpen={false} onToggle={onToggle} />);
-      const chevron = screen.getByTestId("group-chevron-Cards");
-      expect(chevron.style.transform).toContain("rotate(0deg)");
+      const header = screen.getByTestId("group-header-Cards");
+      expect(header).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getByTestId("group-chevron-Cards").className).toContain(
+        "group-chevron"
+      );
     });
 
     it("should have aria-expanded=true when open", () => {
@@ -230,31 +236,22 @@ describe("GroupHeader Component", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("styling", () => {
-    it("should have uppercase text", () => {
+    it("should carry the group-header class", () => {
       const onToggle = vi.fn();
       const { container } = render(
         <GroupHeader name="Cards" isOpen={true} onToggle={onToggle} />
       );
       const header = container.querySelector('[data-testid="group-header-Cards"]');
-      expect(header.style.textTransform).toBe("uppercase");
+      expect(header.className).toContain("group-header");
     });
 
-    it("should have pointer cursor", () => {
-      const onToggle = vi.fn();
-      const { container } = render(
-        <GroupHeader name="Cards" isOpen={true} onToggle={onToggle} />
-      );
-      const header = container.querySelector('[data-testid="group-header-Cards"]');
-      expect(header.style.cursor).toBe("pointer");
-    });
-
-    it("should have smooth chevron transition", () => {
+    it("should carry the group-chevron class on the chevron", () => {
       const onToggle = vi.fn();
       const { container } = render(
         <GroupHeader name="Cards" isOpen={true} onToggle={onToggle} />
       );
       const chevron = container.querySelector('[data-testid="group-chevron-Cards"]');
-      expect(chevron.style.transition).toContain("transform");
+      expect(chevron.className).toContain("group-chevron");
     });
   });
 

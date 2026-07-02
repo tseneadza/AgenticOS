@@ -42,3 +42,10 @@ global.IntersectionObserver = class IntersectionObserver {
   }
   unobserve() {}
 };
+
+// jsdom does not implement Element.prototype.scrollIntoView.
+// Components (e.g. LogsExplorer auto-scroll) call it on effect; stub it so
+// rendering doesn't throw in the test environment.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn();
+}

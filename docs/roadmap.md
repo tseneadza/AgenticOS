@@ -168,33 +168,59 @@ endpoint operational, Constitution guards integrated.
 | Small-local-model safeguards (10-call loop guard + escalate-to-cloud toggle) | FR-58 | ✅ |
 | Authoring workflows with approval + timestamped backup + YAML validation | FR-59 | ✅ |
 
-## Phase 11 — Project Creation Scaffolding (NF-5) 🟨 DESIGN PHASE (2026-07-01)
+## Phase 11 — Project Creation Scaffolding (NF-5) ✅ COMPLETE (2026-07-01)
 
-Interactive form (drawer from SysOps) to scaffold new Codehome projects end-to-end:
-create folder, venv, starter files, allocate port, create GitHub repo, git init.
+Interactive drawer (from SysOps ▸ Codehome Hub) to scaffold new Codehome
+projects end-to-end: create folder, venv, starter files, allocate port, create
+GitHub repo, git init. Shipped as 11a–11d; backend green at 48 pytest tests,
+`vite build` clean.
 
 | Acceptance criterion | Feature | Status |
 |----------------------|---------|--------|
-| Project creation form in SysOps drawer panel | UI | 🟨 Design |
-| 10 templates (FastAPI, Django, React, Next.js, Svelte, Astro, Node, Full-Stack, CLI, Monorepo) | Templates | 🟨 Design |
-| Auto-scan Codehome for subfolder structure (agents/, apps/, tools/) | Discovery | 🟨 Design |
-| Create folder structure + Python venv (template-aware) | Scaffolding | 🟨 Design |
-| Auto-detect next free port (no collisions via DB) | Port allocation | 🟨 Design |
-| Generate starter files per template (README, .gitignore, requirements.txt, app.json) | Files | 🟨 Design |
-| Create GitHub repo via API (lenient: warn if token missing) | GitHub integration | 🟨 Design |
-| git init + initial commit (best-effort; degrade gracefully) | Git init | 🟨 Design |
-| Register project in `projects` table + auto-discover into `apps` | Registration | 🟨 Design |
-| Stream progress updates via WebSocket (real-time feedback to user) | Streaming | 🟨 Design |
+| Project creation form in SysOps drawer panel | UI | ✅ `ProjectCreationDrawer.jsx` |
+| 10 templates (FastAPI, Django, React, Next.js, Svelte, Astro, Node, Full-Stack, CLI, Monorepo) | Templates | ✅ `template_registry.py` |
+| Auto-scan Codehome for subfolder structure (ledger-based) | Discovery | ✅ `scan_codehome_structure` |
+| Create folder structure + Python venv (template-aware) | Scaffolding | ✅ `project_manager.py` |
+| Auto-detect next free port (no collisions via DB) | Port allocation | ✅ `allocate_port` + `ports` table |
+| Generate starter files per template (README, .gitignore, pyproject, app.json) | Files | ✅ `generate_files` |
+| Create GitHub repo via API (lenient: warn if token missing) | GitHub integration | ✅ `github_integration.py` |
+| git init + initial commit (best-effort; degrade gracefully) | Git init | ✅ `init_git_repo` |
+| Register project in `projects` table + auto-discover into `apps` | Registration | ✅ `create_project_full` |
+| Stream progress updates via WebSocket (real-time feedback to user) | Streaming | ✅ `WS /api/projects/ws/create` |
 
-**Design decisions locked (2026-07-01):**
-- UI: Drawer panel (right sidebar) from SysOps CODEHOME HUB button
-- Tech stack: 10 templates with template-based file generation
-- Error handling: Lenient (create project locally; warn on GitHub/git failures)
-- Subfolder: Auto-scan Codehome; allow custom
-- Port collision: Auto-assign next free (no user intervention)
-- Form fields: Advanced (name, template, subfolder, description, custom port optional)
+**Shipped (2026-07-01):** 11a foundation modules, 11b GitHub/git, 11c REST +
+WebSocket orchestration (`create_project_full`), 11d GUI drawer. See
+`docs/CONTINUATION.md` for the detailed per-sub-phase record.
 
-**Plan:** `docs/PROJECT_CREATION_PLAN.md` (comprehensive 4-week phased implementation).
+**Remaining:** on-device visual check of the drawer (`npm run tauri dev`).
 
-**Next steps:** Phase 11a (template registry + subfolder detection + venv setup).
+## Phase 12 — Self-Diagnostics Dashboard (hidden) ✅ COMPLETE (2026-07-01)
+
+A hidden self-diagnostics overlay: one place to answer "is AgenticOS healthy
+right now?" — live system self-checks plus on-demand execution of the real test
+suites. Revealed by a secret gesture (triple-tap the bottom-right corner), not
+present in the nav or menu. Also reachable via the `#diag` URL-hash escape hatch.
+
+| Acceptance criterion | Feature | Status |
+|----------------------|---------|--------|
+| Live system self-checks (sidecar, MySQL, model registry, port ledger, constitution guards, workflows) | Self-checks | ✅ `run_system_checks` |
+| Backend pytest + frontend vitest run on demand, streamed | Test runners | ✅ `WS /api/diagnostics/ws/run` |
+| Cached-on-open + live-refresh | Cache | ✅ `GET /cached` + `~/.agentic-os/diagnostics_cache.json` |
+| Hidden reveal (triple-tap corner; `#diag` fallback), not in nav | Hidden UI | ✅ `CornerReveal` + `SelfDiagnosticsView.jsx` |
+| Endpoints registered in the API Explorer (api-registry rule) | Registry | ✅ Diagnostics (Sidecar) group |
+
+**Backend:** `gui/sidecar/routes/api_diagnostics.py` (`GET /system`,
+`GET /cached`, `WS /ws/run`), 12 pytest tests. **Frontend:**
+`SelfDiagnosticsView.jsx` (overlay) + `CornerReveal` in `App.jsx`, 5 vitest tests.
+
+**Also this session:** fixed the pre-existing frontend test-suite breakage —
+188 failing tests were test rot (inline-style assertions on components
+refactored to CSS classes) plus three real product bugs the suite had been
+quietly flagging, all now fixed: `EnvironmentPanel.jsx` undefined
+`setHasUnsavedChanges` (reset-handler crash), `HubApiExplorer.jsx`
+case-sensitive filter, and `LogsExplorer.jsx` broken search highlighting
+(collapsed-to-string + control-byte `split`; rewritten to `highlightParts` with
+a real regression test). Suite now 25 files / 574 tests green; backend 76.
+
+**Remaining:** on-device visual check of the reveal gesture (`npm run tauri dev`).
 

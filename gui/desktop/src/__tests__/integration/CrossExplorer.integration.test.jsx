@@ -3,14 +3,53 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import HubApiExplorer from "../../components/HubApiExplorer";
 import ScriptsExplorer from "../../components/ScriptsExplorer";
+import { mockScripts, mockScriptContent } from "../../../__tests__/fixtures/mockScripts";
 
 // Mock fetch for API responses
 global.fetch = vi.fn();
+
+// ScriptsExplorer loads its script list from the Hub sidecar on mount; route
+// each call to a canned response so it renders the mockScripts. HubApiExplorer
+// uses a static endpoint list and needs no data mocking.
+function installFetchMock() {
+  global.fetch.mockImplementation((url) => {
+    const u = String(url);
+    if (u.includes("/apps/scripts/info")) {
+      return Promise.resolve({
+        ok: true,
+        headers: { get: () => "application/json" },
+        json: async () => ({ success: true, content: mockScriptContent, line_count: 1 }),
+      });
+    }
+    if (u.includes("/apps/scripts")) {
+      return Promise.resolve({ ok: true, json: async () => ({ scripts: mockScripts }) });
+    }
+    return Promise.resolve({
+      ok: true,
+      headers: { get: () => "application/json" },
+      json: async () => ({ ok: true, success: true }),
+    });
+  });
+}
+
+// ScriptsExplorer's filter input has no data-testid, so resolve it by its
+// placeholder within a given container.
+function getScriptFilter(container) {
+  return container.querySelector('input[placeholder*="Filter by name"]');
+}
+
+async function renderScriptsLoaded() {
+  const result = render(<ScriptsExplorer />);
+  await screen.findAllByTestId(/script-item/);
+  return result;
+}
 
 describe("Cross-Explorer Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch.mockReset();
+    localStorage.clear();
+    installFetchMock();
   });
 
   afterEach(() => {
@@ -37,7 +76,7 @@ describe("Cross-Explorer Integration Tests", () => {
       const apiHeaders = screen.getAllByTestId(/group-header-/);
 
       const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptHeaders = screen.getAllByTestId(/script-group-header-/);
+      const scriptHeaders = await screen.findAllByTestId(/script-group-header-/);
 
       // Both should have group headers
       expect(apiHeaders.length).toBeGreaterThan(0);
@@ -98,7 +137,7 @@ describe("Cross-Explorer Integration Tests", () => {
       expect(apiItems.length).toBeGreaterThan(0);
 
       const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptItems = screen.queryAllByTestId(/script-item/);
+      const scriptItems = await screen.findAllByTestId(/script-item/);
       expect(scriptItems.length).toBeGreaterThan(0);
 
       unmount1();
@@ -111,7 +150,7 @@ describe("Cross-Explorer Integration Tests", () => {
       expect(apiHeaders.length).toBeGreaterThan(0);
 
       const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptHeaders = screen.getAllByTestId(/script-group-header-/);
+      const scriptHeaders = await screen.findAllByTestId(/script-group-header-/);
       expect(scriptHeaders.length).toBeGreaterThan(0);
 
       unmount1();
@@ -201,10 +240,10 @@ describe("Cross-Explorer Integration Tests", () => {
         expect(apiFilter).toHaveValue("GET");
       });
 
-      const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptFilter = screen.getByTestId("filter-input");
+      const { unmount: unmount2, container: scriptContainer } = render(<ScriptsExplorer />);
+      const scriptFilter = getScriptFilter(scriptContainer);
 
-      // Script filter should be empty
+      // Script filter should be empty (independent of the API filter)
       expect(scriptFilter).toHaveValue("");
 
       unmount1();
@@ -232,7 +271,7 @@ describe("Cross-Explorer Integration Tests", () => {
       }
 
       const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptHeaders = screen.getAllByTestId(/script-group-header-/);
+      const scriptHeaders = await screen.findAllByTestId(/script-group-header-/);
 
       // Script groups should not be affected
       scriptHeaders.forEach(header => {
@@ -256,9 +295,9 @@ describe("Cross-Explorer Integration Tests", () => {
         expect(apiItemsFiltered.length).toBeLessThanOrEqual(apiItemsInitial);
       });
 
-      const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptFilter = screen.getByTestId("filter-input");
-      const scriptItemsInitial = screen.queryAllByTestId(/script-item/).length;
+      const { unmount: unmount2, container: scriptContainer } = render(<ScriptsExplorer />);
+      const scriptItemsInitial = (await screen.findAllByTestId(/script-item/)).length;
+      const scriptFilter = getScriptFilter(scriptContainer);
 
       await user.type(scriptFilter, "test");
       await waitFor(() => {
@@ -308,7 +347,7 @@ describe("Cross-Explorer Integration Tests", () => {
       });
 
       const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptHeaders = screen.getAllByTestId(/script-group-header-/);
+      const scriptHeaders = await screen.findAllByTestId(/script-group-header-/);
       scriptHeaders.forEach(header => {
         expect(header).toHaveAttribute("role", "button");
         expect(header).toHaveAttribute("aria-expanded");
@@ -391,19 +430,21 @@ describe("Cross-Explorer Integration Tests", () => {
       const apiFilter = screen.getByTestId("filter-input");
 
       // Type special characters
-      await user.type(apiFilter, "[(){}]");
+      // userEvent treats {, }, [, ] as key descriptors, so they must be doubled
+      // to type them literally.
+      await user.type(apiFilter, "[[(){{}}]");
 
       // Should not crash
       expect(screen.getByTestId("filter-input")).toBeInTheDocument();
 
-      const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptFilter = screen.getByTestId("filter-input");
+      const { unmount: unmount2, container: scriptContainer } = render(<ScriptsExplorer />);
+      const scriptFilter = getScriptFilter(scriptContainer);
 
       // Type special characters
-      await user.type(scriptFilter, "[(){}]");
+      await user.type(scriptFilter, "[[(){{}}]");
 
       // Should not crash
-      expect(screen.getByTestId("filter-input")).toBeInTheDocument();
+      expect(scriptFilter).toBeInTheDocument();
 
       unmount1();
       unmount2();
@@ -472,9 +513,9 @@ describe("Cross-Explorer Integration Tests", () => {
 
       expect(apiItemsAfter).toBeLessThanOrEqual(apiItemsBefore);
 
-      const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptFilter = screen.getByTestId("filter-input");
-      const scriptItemsBefore = screen.queryAllByTestId(/script-item/).length;
+      const { unmount: unmount2, container: scriptContainer } = render(<ScriptsExplorer />);
+      const scriptItemsBefore = (await screen.findAllByTestId(/script-item/)).length;
+      const scriptFilter = getScriptFilter(scriptContainer);
 
       await user.type(scriptFilter, "test");
       const scriptItemsAfter = await waitFor(() => {
@@ -536,7 +577,7 @@ describe("Cross-Explorer Integration Tests", () => {
       }
 
       const { unmount: unmount2 } = render(<ScriptsExplorer />);
-      const scriptHeaders = screen.getAllByTestId(/script-group-header-/);
+      const scriptHeaders = await screen.findAllByTestId(/script-group-header-/);
 
       if (scriptHeaders.length > 0) {
         const scriptGroupName = scriptHeaders[0]

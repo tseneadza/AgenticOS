@@ -1,0 +1,134 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                    ANTHROPIC USAGE TOOL — QUICK START                           ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+📌 TLDR (3 minutes)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. GET API KEY
+   👉 https://console.anthropic.com/account/keys
+
+2. CONFIGURE
+   cp ../.env.template ../.env.local
+   (Edit .env.local, add your key)
+
+3. TEST
+   python anthropic_usage.py all
+
+✓ DONE!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 COMMON COMMANDS
+═══════════════════════════════════════════════════════════════════════════════
+
+# Get all data (table format, default)
+python anthropic_usage.py all
+
+# Get specific data
+python anthropic_usage.py account      # Account info
+python anthropic_usage.py usage        # Usage metrics
+python anthropic_usage.py models       # Available models
+python anthropic_usage.py limits       # Rate limits
+
+# Change output format
+python anthropic_usage.py all --format json
+python anthropic_usage.py all --format table
+python anthropic_usage.py all --format csv
+python anthropic_usage.py all --format json-compact
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🐍 PYTHON / CLAUDE CODE
+═══════════════════════════════════════════════════════════════════════════════
+
+from tools.anthropic_usage import AnthropicUsageClient
+
+client = AnthropicUsageClient()
+
+# Get data
+account = client.get_account_info()
+usage = client.get_usage_metrics()
+models = client.get_models()
+limits = client.get_rate_limits()
+all_data = client.get_all_data()
+
+# Check for errors
+if account.get("success"):
+    print(account["data"])
+else:
+    print(f"Error: {account['error']}")
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔧 MCP SERVER (AgenticOS)
+═══════════════════════════════════════════════════════════════════════════════
+
+Available tools:
+  • get_anthropic_account    - Account information
+  • get_anthropic_usage      - Usage metrics
+  • get_anthropic_models     - Available models
+  • get_anthropic_limits     - Rate limits
+  • get_anthropic_all        - All data combined
+
+Call these from Claude when using agentic-mcp-tools skill.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔒 SECURITY
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ .env.local is in .gitignore (won't commit)
+✅ .env.template shows structure (safe to commit)
+✅ API key only loaded from environment (not hardcoded)
+✅ Read-only API calls (no account modifications)
+
+⚠️  IMPORTANT:
+  • Never commit .env.local
+  • Never paste your API key in chat
+  • Treat keys like passwords
+  • Rotate regularly at https://console.anthropic.com/account/keys
+
+═══════════════════════════════════════════════════════════════════════════════
+
+❓ TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+"ANTHROPIC_API_KEY not found"
+  → Check .env.local exists
+  → Check it has your key: grep ANTHROPIC ../.env.local
+  → Copy template if missing: cp ../.env.template ../.env.local
+
+"ModuleNotFoundError: No module named 'anthropic_usage'"
+  → Install deps: pip install -r ../requirements.txt
+  → Or run from project root: python -m tools.anthropic_usage
+
+"API Error: 401 Unauthorized"
+  → Your API key is invalid or expired
+  → Generate new key: https://console.anthropic.com/account/keys
+  → Update .env.local
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📚 DOCS
+═══════════════════════════════════════════════════════════════════════════════
+
+  • ../docs/ANTHROPIC_USAGE_TOOL_SETUP.md  - Full setup guide
+  • ./ANTHROPIC_USAGE.md                   - User documentation
+  • ./ANTHROPIC_USAGE_EXAMPLES.py          - Code examples
+  • ./QUICK_START.txt                      - This file
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 NEXT STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+  1. Add your API key to .env.local
+  2. Run: python anthropic_usage.py all
+  3. Verify output looks good
+  4. Import into your projects as needed
+  5. (Optional) Integrate into AgenticOS dashboard
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Questions? Check the docs or see ANTHROPIC_USAGE.md troubleshooting section.

@@ -11,9 +11,13 @@ describe("TabSwitcher", () => {
   });
 
   it("highlights active tab", () => {
-    const { container } = render(<TabSwitcher activeTab="explorer" onTabChange={vi.fn()} />);
-    const button = screen.getByTestId("tab-button-explorer");
-    expect(button.style.background).toBe("var(--accent)");
+    render(<TabSwitcher activeTab="explorer" onTabChange={vi.fn()} />);
+    const active = screen.getByTestId("tab-button-explorer");
+    const inactive = screen.getByTestId("tab-button-calllog");
+    expect(active.className).toContain("active");
+    expect(active).toHaveAttribute("aria-selected", "true");
+    expect(inactive.className).not.toContain("active");
+    expect(inactive).toHaveAttribute("aria-selected", "false");
   });
 
   it("calls onTabChange when tab clicked", async () => {

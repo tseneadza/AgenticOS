@@ -1,22 +1,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import EnvironmentPanel from "../components/EnvironmentPanel";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Test Suite: EnvironmentPanel
+//
+// EnvironmentPanel was refactored to AUTO-SAVE (debounced, 500ms) on any
+// settings change. There is no longer a manual "Save" button or a dirty/enable
+// flow. These tests assert the current auto-save contract:
+//   - changing a field persists to localStorage["agentic-os.settings"]
+//     (asserted via waitFor after the debounce), and
+//   - the "✓ Saved" indicator appears after a save.
 // ─────────────────────────────────────────────────────────────────────────
+
+// Helper: read the persisted settings object (or null if not yet written).
+function readStoredSettings() {
+  const raw = localStorage.getItem("agentic-os.settings");
+  return raw ? JSON.parse(raw) : null;
+}
 
 describe("EnvironmentPanel Component", () => {
   beforeEach(() => {
     // Clear localStorage before each test
     localStorage.clear();
 
-    // Mock clipboard API
-    Object.assign(navigator, {
-      clipboard: {
-        writeText: vi.fn(() => Promise.resolve()),
-      },
+    // Mock clipboard API. navigator.clipboard is getter-only in jsdom, so it
+    // must be (re)defined rather than assigned.
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      writable: true,
+      value: { writeText: vi.fn(() => Promise.resolve()) },
     });
   });
 
@@ -39,8 +53,8 @@ describe("EnvironmentPanel Component", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    it("should render close button", () => {
-      render(<EnvironmentPanel />);
+    it("should render close button when onClose is provided", () => {
+      render(<EnvironmentPanel onClose={vi.fn()} />);
       expect(screen.getByTestId("close-settings")).toBeInTheDocument();
     });
 
@@ -63,10 +77,11 @@ describe("EnvironmentPanel Component", () => {
       expect(screen.getByTestId("number-input-api_timeout")).toBeInTheDocument();
     });
 
-    it("should render save and reset buttons", () => {
+    it("should render the reset button (auto-save has no manual save button)", () => {
       render(<EnvironmentPanel />);
-      expect(screen.getByTestId("save-settings")).toBeInTheDocument();
       expect(screen.getByTestId("reset-settings")).toBeInTheDocument();
+      // Auto-save contract: there is no manual save button.
+      expect(screen.queryByTestId("save-settings")).not.toBeInTheDocument();
     });
   });
 
@@ -121,6 +136,13 @@ describe("EnvironmentPanel Component", () => {
 
     it("should copy API key to clipboard", async () => {
       const user = userEvent.setup();
+      // Install our clipboard stub AFTER setup so it wins over userEvent's shim.
+      const writeText = vi.fn(() => Promise.resolve());
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        writable: true,
+        value: { writeText },
+      });
       render(<EnvironmentPanel />);
 
       const input = screen.getByTestId("api-key-input-anthropic_api_key");
@@ -129,7 +151,7 @@ describe("EnvironmentPanel Component", () => {
       const copyButton = screen.getByTestId("copy-btn-anthropic_api_key");
       await user.click(copyButton);
 
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("sk-test-key");
+      expect(writeText).toHaveBeenCalledWith("sk-test-key");
     });
 
     it("should show 'Copied' feedback after copy", async () => {
@@ -237,13 +259,13 @@ describe("EnvironmentPanel Component", () => {
       expect(logInterval).toHaveAttribute("type", "number");
     });
 
-    it("should accept valid number input", async () => {
-      const user = userEvent.setup();
+    it("should accept valid number input", () => {
       render(<EnvironmentPanel />);
 
+      // The controlled number input only commits valid values, so drive it
+      // with a single change event carrying the full value.
       const input = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(input);
-      await user.type(input, "10");
+      fireEvent.change(input, { target: { value: "10" } });
 
       expect(input).toHaveValue(10);
     });
@@ -255,12 +277,10 @@ describe("EnvironmentPanel Component", () => {
     });
 
     it("should show error for value below minimum", async () => {
-      const user = userEvent.setup();
       render(<EnvironmentPanel />);
 
       const input = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(input);
-      await user.type(input, "0");
+      fireEvent.change(input, { target: { value: "0" } });
 
       await waitFor(() => {
         expect(screen.getByTestId("error-log_refresh_interval")).toBeInTheDocument();
@@ -268,12 +288,10 @@ describe("EnvironmentPanel Component", () => {
     });
 
     it("should show error for value above maximum", async () => {
-      const user = userEvent.setup();
       render(<EnvironmentPanel />);
 
       const input = screen.getByTestId("number-input-api_timeout");
-      await user.clear(input);
-      await user.type(input, "1000");
+      fireEvent.change(input, { target: { value: "1000" } });
 
       await waitFor(() => {
         expect(screen.getByTestId("error-api_timeout")).toBeInTheDocument();
@@ -281,12 +299,12 @@ describe("EnvironmentPanel Component", () => {
     });
 
     it("should show error for non-numeric input", async () => {
-      const user = userEvent.setup();
       render(<EnvironmentPanel />);
 
       const input = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(input);
-      await user.type(input, "abc");
+      // A number input strips non-numeric characters, so emit the raw value
+      // directly to exercise the NaN validation branch.
+      fireEvent.change(input, { target: { value: "abc" } });
 
       await waitFor(() => {
         expect(screen.getByTestId("error-log_refresh_interval")).toBeInTheDocument();
@@ -301,13 +319,11 @@ describe("EnvironmentPanel Component", () => {
       ).toBeInTheDocument();
     });
 
-    it("should accept values within valid range", async () => {
-      const user = userEvent.setup();
+    it("should accept values within valid range", () => {
       render(<EnvironmentPanel />);
 
       const input = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(input);
-      await user.type(input, "30");
+      fireEvent.change(input, { target: { value: "30" } });
 
       expect(input).toHaveValue(30);
       expect(screen.queryByTestId("error-log_refresh_interval")).not.toBeInTheDocument();
@@ -315,54 +331,32 @@ describe("EnvironmentPanel Component", () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Save & Persistence Tests
+  // Auto-save & Persistence Tests
   // ─────────────────────────────────────────────────────────────────────────
 
-  describe("save to localStorage", () => {
-    it("should save settings to localStorage on save button click", async () => {
+  describe("auto-save to localStorage", () => {
+    it("should auto-save an entered API key to localStorage", async () => {
       const user = userEvent.setup();
       render(<EnvironmentPanel />);
 
       const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
       await user.type(apiKeyInput, "sk-test-key");
-
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
-
-      const stored = JSON.parse(localStorage.getItem("agentic-os.settings"));
-      expect(stored.anthropic_api_key).toBe("sk-test-key");
-    });
-
-    it("should show success message after save", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "sk-test-key");
-
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
 
       await waitFor(() => {
-        expect(screen.getByText("Settings saved!")).toBeInTheDocument();
+        expect(readStoredSettings()?.anthropic_api_key).toBe("sk-test-key");
       });
     });
 
-    it("should disable save button when no changes", () => {
-      render(<EnvironmentPanel />);
-      const saveButton = screen.getByTestId("save-settings");
-      expect(saveButton).toBeDisabled();
-    });
-
-    it("should enable save button when changes made", async () => {
+    it("should show the ✓ Saved indicator after a change", async () => {
       const user = userEvent.setup();
       render(<EnvironmentPanel />);
 
-      const toggle = screen.getByTestId("toggle-dark_mode");
-      await user.click(toggle);
+      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
+      await user.type(apiKeyInput, "sk-test-key");
 
-      const saveButton = screen.getByTestId("save-settings");
-      expect(saveButton).not.toBeDisabled();
+      await waitFor(() => {
+        expect(screen.getByText("✓ Saved")).toBeInTheDocument();
+      });
     });
 
     it("should load settings from localStorage on mount", () => {
@@ -389,8 +383,10 @@ describe("EnvironmentPanel Component", () => {
       const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
       await user.type(apiKeyInput, "sk-test-key");
 
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
+      // Wait for the debounced auto-save to persist.
+      await waitFor(() => {
+        expect(readStoredSettings()?.anthropic_api_key).toBe("sk-test-key");
+      });
 
       unmount();
 
@@ -402,39 +398,27 @@ describe("EnvironmentPanel Component", () => {
       );
     });
 
-    it("should save feature toggles", async () => {
+    it("should auto-save feature toggle changes", async () => {
       const user = userEvent.setup();
       render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "test-key");
 
       const darkModeToggle = screen.getByTestId("toggle-dark_mode");
       await user.click(darkModeToggle);
 
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
-
-      const stored = JSON.parse(localStorage.getItem("agentic-os.settings"));
-      expect(stored.dark_mode).toBe(false);
+      await waitFor(() => {
+        expect(readStoredSettings()?.dark_mode).toBe(false);
+      });
     });
 
-    it("should save system settings", async () => {
-      const user = userEvent.setup();
+    it("should auto-save system setting changes", async () => {
       render(<EnvironmentPanel />);
 
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "test-key");
-
       const numberInput = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(numberInput);
-      await user.type(numberInput, "20");
+      fireEvent.change(numberInput, { target: { value: "20" } });
 
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
-
-      const stored = JSON.parse(localStorage.getItem("agentic-os.settings"));
-      expect(stored.log_refresh_interval).toBe(20);
+      await waitFor(() => {
+        expect(readStoredSettings()?.log_refresh_interval).toBe(20);
+      });
     });
   });
 
@@ -443,41 +427,21 @@ describe("EnvironmentPanel Component", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("validation", () => {
-    it("should warn when required API key is missing", async () => {
-      const user = userEvent.setup();
+    it("should warn when the required API key is missing on mount", () => {
       render(<EnvironmentPanel />);
-
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
-
-      expect(screen.getByTestId("required-warning")).toBeInTheDocument();
-      expect(
-        screen.getByText(expect.stringContaining("Anthropic API Key is required"))
-      ).toBeInTheDocument();
+      // No key stored → the required-key warning is shown.
+      const warning = screen.getByTestId("required-warning");
+      expect(warning).toBeInTheDocument();
+      expect(warning).toHaveTextContent(/Anthropic API Key is required/);
     });
 
-    it("should clear warning when required key is filled", async () => {
-      const user = userEvent.setup();
+    it("should not show the required warning when a key is already stored", () => {
+      localStorage.setItem(
+        "agentic-os.settings",
+        JSON.stringify({ anthropic_api_key: "sk-existing" })
+      );
       render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "sk-test-key");
-
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
-
       expect(screen.queryByTestId("required-warning")).not.toBeInTheDocument();
-    });
-
-    it("should not save if required field is empty", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
-
-      // localStorage should not have been updated
-      expect(localStorage.getItem("agentic-os.settings")).toBeNull();
     });
 
     it("should validate number ranges on input", async () => {
@@ -491,6 +455,23 @@ describe("EnvironmentPanel Component", () => {
       await waitFor(() => {
         expect(screen.getByTestId("error-log_refresh_interval")).toBeInTheDocument();
       });
+    });
+
+    it("should not persist an out-of-range number value", async () => {
+      const user = userEvent.setup();
+      render(<EnvironmentPanel />);
+
+      const input = screen.getByTestId("number-input-log_refresh_interval");
+      await user.clear(input);
+      await user.type(input, "100");
+
+      await waitFor(() => {
+        expect(screen.getByTestId("error-log_refresh_interval")).toBeInTheDocument();
+      });
+
+      // Invalid values are rejected before reaching state, so the persisted
+      // value must never become the out-of-range number.
+      expect(readStoredSettings()?.log_refresh_interval).not.toBe(100);
     });
   });
 
@@ -507,8 +488,7 @@ describe("EnvironmentPanel Component", () => {
       await user.type(apiKeyInput, "sk-test-key");
 
       const numberInput = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(numberInput);
-      await user.type(numberInput, "20");
+      fireEvent.change(numberInput, { target: { value: "20" } });
 
       const resetButton = screen.getByTestId("reset-settings");
 
@@ -554,7 +534,6 @@ describe("EnvironmentPanel Component", () => {
 
   describe("keyboard accessibility", () => {
     it("should allow Tab navigation through all inputs", async () => {
-      const user = userEvent.setup();
       render(<EnvironmentPanel />);
 
       const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
@@ -562,15 +541,17 @@ describe("EnvironmentPanel Component", () => {
       expect(apiKeyInput).toHaveFocus();
     });
 
-    it("should allow Enter to toggle feature flags", async () => {
+    it("should keep feature flags keyboard-focusable and toggleable", async () => {
       const user = userEvent.setup();
       render(<EnvironmentPanel />);
 
       const toggle = screen.getByTestId("toggle-dark_mode");
       toggle.focus();
+      expect(toggle).toHaveFocus();
       expect(toggle).toBeChecked();
 
-      await user.keyboard("{Enter}");
+      // Checkboxes toggle on Space (Enter is a no-op per the HTML spec).
+      await user.keyboard(" ");
       expect(toggle).not.toBeChecked();
     });
 
@@ -588,7 +569,9 @@ describe("EnvironmentPanel Component", () => {
 
     it("should have proper labels for all inputs", () => {
       render(<EnvironmentPanel />);
-      expect(screen.getByText(/Anthropic API Key/)).toBeInTheDocument();
+      // "Anthropic API Key" appears in both the field label and the required
+      // warning, so assert at least one match rather than a unique one.
+      expect(screen.getAllByText(/Anthropic API Key/).length).toBeGreaterThan(0);
       expect(screen.getByText("Dark Mode Enabled")).toBeInTheDocument();
     });
   });
@@ -632,12 +615,15 @@ describe("EnvironmentPanel Component", () => {
     it("should use theme variables for colors", () => {
       const { container } = render(<EnvironmentPanel />);
       const header = container.querySelector("h2");
-      expect(header.style.color).toBe("var(--text)");
+      // Header inherits panel text color; verify the panel uses the theme var.
+      const panel = container.querySelector('[data-testid="environment-panel"]');
+      expect(panel.style.color).toBe("var(--text)");
+      expect(header).toBeInTheDocument();
     });
 
     it("should render in all themes without errors", () => {
       const themes = ["terracotta-light", "terracotta-dark"];
-      themes.forEach((theme) => {
+      themes.forEach(() => {
         const { unmount } = render(<EnvironmentPanel />);
         expect(screen.getByTestId("environment-panel")).toBeInTheDocument();
         unmount();
@@ -650,7 +636,7 @@ describe("EnvironmentPanel Component", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("integration", () => {
-    it("should handle multiple changes and save together", async () => {
+    it("should auto-save multiple changes together", async () => {
       const user = userEvent.setup();
       render(<EnvironmentPanel />);
 
@@ -662,18 +648,15 @@ describe("EnvironmentPanel Component", () => {
       await user.click(darkModeToggle);
 
       const numberInput = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(numberInput);
-      await user.type(numberInput, "10");
+      fireEvent.change(numberInput, { target: { value: "10" } });
 
-      // Save all changes
-      const saveButton = screen.getByTestId("save-settings");
-      await user.click(saveButton);
-
-      // Verify all saved
-      const stored = JSON.parse(localStorage.getItem("agentic-os.settings"));
-      expect(stored.anthropic_api_key).toBe("sk-test-key");
-      expect(stored.dark_mode).toBe(false);
-      expect(stored.log_refresh_interval).toBe(10);
+      // Verify all auto-saved
+      await waitFor(() => {
+        const stored = readStoredSettings();
+        expect(stored?.anthropic_api_key).toBe("sk-test-key");
+        expect(stored?.dark_mode).toBe(false);
+        expect(stored?.log_refresh_interval).toBe(10);
+      });
     });
 
     it("should handle close button", async () => {

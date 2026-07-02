@@ -119,6 +119,11 @@ const ENDPOINTS_HARDCODED = [
   { group:"Projects (Sidecar)", server:"sidecar", method:"GET",  path:"/api/projects/port-check", desc:"Check if a port is free (ledger + TCP probe)", params:[{name:"port",_in:"query",type:"number",required:true,hint:"5200"}] },
   // WS /api/projects/ws/create — streaming create_project_full (not HTTP-invocable from this Explorer)
 
+  // ─── Diagnostics (Sidecar) — Phase 12 self-diagnostics dashboard ─────
+  { group:"Diagnostics (Sidecar)", server:"sidecar", method:"GET", path:"/api/diagnostics/system", desc:"Live system self-checks (sidecar, MySQL, models, ports, constitution, workflows)", params:[] },
+  { group:"Diagnostics (Sidecar)", server:"sidecar", method:"GET", path:"/api/diagnostics/cached", desc:"Last cached full diagnostics result (system + pytest + vitest)", params:[] },
+  // WS /api/diagnostics/ws/run — streams a full pytest + vitest + system run (not HTTP-invocable from this Explorer)
+
   // ─── Keno (Georgia Lottery) (Flask @ :5000) ──────────────────────────
   { group:"Keno (Flask)", method:"GET",  path:"/api/status",        desc:"API health check", params:[] },
   { group:"Keno (Flask)", method:"GET",  path:"/api/draws/latest",  desc:"Get latest draws from database", params:[{name:"count",_in:"query",type:"number",required:false,hint:"5 (max 100)"}] },
@@ -418,11 +423,13 @@ export default function HubApiExplorer() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const filteredEps = (group) =>
-    endpoints.map((e, i) => ({ ...e, _i: i })).filter(e =>
+  const filteredEps = (group) => {
+    const f = (filter || "").toLowerCase();  // case-insensitive: lowercase the query too
+    return endpoints.map((e, i) => ({ ...e, _i: i })).filter(e =>
       e.group === group &&
-      (!filter || e.path.toLowerCase().includes(filter) || e.method.toLowerCase().includes(filter) || e.desc.toLowerCase().includes(filter))
+      (!f || e.path.toLowerCase().includes(f) || e.method.toLowerCase().includes(f) || e.desc.toLowerCase().includes(f))
     );
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>

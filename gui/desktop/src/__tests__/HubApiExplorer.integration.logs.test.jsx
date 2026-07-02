@@ -14,9 +14,14 @@ describe("HubApiExplorer + LogsExplorer Integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch.mockReset();
+    // LogsExplorer persists filter/search/auto-scroll state to localStorage;
+    // clear it so state doesn't leak between tests.
+    localStorage.clear();
+    // Spy on console.error so "no console errors" assertions have a real spy.
+    vi.spyOn(console, "error").mockImplementation(() => {});
     // Mock health checks
     global.fetch.mockImplementation((url) => {
-      if (url.includes("/health")) {
+      if (String(url).includes("/health")) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -28,6 +33,7 @@ describe("HubApiExplorer + LogsExplorer Integration", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
   });
 
@@ -156,8 +162,8 @@ describe("HubApiExplorer + LogsExplorer Integration", () => {
 
       await waitFor(() => {
         const errorFilterBtn = screen.getByTestId("filter-btn-ERROR");
-        // Filter state should be preserved (ERROR should be inactive)
-        expect(errorFilterBtn).toHaveStyle({ border: /1px/ });
+        // Filter state should be preserved (ERROR toggled off → not pressed).
+        expect(errorFilterBtn).toHaveAttribute("aria-pressed", "false");
       });
     });
 
@@ -251,20 +257,13 @@ describe("HubApiExplorer + LogsExplorer Integration", () => {
       await user.click(logsTab);
 
       await waitFor(() => {
-        // Clear all filters - actually need to uncheck all
-        const debugBtn = screen.getByTestId("filter-btn-DEBUG");
-        const infoBtn = screen.getByTestId("filter-btn-INFO");
-        const warnBtn = screen.getByTestId("filter-btn-WARN");
-        const errorBtn = screen.getByTestId("filter-btn-ERROR");
-
-        // Uncheck all
-        return Promise.all([
-          user.click(debugBtn),
-          user.click(infoBtn),
-          user.click(warnBtn),
-          user.click(errorBtn),
-        ]);
+        expect(screen.getByTestId("log-search-input")).toBeInTheDocument();
       });
+
+      // Search for text that matches no log — this yields the empty state.
+      // (Un-checking every level filter instead shows ALL logs, not none.)
+      const searchInput = screen.getByTestId("log-search-input");
+      await user.type(searchInput, "zzz-nonexistent-log-text-9999");
 
       await waitFor(() => {
         expect(screen.getByTestId("empty-logs")).toBeInTheDocument();
@@ -468,13 +467,6 @@ describe("HubApiExplorer + LogsExplorer Integration", () => {
   describe("Log Functionality in Context", () => {
     it("should allow copying logs by clicking them", async () => {
       const user = userEvent.setup();
-      // Mock clipboard
-      Object.assign(navigator, {
-        clipboard: {
-          writeText: vi.fn(),
-        },
-      });
-
       render(<HubApiExplorer />);
 
       const logsTab = screen.getByTestId("tab-button-logs");
@@ -485,12 +477,22 @@ describe("HubApiExplorer + LogsExplorer Integration", () => {
         expect(logs.length).toBeGreaterThan(0);
       });
 
+      // Install our clipboard stub AFTER userEvent.setup() so it wins over
+      // userEvent's shim. navigator.clipboard is getter-only in jsdom, so it
+      // must be (re)defined rather than assigned.
+      const writeText = vi.fn(() => Promise.resolve());
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        writable: true,
+        value: { writeText },
+      });
+
       const firstLog = screen.queryAllByTestId(/log-entry/)[0];
       await user.click(firstLog);
 
       // Verify clipboard was called (might be async)
       await waitFor(() => {
-        expect(navigator.clipboard.writeText).toHaveBeenCalled();
+        expect(writeText).toHaveBeenCalled();
       });
     });
 

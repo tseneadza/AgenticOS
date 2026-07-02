@@ -25,13 +25,13 @@ function parseLogLine(line) {
   };
 }
 
-// Highlight search terms in text
-function highlightText(text, searchTerm) {
-  if (!searchTerm) return text;
+// Split text into segments for search highlighting. Matched terms sit at ODD
+// indices (String.split with a capturing group interleaves matches), so the
+// caller highlights parts where idx % 2 === 1. No match/term → single element.
+function highlightParts(text, searchTerm) {
+  if (!searchTerm) return [text];
   const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
-  return text.split(regex).map((part, idx) =>
-    regex.test(part) ? `${part}` : part
-  ).join("");
+  return text.split(regex);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -41,8 +41,7 @@ function highlightText(text, searchTerm) {
 function LogEntry({ log, searchTerm, onCopy }) {
   if (!log) return null;
 
-  const highlightedMessage = highlightText(log.message, searchTerm);
-  const parts = highlightedMessage.split(/|/);
+  const parts = highlightParts(log.message, searchTerm);
 
   const handleCopy = async () => {
     const logText = `[${log.timestamp}] [${log.level}] ${log.message}`;

@@ -36,10 +36,10 @@ describe("ResponseDisplay Component", () => {
       expect(screen.getByText("Sending request…")).toBeInTheDocument();
     });
 
-    it("should have yellow text color when loading", () => {
+    it("should apply the loading state class", () => {
       const { container } = render(<ResponseDisplay loading={true} />);
       const responseDiv = container.querySelector('[data-testid="response-display"]');
-      expect(responseDiv.style.color).toBeTruthy();
+      expect(responseDiv.className).toContain("loading");
     });
 
     it("should hide empty state when loading", () => {
@@ -77,16 +77,11 @@ describe("ResponseDisplay Component", () => {
       expect(screen.getByText('{"result":"success"}')).toBeInTheDocument();
     });
 
-    it("should have green text color for success", () => {
+    it("should apply the success state class", () => {
       const { container } = render(<ResponseDisplay response={successResponse} />);
       const responseDiv = container.querySelector('[data-testid="response-display"]');
-      expect(responseDiv.style.color).toBeTruthy();
-    });
-
-    it("should have green border for success", () => {
-      const { container } = render(<ResponseDisplay response={successResponse} />);
-      const responseDiv = container.querySelector('[data-testid="response-display"]');
-      expect(responseDiv.style.borderColor).toBeTruthy();
+      expect(responseDiv.className).toContain("success");
+      expect(responseDiv.className).not.toContain("error");
     });
   });
 
@@ -117,16 +112,11 @@ describe("ResponseDisplay Component", () => {
       expect(screen.getByText("Internal Server Error")).toBeInTheDocument();
     });
 
-    it("should have red text color for error", () => {
+    it("should apply the error state class", () => {
       const { container } = render(<ResponseDisplay response={errorResponse} />);
       const responseDiv = container.querySelector('[data-testid="response-display"]');
-      expect(responseDiv.style.color).toBeTruthy();
-    });
-
-    it("should have red border for error", () => {
-      const { container } = render(<ResponseDisplay response={errorResponse} />);
-      const responseDiv = container.querySelector('[data-testid="response-display"]');
-      expect(responseDiv.style.borderColor).toBeTruthy();
+      expect(responseDiv.className).toContain("error");
+      expect(responseDiv.className).not.toContain("success");
     });
   });
 
@@ -180,23 +170,21 @@ describe("ResponseDisplay Component", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("styling", () => {
-    it("should apply monospace font", () => {
+    it("should carry the base response-container class", () => {
       const { container } = render(<ResponseDisplay />);
       const responseDiv = container.querySelector('[data-testid="response-display"]');
-      expect(responseDiv.style.fontFamily).toContain("mono");
+      expect(responseDiv.className).toContain("response-container");
     });
 
-    it("should have scrollable container", () => {
+    it("should apply the default state class with no response", () => {
       const { container } = render(<ResponseDisplay />);
       const responseDiv = container.querySelector('[data-testid="response-display"]');
-      expect(responseDiv.style.maxHeight).toBe("300px");
-      expect(responseDiv.style.overflowY).toBe("auto");
+      expect(responseDiv.className).toContain("default");
     });
 
-    it("should preserve whitespace and line breaks", () => {
+    it("should render the response label element", () => {
       const { container } = render(<ResponseDisplay />);
-      const responseDiv = container.querySelector('[data-testid="response-display"]');
-      expect(responseDiv.style.whiteSpace).toBe("pre-wrap");
+      expect(container.querySelector(".response-label")).toBeInTheDocument();
     });
   });
 

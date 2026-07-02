@@ -119,7 +119,14 @@ describe('Environment Component', () => {
       expect(screen.getByText('Save Configuration')).toBeInTheDocument();
     });
 
+    // Save Configuration is disabled until the config is dirty, so make a
+    // change first to enable it.
+    const hostInput = screen.getByDisplayValue('http://localhost:12434');
+    await user.clear(hostInput);
+    await user.type(hostInput, 'http://localhost:9999');
+
     const saveButton = screen.getByText('Save Configuration');
+    await waitFor(() => expect(saveButton).not.toBeDisabled());
     await user.click(saveButton);
 
     await waitFor(() => {

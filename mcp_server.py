@@ -1,16 +1,28 @@
 #!/usr/bin/env python3
 """
 AgenticOS MCP Server
-Enables Claude to run build, test, and git commands directly on macOS
+Enables Claude to run build, test, and git commands directly on macOS,
+plus access Anthropic usage and settings data
 """
 
 import subprocess
 import json
 from pathlib import Path
+import sys
+
+# Add tools directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent / "tools"))
 
 # Project root
 PROJECT_ROOT = Path("/Users/tonyseneadza/Codehome/AgenticOS")
 GUI_DESKTOP = PROJECT_ROOT / "gui/desktop"
+
+# Import anthropic usage tools
+try:
+    from anthropic_usage import AnthropicUsageClient
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
 
 
 def run_command(cmd, cwd=None, capture=True):
@@ -241,8 +253,58 @@ TOOLS = [
         "name": "count_lines",
         "description": "Count lines in each component file",
         "inputSchema": {"type": "object", "properties": {}}
+    },
+    # Anthropic Usage & Settings Tools
+    {
+        "name": "get_anthropic_account",
+        "description": "Get Anthropic account information and settings",
+        "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "get_anthropic_usage",
+        "description": "Get API usage metrics (tokens, requests, cost)",
+        "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "get_anthropic_models",
+        "description": "Get available models and their information",
+        "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "get_anthropic_limits",
+        "description": "Get rate limits and quota information",
+        "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "get_anthropic_all",
+        "description": "Get all Anthropic account data (combined)",
+        "inputSchema": {"type": "object", "properties": {}}
     }
 ]
+
+
+def execute_anthropic_tool(tool_name):
+    """Execute Anthropic usage tools"""
+    if not ANTHROPIC_AVAILABLE:
+        return {"error": "Anthropic tools not available. Install requirements.txt"}
+
+    try:
+        client = AnthropicUsageClient()
+
+        if tool_name == "get_anthropic_account":
+            return client.get_account_info()
+        elif tool_name == "get_anthropic_usage":
+            return client.get_usage_metrics()
+        elif tool_name == "get_anthropic_models":
+            return client.get_models()
+        elif tool_name == "get_anthropic_limits":
+            return client.get_rate_limits()
+        elif tool_name == "get_anthropic_all":
+            return client.get_all_data()
+        else:
+            return {"error": f"Unknown Anthropic tool: {tool_name}"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def execute_tool(tool_name, input_args=None):
@@ -268,12 +330,23 @@ def execute_tool(tool_name, input_args=None):
         "git_push": git_push,
     }
 
+    # Anthropic tools
+    anthropic_tools = {
+        "get_anthropic_account",
+        "get_anthropic_usage",
+        "get_anthropic_models",
+        "get_anthropic_limits",
+        "get_anthropic_all",
+    }
+
     if tool_name in no_arg_tools:
         return no_arg_tools[tool_name]()
     elif tool_name in arg_tools:
         if input_args is None:
             input_args = {}
         return arg_tools[tool_name](**input_args)
+    elif tool_name in anthropic_tools:
+        return execute_anthropic_tool(tool_name)
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 

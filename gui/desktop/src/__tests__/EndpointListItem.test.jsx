@@ -25,12 +25,22 @@ describe("EndpointListItem", () => {
     expect(screen.getByTestId("endpoint-path-/api/cards")).toBeInTheDocument();
   });
 
-  it("shows selection state with accent border", () => {
-    const { container } = render(
+  it("shows selection state with the selected class", () => {
+    render(
       <EndpointListItem endpoint={mockEndpoint} isSelected={true} onSelect={vi.fn()} />
     );
-    const item = container.querySelector('[data-testid="endpoint-list-item-GET-/api/cards"]');
-    expect(item.style.borderLeft).toContain("var(--accent)");
+    const item = screen.getByTestId("endpoint-list-item-GET-/api/cards");
+    expect(item.className).toContain("selected");
+    expect(item).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("does not apply the selected class when not selected", () => {
+    render(
+      <EndpointListItem endpoint={mockEndpoint} isSelected={false} onSelect={vi.fn()} />
+    );
+    const item = screen.getByTestId("endpoint-list-item-GET-/api/cards");
+    expect(item.className).not.toContain("selected");
+    expect(item).toHaveAttribute("aria-selected", "false");
   });
 
   it("calls onSelect when clicked", async () => {

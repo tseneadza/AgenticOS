@@ -20,19 +20,32 @@ describe("ScriptTypeBadge", () => {
   it("applies correct styling for Launcher type", () => {
     render(<ScriptTypeBadge type="Launcher" />);
     const badge = screen.getByTestId("script-type-badge-Launcher");
-    expect(badge.style.color).toBeTruthy();
+    expect(badge.className).toContain("script-type-badge");
+    expect(badge.className).toContain("launcher");
   });
 
   it("applies correct styling for Test type", () => {
     render(<ScriptTypeBadge type="Test" />);
     const badge = screen.getByTestId("script-type-badge-Test");
-    expect(badge.style.background).toBeTruthy();
+    expect(badge.className).toContain("test");
+  });
+
+  it("maps multi-word type to a hyphenated class", () => {
+    render(<ScriptTypeBadge type="Dev Setup" />);
+    const badge = screen.getByTestId("script-type-badge-Dev Setup");
+    expect(badge.className).toContain("dev-setup");
   });
 
   it("handles Unknown type with fallback styling", () => {
     render(<ScriptTypeBadge type="UnknownType" />);
     const badge = screen.getByTestId("script-type-badge-UnknownType");
     expect(badge).toBeInTheDocument();
+  });
+
+  it("falls back to unknown class when type is missing", () => {
+    render(<ScriptTypeBadge type={undefined} />);
+    const badge = screen.getByTestId("script-type-badge-undefined");
+    expect(badge.className).toContain("unknown");
   });
 
   it("applies custom style overrides", () => {
@@ -46,15 +59,15 @@ describe("ScriptTypeBadge", () => {
     expect(screen.getByTestId("script-type-badge-Launcher")).toHaveAttribute("aria-label", "Script type: Launcher");
   });
 
-  it("displays text in monospace font", () => {
+  it("applies the data type class", () => {
     render(<ScriptTypeBadge type="Data" />);
     const badge = screen.getByTestId("script-type-badge-Data");
-    expect(badge.style.fontFamily).toContain("mono");
+    expect(badge.className).toContain("data");
   });
 
-  it("renders as inline-block", () => {
+  it("applies the scraper type class", () => {
     render(<ScriptTypeBadge type="Scraper" />);
     const badge = screen.getByTestId("script-type-badge-Scraper");
-    expect(badge.style.display).toBe("inline-block");
+    expect(badge.className).toContain("scraper");
   });
 });

@@ -38,9 +38,7 @@ describe("PathDisplay Component", () => {
   describe("parameter highlighting", () => {
     it("should highlight single parameter", () => {
       const { container } = render(<PathDisplay path="/users/{id}" />);
-      const paramSpan = container.querySelector(
-        'span[style*="rgb(217, 123, 79)"]'
-      );
+      const paramSpan = container.querySelector("span.path-segment-param");
       expect(paramSpan).toBeInTheDocument();
       expect(paramSpan.textContent).toBe("{id}");
     });
@@ -49,9 +47,8 @@ describe("PathDisplay Component", () => {
       const { container } = render(
         <PathDisplay path="/users/{userId}/posts/{postId}" />
       );
-      const allSpans = container.querySelectorAll("span");
-      const coloredSpans = Array.from(allSpans).filter(
-        span => span.style.color === "rgb(217, 123, 79)"
+      const coloredSpans = Array.from(
+        container.querySelectorAll("span.path-segment-param")
       );
       expect(coloredSpans).toHaveLength(2);
       expect(coloredSpans[0].textContent).toBe("{userId}");
@@ -67,7 +64,7 @@ describe("PathDisplay Component", () => {
         s => s.textContent === "{version}"
       );
       expect(paramSpan).toBeInTheDocument();
-      expect(paramSpan?.getAttribute("style")).toContain("color");
+      expect(paramSpan?.className).toContain("path-segment-param");
     });
 
     it("should highlight parameter at end of path", () => {
@@ -77,15 +74,12 @@ describe("PathDisplay Component", () => {
       // Find the span with {id}
       const paramSpan = Array.from(allSpans).find(s => s.textContent === "{id}");
       expect(paramSpan).toBeInTheDocument();
-      expect(paramSpan?.getAttribute("style")).toContain("color");
+      expect(paramSpan?.className).toContain("path-segment-param");
     });
 
     it("should NOT highlight curly braces without parameter syntax", () => {
       const { container } = render(<PathDisplay path="/api/data{extra}" />);
-      const spans = container.querySelectorAll("span");
-      const highlighted = Array.from(spans).filter(
-        s => s.style.color === "rgb(217, 123, 79)"
-      );
+      const highlighted = container.querySelectorAll("span.path-segment-param");
       // {extra} should still be highlighted since it matches {.*}
       expect(highlighted.length).toBeGreaterThan(0);
     });
@@ -110,10 +104,7 @@ describe("PathDisplay Component", () => {
       const { container } = render(
         <PathDisplay path="/api/{org}/{repo}/issues" />
       );
-      const spans = container.querySelectorAll("span");
-      const paramSpans = Array.from(spans).filter(
-        s => s.style.color === "rgb(217, 123, 79)"
-      );
+      const paramSpans = container.querySelectorAll("span.path-segment-param");
       expect(paramSpans.length).toBe(2);
     });
 
@@ -121,9 +112,7 @@ describe("PathDisplay Component", () => {
       const { container } = render(<PathDisplay path="{id}" />);
       const spans = container.querySelectorAll("span");
       expect(spans.length).toBeGreaterThan(0);
-      const paramSpan = Array.from(spans).find(
-        s => s.style.color === "rgb(217, 123, 79)"
-      );
+      const paramSpan = container.querySelector("span.path-segment-param");
       expect(paramSpan?.textContent).toBe("{id}");
     });
 
@@ -131,7 +120,10 @@ describe("PathDisplay Component", () => {
       const { container } = render(
         <PathDisplay path="/v1/api/users/{id}/profile" />
       );
-      expect(container.textContent).toBe("/v1/api/users/{id}/profile");
+      const pathText = Array.from(container.querySelectorAll("span"))
+        .map(s => s.textContent)
+        .join("");
+      expect(pathText).toBe("/v1/api/users/{id}/profile");
     });
   });
 
@@ -145,8 +137,8 @@ describe("PathDisplay Component", () => {
         <PathDisplay path="/repos/{owner}/{repo}/issues/{issue_number}" />
       );
       const paramSpans = Array.from(
-        container.querySelectorAll("span")
-      ).filter(s => s.style.color === "rgb(217, 123, 79)");
+        container.querySelectorAll("span.path-segment-param")
+      );
       expect(paramSpans.length).toBe(3);
       expect(paramSpans[0].textContent).toBe("{owner}");
       expect(paramSpans[1].textContent).toBe("{repo}");
@@ -157,9 +149,7 @@ describe("PathDisplay Component", () => {
       const { container } = render(
         <PathDisplay path="/api/v2/users/{userId}/posts/{postId}/comments/{commentId}" />
       );
-      const paramSpans = Array.from(
-        container.querySelectorAll("span")
-      ).filter(s => s.style.color === "rgb(217, 123, 79)");
+      const paramSpans = container.querySelectorAll("span.path-segment-param");
       expect(paramSpans.length).toBe(3);
     });
 
@@ -167,9 +157,7 @@ describe("PathDisplay Component", () => {
       const { container } = render(
         <PathDisplay path="/api/users?filter={filter}&sort={sort}" />
       );
-      const paramSpans = Array.from(
-        container.querySelectorAll("span")
-      ).filter(s => s.style.color === "rgb(217, 123, 79)");
+      const paramSpans = container.querySelectorAll("span.path-segment-param");
       expect(paramSpans.length).toBe(2);
     });
   });
