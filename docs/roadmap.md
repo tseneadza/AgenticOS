@@ -225,7 +225,7 @@ a real regression test). Suite now 25 files / 574 tests green; backend 76.
 **Remaining:** on-device visual check of the reveal gesture (`npm run tauri dev`).
 
 
-## Phase 13 — Data-Driven App Launch System 🔨 IN PROGRESS (13a ✅ 2026-07-02, 13b ✅ 2026-07-03)
+## Phase 13 — Data-Driven App Launch System 🔨 IN PROGRESS (13a ✅ 2026-07-02, 13b ✅ 2026-07-03, 13c ✅ 2026-07-03)
 
 Replace fragile start.sh launches with database-driven launch configuration.
 Design: `docs/PHASE13_DATA_DRIVEN_LAUNCH_SYSTEM.md` (see its "Locked
@@ -237,7 +237,7 @@ launch system.
 |-----------|-------|--------|
 | 13a | Schema (4 new tables + 2 columns), migrations, config layer, MySQL-backed tests | ✅ 2026-07-02 (109 pytest green) |
 | 13b | Backfill: ports from registry/ledger; start.sh parsed for commands only; collisions logged | ✅ 2026-07-03 (`gui/sidecar/scripts/backfill_launch_config.py`, dry-run default + `--apply`; 19 tests) |
-| 13c | Extend process_manager for multi-step launches; evolve `/api/apps/*` routes; startup reconcile sweep; API Explorer registration | ⬜ |
+| 13c | Extend process_manager for multi-step launches; evolve `/api/apps/*` routes; startup reconcile sweep; API Explorer registration | ✅ 2026-07-03 (process-group kill, app_processes persistence, `GET /api/apps/processes`; 12 tests, suite 141 green) |
 | 13d | ProjectsView.jsx — card grid, Start/Stop, status polling (new nav link, principle #7) | ⬜ |
 | 13e | Integration testing (fake-app fixture: launch → port wait → health → stop) | ⬜ |
 | 13f | SQLAlchemy consolidation: migrate news_db/tasks_db off raw mysql.connector; convert legacy SQLite-bound tests to the MySQL fixture | ⬜ |

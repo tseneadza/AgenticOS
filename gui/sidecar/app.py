@@ -95,6 +95,29 @@ async def _ensure_projects_schema() -> None:
 
 
 @app.on_event("startup")
+async def _reconcile_stale_processes() -> None:
+    """Phase 13c: sweep orphaned 'running' app_processes rows at startup.
+
+    A sidecar crash/restart leaves rows whose pids are dead — this puts the
+    table back in sync with reality. Best-effort: MySQL down never blocks
+    startup.
+    """
+    import logging
+    _log = logging.getLogger("agenticos.launch")
+    try:
+        from gui.sidecar import launch_config
+        result = launch_config.reconcile_stale_processes()
+        if result["swept"]:
+            _log.warning("reconciled %d stale app_processes row(s): %s",
+                         len(result["swept"]), result["swept"])
+        else:
+            _log.info("app_processes reconcile: %d row(s) checked, all live",
+                      result["checked"])
+    except Exception:  # noqa: BLE001
+        _log.warning("app_processes reconcile skipped", exc_info=True)
+
+
+@app.on_event("startup")
 async def _attach_loop() -> None:
     """Bind the running asyncio event loop to the AG-UI event bus."""
     bus.attach_loop(asyncio.get_running_loop())

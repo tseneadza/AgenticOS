@@ -10,13 +10,18 @@ Registry endpoints (9a):
     POST /api/apps/refresh              — force registry rescan
     GET  /api/apps/{app_id}             — single app detail
 
-Lifecycle endpoints (9b):
-    GET  /api/apps/{app_id}/status      — live running status
-    POST /api/apps/{app_id}/start       — start app
-    POST /api/apps/{app_id}/stop        — stop app
+Lifecycle endpoints (9b, evolved in 13c — ONE launch system):
+    GET  /api/apps/{app_id}/status      — live status (+ app_processes detail)
+    POST /api/apps/{app_id}/start       — start app (launch-config plan when
+                                          configured; legacy registry otherwise)
+    POST /api/apps/{app_id}/stop        — stop app (process-group kill;
+                                          returns killed_pids)
     POST /api/apps/{app_id}/restart     — restart app
     GET  /api/apps/{app_id}/logs        — tail app log file
     POST /api/apps/stop-all             — stop all running apps (constitution-gated)
+
+Process endpoints (13c):
+    GET  /api/apps/processes            — all DB-tracked running processes
 """
 from __future__ import annotations
 
@@ -159,6 +164,30 @@ async def stop_all_apps_confirmed() -> dict:
         "stopped": list(results.keys()),
         "statuses": results,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 13c — Process tracking  (fixed path — must precede /{app_id})
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/processes")
+async def list_processes() -> dict:
+    """All running processes across all apps (``app_processes``, pid-verified).
+
+    Contract (PHASE13 doc §GET /api/apps/processes)::
+
+        {"processes": [{"app_id", "pid", "port", "status"}, ...], "total": N}
+
+    Degrades gracefully when MySQL is down (empty list, available=False).
+    """
+    try:
+        from gui.sidecar import launch_config
+        result = launch_config.list_all_processes()
+        return {"available": True, "source": "native", **result}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("GET /api/apps/processes degraded: %s", exc)
+        return {"available": False, "source": "native",
+                "processes": [], "total": 0, "error": str(exc)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

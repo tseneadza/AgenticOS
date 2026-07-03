@@ -1,3 +1,84 @@
+# Session Continuation — 2026-07-03 Phase 13c SHIPPED ✅ (Execution Layer)
+
+**Status:** ✅ 13c complete / ✅ 141 pytest green (129 + 12 new, stable ×2) / ✅ vite build clean / ✅ committed & pushed (scheduled autonomous run)
+
+## What Shipped (13c)
+
+- **`core/process_manager.py`** (extended — ONE launch system): `start()`
+  consumes `launch_config.build_launch_command()` when app_commands exist
+  (multi-step: per-step cwd/env/venv-rewrite; `wait_for_completion` steps
+  run to exit — nonzero/timeout aborts and kills started siblings;
+  `wait_for_port` polls to the step timeout). No config / MySQL down →
+  legacy registry path. Broken template config → error status (never
+  silently bypassed). **Process-group kill** everywhere (`os.killpg`
+  SIGTERM → 5s grace → SIGKILL); `stop()` also sweeps DB-known orphan pids
+  (from a previous sidecar life) and returns `killed_pids`. `app_processes`
+  persistence via `record_process`/`mark_process_stopped` (best-effort).
+  `_procs` is now `app_id → [entries]`; `status()` merges pid-verified DB
+  rows (`processes` list added to ProcessStatus); `status_all()` stays
+  DB-free (hot path).
+- **`gui/sidecar/app.py`**: startup hook `_reconcile_stale_processes`
+  (locked decision #7) — best-effort sweep of orphaned 'running' rows.
+- **`gui/sidecar/routes/api_apps.py`**: `GET /api/apps/processes` (doc
+  contract; degrades without MySQL). Registered in `HubApiExplorer.jsx`
+  (same change) along with refreshed start/stop/status descriptions.
+- **`gui/sidecar/tests/test_phase13c.py`** — 12 tests spawning real
+  processes (sleep/bash/python socket server): multi-step + persistence,
+  abort-on-failing-step, broken template, killpg reaches children
+  (pgrep -g proof), wait_for_port end-to-end, legacy fallback, orphan
+  sweep, routes live + degraded, status DB-merge, reconcile wiring.
+  Gotchas encoded in the tests: one event loop per scenario (asyncio
+  subprocess transports are loop-bound); reap your own children (zombies
+  pass signal-0); listen backlog ≥ manager's port probes.
+- Docs same-commit: CHANGELOG, roadmap 13c tick, PHASE13 checklist.
+
+## ⚠️ Flagged for Tony (autonomous-run decisions)
+
+1. **Manual `app_commands` rows for `agenticos` + `hub` NOT added** (was
+   optional item). Genuinely ambiguous: "launching agenticos" from its own
+   sidecar is self-referential (sidecar? Tauri app? both?), and `hub` was
+   decommissioned in Phase 9d. Needs your definition — then it's two
+   INSERTs (or a tiny script).
+2. `status_all()` intentionally skips the DB merge so `GET /api/apps`
+   (polled by the GUI) adds no per-app MySQL queries; single-app
+   `/status` has the full `processes` detail. Revisit in 13d if the
+   ProjectsView wants DB detail in the list call.
+3. Active HTTP health polling (health_check config is already attached to
+   steps and recorded on rows) deferred to 13d/13e with the GUI indicator.
+
+## Verify
+
+```bash
+cd ~/Codehome/AgenticOS
+.venv/bin/python -m pytest gui/sidecar/tests -q            # expect 141 passed
+.venv/bin/python -m pytest gui/sidecar/tests/test_phase13c.py -v
+cd gui/desktop && npm run build                            # clean
+curl -s localhost:5130/api/apps/processes                  # after sidecar restart
+```
+
+**Restart the sidecar** to pick up the new code + startup reconcile sweep:
+`.venv/bin/python -m gui.sidecar` (or via the app).
+
+## ▶ RESUME HERE — Phase 13d (Projects GUI)
+
+1. `ProjectsView.jsx` — card grid over `GET /api/projects` +
+   `GET /api/apps/{id}/status` (now returns the `processes` list);
+   Start/Stop wired to `POST /api/apps/{id}/start|stop`; status badge
+   (green all running / yellow partial / red stopped); expandable
+   port/command detail via `build_launch_command` data. **New nav link
+   (GUI principle #7)**; theme tokens only (`gui/desktop/src/theme.css`);
+   read `docs/gui-frontend-conventions.md` first.
+2. Get Tony's call on flagged item 1 (agenticos/hub app_commands rows).
+3. 13e integration test + active health polling follow.
+
+## Watch
+
+- `gui/mockups/dashboard.html` unrelated pre-existing modification — still
+  uncommitted, untouched.
+- LangGraph `checkpoint*` tables note from 13a still stands.
+
+---
+
 # Session Continuation — 2026-07-03 Phase 13b SHIPPED ✅ (Backfill Applied to Live DB)
 
 **Status:** ✅ 13b complete / ✅ 129 pytest green / ✅ backfill APPLIED to live `agenticos` / ✅ committed & pushed

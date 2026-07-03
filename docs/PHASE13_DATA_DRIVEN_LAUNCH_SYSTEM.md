@@ -782,10 +782,20 @@ POST /api/apps/worldwise/stop
       `test_phase13b.py` drive the plan/apply core with injected registry
       entries + start.sh content; live dry-run review is the run step)
 
-### Phase 13c: Sidecar API
-- [ ] Implement 4 endpoints (`launch`, `stop`, `status`, `processes`)
-- [ ] Integrate with subprocess spawning
-- [ ] Add port polling + health check logic
+### Phase 13c: Sidecar API ✅ SHIPPED 2026-07-03
+- [x] Endpoints per locked decision #1: existing `/api/apps/{id}/start|stop|status`
+      evolved (NO parallel `/launch` route) + new `GET /api/apps/processes`;
+      all registered in `HubApiExplorer.jsx`
+- [x] Subprocess spawning: `process_manager.start()` consumes
+      `build_launch_command()` (multi-step, wait_for_completion abort
+      semantics, process-group kill via `os.killpg`, `app_processes`
+      persistence, startup `reconcile_stale_processes` sweep)
+- [x] Port polling per step (`wait_for_port` + timeout); health-check URL
+      recorded on `app_processes` rows (active HTTP health polling lands
+      with the GUI indicator in 13d/13e)
+- [x] 12 MySQL-backed tests (`test_phase13c.py`) — suite 141 green
+- [ ] Manual `app_commands` rows for `agenticos` + `hub` (needs Tony's
+      definition of what launching them means — deferred)
 
 ### Phase 13d: Projects GUI
 - [ ] Build `ProjectsView.jsx`

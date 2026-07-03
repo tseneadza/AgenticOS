@@ -1,3 +1,44 @@
+## 2026-07-03 — Phase 13c: Launch-System Execution Layer
+
+- **`core/process_manager.py`** (extended — ONE launch system, PHASE13 doc
+  §Locked Decisions #1): `start()` now asks
+  `launch_config.build_launch_command()` for a data-driven multi-step launch
+  plan first (per-step cwd/env/venv-rewrite, `wait_for_completion` steps run
+  to exit — nonzero code or timeout aborts and kills already-started
+  siblings, `wait_for_port` polls up to the step's timeout); apps with no
+  launch config (or MySQL down) fall back to the legacy registry path.
+  Broken configs (unresolved template variable) surface as an error status —
+  never silently bypassed. Every spawn keeps `start_new_session=True`; stop
+  is now a **process-group kill** (`os.killpg` SIGTERM → 5s grace → SIGKILL,
+  locked decision #5) for both paths, and additionally sweeps DB-known
+  running pids the in-memory table lost (orphans from a previous sidecar
+  life). Launches persist to `app_processes` via
+  `launch_config.record_process`/`mark_process_stopped` (best-effort — DB
+  down never blocks a launch). Internal `_procs` is now `app_id → [entries]`
+  (multi-process apps); `status()` merges pid-verified `app_processes` rows
+  (new `processes` list in the ProcessStatus shape; `status_all()` stays
+  DB-free for the hot path); `stop()` responses add `killed_pids`.
+- **`gui/sidecar/app.py`**: new startup hook `_reconcile_stale_processes`
+  wires `launch_config.reconcile_stale_processes()` — orphaned 'running'
+  rows are swept at sidecar startup (locked decision #7). Best-effort.
+- **`gui/sidecar/routes/api_apps.py`**: new `GET /api/apps/processes`
+  (all DB-tracked running processes, pid-verified, doc contract; degrades
+  gracefully without MySQL). Existing `/start|stop|status` routes evolved by
+  the manager changes above — no parallel `/launch` surface (locked
+  decision #1). Registered in `HubApiExplorer.jsx` in the same change
+  (api-registry rule).
+- **`gui/sidecar/tests/test_phase13c.py`** (new): 12 MySQL-backed tests
+  spawning real short-lived processes — multi-step launch + persistence +
+  stop, failing-completion-step abort, broken-template surfacing,
+  process-group kill reaches children (pgrep -g proof), `wait_for_port`
+  end-to-end against a real bound socket, legacy registry fallback,
+  DB-orphan sweep on stop, `/api/apps/processes` live + degraded,
+  status-route DB merge, startup reconcile. Suite: **141 passed** (stable
+  ×2); `npm run build` clean.
+- **Deferred to a follow-up (flagged):** manual `app_commands` rows for
+  `agenticos` + `hub` — what "launching agenticos" means (the sidecar
+  launching itself?) needs Tony's call.
+
 ## 2026-07-03 — Phase 13b: Launch-Config Backfill Script
 
 - **Decisions locked with Tony** (recorded in the PHASE13 doc §Locked
