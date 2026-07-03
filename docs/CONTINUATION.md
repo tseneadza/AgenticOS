@@ -1,3 +1,140 @@
+# Session Continuation — 2026-07-02 (Night) Phase 13a SHIPPED ✅ (Launch System Schema + Config Layer)
+
+**Status:** ✅ 13a complete / ✅ 109 pytest green (89 + 20 new, MySQL-backed) / ✅ live migration applied / ⚠️ NOT committed — review diff, then commit
+
+## Decisions Locked This Session (with Tony — full text in PHASE13 doc §Locked Decisions)
+
+1. **ONE launch system** — extend `core/process_manager.py` + existing `/api/apps/*` routes; NO parallel `/launch` surface (the doc's proposed routes collided with Phase 9's shipped `start/stop/status`).
+2. **Python "procedures"** — all 5 live in `gui/sidecar/launch_config.py` with the doc's exact JSON contracts; no MySQL stored procs.
+3. **Backfill (13b): ports from registry/ledger**; start.sh parsed for COMMANDS only; mismatches → `port_collision_log`.
+4. **MySQL everywhere + SQLAlchemy only** — tests use real `agenticos_test` schema; legacy `news_db`/`tasks_db` + SQLite-bound tests migrate in NEW **Phase 13f**; LangGraph MySQL checkpointer = separate future phase.
+
+## What Shipped (13a)
+
+- `gui/sidecar/models.py` — `projects.venv_path`; `ports.port_type` + `uk_app_port_type`; new `AppCommand`, `AppProcess`, `AppHealthCheck`, `PortCollisionLog`. Deviations documented in module docstring (String not ENUM; port stays PK; no FK ports→projects — service ports :5130/:5111 have no projects row).
+- `gui/sidecar/migrations.py` (NEW) — `ensure_phase13_schema(engine)`: inspect-first idempotent ALTERs + create_all; wired into `db.init_db()` (step 4). **Applied to live `agenticos`**: 4 tables, 2 columns, 1 unique index, 0 warnings. 28 port rows defaulted `port_type='api'` (13b assigns real types).
+- `gui/sidecar/launch_config.py` (NEW) — `allocate_ports` (typed, idempotent, wraps the ONE allocator `project_manager.allocate_port`), `build_launch_command` (resolves `{app_path}`/`{venv_path}`/`{<type>_port}`; absolute cwd; attaches health_check config; ValueError on unresolved vars), `get_app_status` (pid-verified via signal-0; marks dead rows stopped; 5-min recent-stop window), `record_process`, `mark_process_stopped`, `reconcile_stale_processes` (startup sweep — WIRE IN 13c), `list_all_processes`, `log_collision`.
+- `gui/sidecar/tests/conftest.py` (NEW) — session-scoped `mysql_engine` (creates `agenticos_test`; pytest.skip if MySQL down) + function-scoped table-wiping `db_session`.
+- `gui/sidecar/tests/test_phase13a.py` (NEW) — 20 tests incl. old-shape migration in scratch DB `agenticos_migration_test` (created+dropped by the test).
+- Docs (same-commit policy): CHANGELOG entry, roadmap Phase 13 table (13a–13f), PHASE13 doc amended with §Locked Decisions + checklist ticks.
+
+## Verify
+
+```bash
+cd ~/Codehome/AgenticOS
+.venv/bin/python -m pytest gui/sidecar/tests -q          # expect 109 passed
+.venv/bin/python -m pytest gui/sidecar/tests/test_phase13a.py -v
+git diff docs/ gui/sidecar/                              # review before commit
+```
+
+## ▶ RESUME HERE — Phase 13b (Backfill)
+
+1. **`gui/sidecar/scripts/backfill_launch_config.py`** — per locked decision #3:
+   - port_type assignment for the 28 existing ledger rows (currently all defaulted 'api') — infer from app.json/registry (web.port → 'frontend' for vite/react apps, 'api'/'backend' for FastAPI, etc.).
+   - Parse each project's start.sh for COMMANDS → `app_commands` rows (step_order, command, args, cwd, env). Ports in start.sh are cross-checked against the ledger; mismatch → `log_collision(phase='backfill')`, never inserted.
+   - `--dry-run` default; `--apply` to commit; summary output per the doc; edge cases (no start.sh) listed for manual entry.
+2. Then 13c: extend `process_manager` (multi-step via `build_launch_command`, process-group kill, `app_processes` persistence via launch_config helpers, startup `reconcile_stale_processes`), evolve `/api/apps/*` responses, `GET /api/apps/processes`, HubApiExplorer registration (api-registry rule).
+
+## Watch / Notes
+
+- **LangGraph `checkpoint*` tables ALREADY EXIST in the live `agenticos` MySQL schema** (checkpoints, checkpoint_blobs, checkpoint_writes, checkpoint_migrations) — the "move checkpoints off SQLite" phase may be partially done or double-writing; investigate before that phase.
+- Legacy SQLite-bound tests (test_phase11a/11c) untouched and green — conversion is 13f.
+- `db.init_db()` still uses raw mysql.connector for the CREATE DATABASE bootstrap — fold into 13f cleanup.
+
+---
+
+# Session Continuation — 2026-07-02 (Evening) Phase 13 Design Session ✅ (Data-Driven App Launch System)
+
+**Status:** ✅ DESIGN COMPLETE / ✅ Planning doc created / Ready for Fable 5 implementation
+
+## 🎯 What Was Designed (Evening Session)
+
+**Phase 13: Data-Driven App Launch System** — A complete architecture to replace fragile shell scripts with a database-driven launch system.
+
+### Key Decisions (All Locked)
+
+1. **Port Management:** One-to-many relationship (multiple ports per app)
+   - `ports` table with `port_type` ENUM (frontend, backend, api, admin, other)
+   - Unique constraint on (app_id, port_type)
+   - No collisions on existing 27 projects (will verify during backfill)
+
+2. **Launch Configuration:** Stored in `app_commands` table
+   - Structured: command, args (JSON array), working_directory, port_type
+   - Templating support: `{app_path}`, `{backend_port}`, `{frontend_port}`, `{venv_path}`
+   - Wait logic: `wait_for_completion`, `wait_for_port`, `wait_for_port_timeout_seconds`
+
+3. **Execution Model:**
+   - Stored procedures build launch configs from database
+   - Sidecar API calls procedures and executes via Python subprocess
+   - Port polling + optional health check endpoints (per-app optional)
+   - Graceful shutdown (SIGTERM) with hard kill fallback (SIGKILL)
+
+4. **Process Tracking:** `app_processes` table
+   - Tracks all running processes (pid, port, status, health)
+   - Stores child_pids as JSON for explicit cleanup
+   - Health check integration (polling, last result, timestamp)
+
+5. **Backfill Strategy:** Parse existing 27 projects
+   - Automated start.sh parsing → extract commands/ports
+   - Log any collisions to `port_collision_log` (not insert)
+   - Manual review + approval before commit
+
+### Schema Design (Complete)
+
+6 tables created with full DDL, constraints, indexes:
+- `projects` (extends Phase 11a, adds venv_path)
+- `ports` (new, one-to-many per app)
+- `app_commands` (new, launch steps with templating)
+- `app_processes` (new, running process tracking)
+- `app_health_checks` (new, optional health endpoints)
+- `port_collision_log` (new, collision audit trail)
+
+### Stored Procedures (5 total)
+
+1. `allocate_ports(app_id, num_ports, port_types_json)` → JSON result with assigned ports
+2. `build_launch_command(app_id)` → JSON array of structured launch steps
+3. `launch_app(app_id)` → (sidecar calls this, orchestrates subprocess launch)
+4. `stop_app(app_id, hard_kill_after_seconds)` → graceful + hard kill
+5. `get_app_status(app_id)` → running status + all process info
+
+### Sidecar API Endpoints (4)
+
+- `POST /api/apps/launch/{app_id}` → launch all processes
+- `POST /api/apps/{app_id}/stop` → stop all processes
+- `GET /api/apps/{app_id}/status` → status + health
+- `GET /api/apps/processes` → all running across all apps
+
+### Projects GUI Component
+
+- Card grid + expandable detail (hybrid view)
+- Collapsed port/command info (click to expand)
+- Start/Stop buttons (wired to API)
+- Status badge (green=running, yellow=partial, red=stopped)
+- Health indicator (polling from API)
+- Auto-refresh (combo: manual button + periodic polling)
+
+### Deliverable
+
+**File:** `docs/PHASE13_DATA_DRIVEN_LAUNCH_SYSTEM.md`
+- Complete 70-section design doc
+- Full DDL for all 6 tables
+- Procedure signatures and logic
+- Backfill script strategy (Python)
+- Sidecar API contracts
+- GUI component spec
+- Implementation checklist for Fable 5
+
+### Next Session
+
+✅ Ready for Fable 5 to build:
+- Phase 13a: Schema & procedures
+- Phase 13b: Backfill script
+- Phase 13c: Sidecar API
+- Phase 13d: Projects GUI
+- Phase 13e: Integration testing
+
+---
+
 # Session Continuation — 2026-07-02 Session Summary ✅ (Sunset Filter + Phase 12 Closed + Port Ledger Fixed)
 
 **Status:** ✅ ALL COMMITTED & PUSHED — working tree clean across AgenticOS, worldwise, igotyou

@@ -153,6 +153,14 @@ def init_db() -> None:
 
         # 3. Materialise the tables.
         Base.metadata.create_all(engine)
+
+        # 4. Phase 13a — apply idempotent ALTERs to pre-existing tables
+        #    (create_all never ALTERs). Guarded internally; never raises.
+        from gui.sidecar.migrations import ensure_phase13_schema
+        migration = ensure_phase13_schema(engine)
+        for warning in migration.get("warnings", []):
+            log.warning("init_db migration warning: %s", warning)
+
         _SCHEMA_READY = True
         log.info("SQLAlchemy schema ready in `%s`.", _DB_NAME)
     except Exception as exc:  # noqa: BLE001

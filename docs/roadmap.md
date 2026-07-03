@@ -224,3 +224,23 @@ a real regression test). Suite now 25 files / 574 tests green; backend 76.
 
 **Remaining:** on-device visual check of the reveal gesture (`npm run tauri dev`).
 
+
+## Phase 13 — Data-Driven App Launch System 🔨 IN PROGRESS (13a ✅ 2026-07-02)
+
+Replace fragile start.sh launches with database-driven launch configuration.
+Design: `docs/PHASE13_DATA_DRIVEN_LAUNCH_SYSTEM.md` (see its "Locked
+Decisions" amendments). Architecture: the data layer (`launch_config.py`)
+feeds the ONE execution engine (`core/process_manager.py`) — no parallel
+launch system.
+
+| Sub-phase | Scope | Status |
+|-----------|-------|--------|
+| 13a | Schema (4 new tables + 2 columns), migrations, config layer, MySQL-backed tests | ✅ 2026-07-02 (109 pytest green) |
+| 13b | Backfill: ports from registry/ledger; start.sh parsed for commands only; collisions logged | ⬜ |
+| 13c | Extend process_manager for multi-step launches; evolve `/api/apps/*` routes; startup reconcile sweep; API Explorer registration | ⬜ |
+| 13d | ProjectsView.jsx — card grid, Start/Stop, status polling (new nav link, principle #7) | ⬜ |
+| 13e | Integration testing (fake-app fixture: launch → port wait → health → stop) | ⬜ |
+| 13f | SQLAlchemy consolidation: migrate news_db/tasks_db off raw mysql.connector; convert legacy SQLite-bound tests to the MySQL fixture | ⬜ |
+
+**Future (own phase):** LangGraph MySQL checkpointer (note: `checkpoint*`
+tables already present in the live `agenticos` schema — investigate).

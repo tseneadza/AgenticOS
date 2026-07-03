@@ -32,6 +32,17 @@ repo must follow this cycle:
   another always-on dashboard panel for a new interaction paradigm.
 - Sidecar port 5130 is registered in `hub/docs/PORT_ASSIGNMENTS.md`
   (TR-10); register any new port before use.
+- **Database rule (locked 2026-07-02, Phase 13a):** MySQL (`agenticos`
+  schema) is the one and only database; **SQLAlchemy is the sole DB access
+  layer** — no new raw `mysql.connector` code, no new SQLite stores. Tests
+  run against the real `agenticos_test` schema via
+  `gui/sidecar/tests/conftest.py` fixtures (never in-memory SQLite for new
+  tests). Schema changes go through `gui/sidecar/models.py` + idempotent
+  ALTERs in `gui/sidecar/migrations.py` (create_all never ALTERs). Legacy
+  exceptions being retired in Phase 13f: `news_db.py`, `tasks_db.py`, the
+  SQLite-bound test files, and the raw CREATE DATABASE bootstrap in `db.py`.
+  LangGraph's `data/state.db` checkpointer moves to MySQL in its own future
+  phase.
 
 ## Real filesystem rule (NO SANDBOX ILLUSIONS)
 

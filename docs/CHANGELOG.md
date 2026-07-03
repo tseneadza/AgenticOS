@@ -1,3 +1,42 @@
+## 2026-07-02 — Phase 13a: Launch System Schema + Config Layer
+
+- **Decisions locked with Tony** (amendments to
+  `docs/PHASE13_DATA_DRIVEN_LAUNCH_SYSTEM.md`): ONE launch system — Phase 13
+  extends `core/process_manager.py` + the existing `/api/apps/*` routes (no
+  parallel `/launch` surface); the 5 "stored procedures" are **Python
+  functions** with the doc's exact JSON contracts (SQLAlchemy, not SQL procs);
+  backfill takes **ports from the live registry/ledger**, start.sh is parsed
+  for commands only; **MySQL everywhere** — tests run against a real
+  `agenticos_test` schema; SQLAlchemy is the sole DB access layer going
+  forward (legacy `news_db`/`tasks_db` migration scheduled as Phase 13f;
+  LangGraph MySQL checkpointer is a separate future phase).
+- **`gui/sidecar/models.py`**: `projects.venv_path`; `ports.port_type` +
+  `uk_app_port_type(app_id, port_type)`; new tables `app_commands`,
+  `app_processes`, `app_health_checks`, `port_collision_log`. Portable
+  String/JSON columns (no MySQL ENUMs); no DB-level FK from ports→projects
+  (ledger holds service ports with no projects row).
+- **`gui/sidecar/migrations.py`** (new): `ensure_phase13_schema(engine)` —
+  idempotent, inspect-first ALTERs for pre-existing tables + create_all for
+  new ones; wired into `db.init_db()`. **Applied to the live `agenticos`
+  schema**: 4 tables created, 2 columns + 1 unique index added, 0 warnings;
+  28 port rows defaulted to `port_type='api'` (13b assigns real types).
+- **`gui/sidecar/launch_config.py`** (new): `allocate_ports` (typed,
+  idempotent, reuses the ONE allocator in `project_manager`),
+  `build_launch_command` (template resolution `{app_path}`/`{venv_path}`/
+  `{<type>_port}`, absolute cwd, per-step health-check config, fails loudly
+  on unresolved variables), `get_app_status` (pid-verified, marks dead rows
+  stopped), plus `record_process` / `mark_process_stopped` /
+  `reconcile_stale_processes` / `list_all_processes` / `log_collision` for
+  13b/13c.
+- **`gui/sidecar/tests/conftest.py`** (new): session-scoped MySQL
+  `agenticos_test` fixture (skips cleanly if MySQL down) + function-scoped
+  wiping `db_session`.
+- **`gui/sidecar/tests/test_phase13a.py`** (new): 20 tests — schema, old-shape
+  migration in a scratch DB (incl. idempotency), allocate/build/status/
+  reconcile/collision-log. **Suite: 109 passed** (89 existing + 20 new).
+- **Noted:** live `agenticos` schema already contains LangGraph
+  `checkpoint*` tables — investigate during the checkpointer phase.
+
 ## 2026-06-26 — Phase 9d: Hub Decommissioned (FR-64)
 
 - **`config/settings.yaml`**: `hub_url` commented out; `hub_autostart: false`
