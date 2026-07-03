@@ -1,3 +1,46 @@
+## 2026-07-03 — Phase 13b: Launch-Config Backfill Script
+
+- **Decisions locked with Tony** (recorded in the PHASE13 doc §Locked
+  Decisions): **port_type semantics** — browser-facing port → `frontend`
+  (even when FastAPI/Flask serves the UI, so single-port apps like keno are
+  `frontend`), API-only port behind a separate frontend → `backend`,
+  headless service (agenticos-sidecar :5130, dreamcatcher-backend :5111) →
+  `api`; **no-start.sh apps** get ONE app_commands step from the registry's
+  `start_command` (app.json `web.command`); **start.sh-only ports** (e.g.
+  worldwise backend :8000) are allocated on `--apply` through the ONE
+  allocator (`project_manager.allocate_port(app_id, preferred_port=...)`)
+  and stamped with their port_type — if the preferred port is unavailable
+  the mismatch is logged to `port_collision_log` and the command stays
+  templated with the port-type variable so it resolves to the ALLOCATED
+  port.
+- **`gui/sidecar/scripts/backfill_launch_config.py`** (new; package
+  `gui/sidecar/scripts/`): `python -m gui.sidecar.scripts.backfill_launch_config`
+  — **dry-run by default**, `--apply` commits. Conservative start.sh parser
+  (allow-listed launch commands; tracks `cd`/env/export/inline env,
+  background `&`, shell-variable + `$SCRIPT_DIR`-style substitution; ignores
+  shebang/comments/echo/sleep/lsof-kill/trap/cleanup-functions/wait;
+  unrecognized lines reported for review). Ledger cross-check per locked
+  decision #3 (13a): own port → templated; foreign port →
+  `log_collision(phase='backfill')`, literal kept, never inserted; unknown
+  port → planned allocation. Templating emits only variables
+  `build_launch_command` can resolve (`{app_path}`, `{venv_path}` only when
+  `projects.venv_path` is set, `{<type>_port}`) — no unresolvable tokens.
+  Idempotent (existing app_commands rows reported + skipped;
+  uk_app_port_type violations reported, not raised). Summary per the doc's
+  §Backfill Process step 6; exit 0 even with collisions (logged by design).
+  Core logic is pure planning over `(apps, session)` (`build_plan` /
+  `apply_plan`) for direct test drive.
+- **`gui/sidecar/tests/test_phase13b.py`** (new): 19 MySQL-backed tests —
+  worldwise-style 2-step parse (cwd/env/background/variable substitution),
+  housekeeping filtering, port_type inference (+ uk conflict skip +
+  idempotent second pass), templating (paths/ports/venv-only-when-set),
+  collision path (logged, not inserted, literal kept), registry
+  start_command fallback, manual-entry edge cases, apply end-to-end
+  (extra-port allocation incl. preferred-unavailable →
+  `build_launch_command` resolves), second run inserts 0. No real Codehome
+  apps: registry entries + start.sh content injected; allocator probes
+  monkeypatched.
+
 ## 2026-07-02 — Phase 13a: Launch System Schema + Config Layer
 
 - **Decisions locked with Tony** (amendments to

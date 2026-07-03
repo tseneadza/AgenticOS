@@ -1,3 +1,44 @@
+# Session Continuation — 2026-07-03 Phase 13b SHIPPED ✅ (Backfill Applied to Live DB)
+
+**Status:** ✅ 13b complete / ✅ 129 pytest green / ✅ backfill APPLIED to live `agenticos` / ✅ committed & pushed
+
+## Correction to the 13a note below
+13a WAS committed+pushed before this session (`d00733e`) — the "NOT committed" flag below was stale.
+
+## Decisions Locked This Session (with Tony — recorded in PHASE13 doc §Locked Decisions items 8–10)
+
+1. **No-start.sh apps (11 of 27) use app.json `start_command`** for their single app_commands step (not manual entry).
+2. **Ports found only in start.sh** (worldwise backend :8000) are allocated on `--apply` via the ONE allocator (`project_manager.allocate_port(preferred_port=...)`) then typed; if the preferred port is taken the allocator picks another and the mismatch is logged.
+3. **port_type semantics:** browser-facing port → `frontend` (even when FastAPI serves the UI); API-only behind a separate frontend → `backend`; headless services (sidecar :5130, dreamcatcher-backend :5111) → `api`.
+
+## What Shipped (13b)
+
+- `gui/sidecar/scripts/backfill_launch_config.py` (+ `scripts/__init__.py`) — dry-run default, `--apply` commits; conservative allow-listed start.sh parser (cd/env/background/`$VAR` substitution, housekeeping filtered, unrecognized lines reported never dropped); registry `start_command` fallback; templating emits only tokens `build_launch_command` resolves; idempotent (2nd `--apply` run: all skipped, 0 writes).
+- **Parser refinement found on live data:** script-level `export`ed PORT-ish vars (agentic's `HUB_PORT=8085` → hub's port) are references, NOT bindings — excluded from the collision cross-check (inline `PORT=x cmd` still counts). Regression test added.
+- `gui/sidecar/tests/test_phase13b.py` — 20 tests (MySQL-backed conftest). Suite: **129 passed**.
+- Docs same-commit: CHANGELOG, roadmap 13b tick, PHASE13 §Locked Decisions items 8–10 + checklist.
+
+## Live DB State After --apply (verified)
+
+- `ports`: 29 rows — 26 frontend / 1 backend (worldwise:8000, newly allocated, preferred port claimed) / 2 api (services).
+- `app_commands`: 43 rows across 25 apps (14 start.sh-parsed, 11 registry-fallback).
+- `port_collision_log`: 1 row — 5111 dreamcatcher vs dreamcatcher-backend (same family, benign, left literal).
+- `build_launch_command('worldwise')` returns the full 2-step config (uvicorn :8000 wait_for_port + npm dev :5173) — end-to-end proof.
+- **Manual entry still needed:** `agenticos`, `hub` (no start.sh launch commands, empty registry start_command).
+
+## ▶ RESUME HERE — Phase 13c (Execution Layer)
+
+1. Extend `core/process_manager.py`: consume `build_launch_command()` for multi-step apps; process-group kill (`start_new_session=True` + `os.killpg`); persist via `launch_config.record_process`/`mark_process_stopped`; wire `reconcile_stale_processes()` into sidecar startup.
+2. Evolve `/api/apps/{app_id}/start|stop|status` responses (ONE launch system — no parallel `/launch` routes); add `GET /api/apps/processes`; register everything in `HubApiExplorer.jsx` (api-registry rule).
+3. Optional while there: manual `app_commands` rows for `agenticos` + `hub`.
+
+## Watch
+
+- `gui/mockups/dashboard.html` has an unrelated pre-existing modification — left uncommitted, untouched.
+- LangGraph `checkpoint*` tables note from 13a still stands (investigate before that phase).
+
+---
+
 # Session Continuation — 2026-07-02 (Night) Phase 13a SHIPPED ✅ (Launch System Schema + Config Layer)
 
 **Status:** ✅ 13a complete / ✅ 109 pytest green (89 + 20 new, MySQL-backed) / ✅ live migration applied / ⚠️ NOT committed — review diff, then commit

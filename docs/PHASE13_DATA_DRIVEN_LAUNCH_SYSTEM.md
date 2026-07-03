@@ -46,6 +46,29 @@ written greenfield; implementation reconciled it against Phases 9/11/12.
 7. **Stale-state hygiene:** `reconcile_stale_processes()` sweeps orphaned
    'running' rows at sidecar startup (wiring lands in 13c).
 
+### 13b amendments (2026-07-03, with Tony)
+
+8. **port_type semantics:** `frontend` = the port a user opens in a browser,
+   even if FastAPI/Flask serves the UI from it (single-port apps like keno,
+   weather → `frontend`); `backend` = an API-only port behind a separate
+   frontend (worldwise's uvicorn :8000); `api` = headless services with no
+   browser UI (agenticos-sidecar :5130, dreamcatcher-backend :5111 — no
+   projects/registry row, left as `api`). Backfill inference: a ledger row
+   whose port equals the owning app's registry `expected_port` is the
+   browser-facing port → `frontend`; app_ids not in the registry keep `api`.
+9. **No-start.sh apps** get ONE `app_commands` step from the registry's
+   `start_command` (the app.json `web.command` list), working_directory =
+   app root, port_type = the app's browser-facing port type.
+10. **start.sh-only ports** (in the script but in no ledger row) are
+    allocated on `--apply` through the ONE allocator —
+    `project_manager.allocate_port(app_id, preferred_port=<literal>)` — then
+    stamped with their port_type. If the preferred port is unavailable the
+    allocator picks another; the mismatch is logged to `port_collision_log`
+    (phase='backfill') and the command is templated with the port-type
+    variable so it resolves to the ALLOCATED port. Ports owned by ANOTHER
+    app are logged as collisions and left literal — never inserted, never
+    templated.
+
 ---
 
 ## 🎯 Executive Summary
@@ -748,11 +771,16 @@ POST /api/apps/worldwise/stop
 - [x] 5 procedures as Python (`launch_config.py`) with the doc's JSON contracts
 - [x] Unit tests — 20 new, MySQL-backed (`test_phase13a.py`); full suite 109 green
 
-### Phase 13b: Backfill Script
-- [ ] Write `backfill_launch_config.py`
-- [ ] Parse existing projects' start.sh
-- [ ] Log collisions
-- [ ] Test on a few projects first
+### Phase 13b: Backfill Script ✅ SHIPPED 2026-07-03
+- [x] Write `backfill_launch_config.py` (`gui/sidecar/scripts/`; dry-run
+      default, `--apply` commits; summary per §Backfill Process step 6)
+- [x] Parse existing projects' start.sh (commands/cwd/env/background;
+      registry `start_command` fallback for apps without start.sh)
+- [x] Log collisions (`port_collision_log`, phase='backfill'; exit 0 —
+      collisions are logged by design)
+- [x] Test on a few projects first (19 MySQL-backed tests in
+      `test_phase13b.py` drive the plan/apply core with injected registry
+      entries + start.sh content; live dry-run review is the run step)
 
 ### Phase 13c: Sidecar API
 - [ ] Implement 4 endpoints (`launch`, `stop`, `status`, `processes`)
