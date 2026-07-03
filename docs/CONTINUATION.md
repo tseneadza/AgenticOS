@@ -1,3 +1,25 @@
+# ⏹ SESSION CLOSED 2026-07-03 (afternoon) — 13d + 13e SHIPPED, seeding ×2
+
+One session shipped BOTH remaining build phases of the launch system:
+
+- **13d Projects GUI** (`44e33cd`) — ProjectsView card grid, Start/Stop,
+  ⌘8 nav, `GET /api/apps/{id}/launch-plan`; locked decision #11 (skip
+  agenticos/hub app_commands).
+- **13e Integration + Health** (`49bb21d`) — fake-app e2e chain, hard-kill
+  test, 10s sidecar health poller, `GET /api/apps/health`, GUI health chips,
+  probe-verified seeder.
+- **Seeding round 2** (`d6e7cf6`) — Tony started many apps; 22/29 ledger
+  ports now have verified checks (7 stragglers listed below).
+
+**State:** suites 155 pytest / 584 vitest green; working tree clean except
+the long-standing `gui/mockups/dashboard.html` mod (untouched by design).
+**Sidecar still needs a restart** to activate the poller + new routes, and
+the on-device visual check (Projects view + health chips) is still pending.
+**NEXT: Phase 13f** (SQLAlchemy consolidation) — details in the 13e entry
+below. Watch: the :8085 mystery (decommissioned hub port answering 200).
+
+---
+
 # Session Continuation — 2026-07-03 Phase 13e SHIPPED ✅ (Integration + Health Polling)
 
 **Status:** ✅ 13e complete / ✅ 155 pytest green (145 + 10 new, stable ×2) / ✅ 584 vitest green (581 + 3 new) / ✅ vite build clean / ✅ health checks SEEDED live (5 rows) / ✅ committed & pushed
