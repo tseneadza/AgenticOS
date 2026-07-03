@@ -1,3 +1,42 @@
+## 2026-07-03 — Phase 13e: Integration Testing + Active Health Polling
+
+- **`gui/sidecar/launch_config.py`**: `run_health_checks()` — polls the HTTP
+  health endpoint of every pid-verified running `app_processes` row.
+  Config resolution: `app_health_checks` row for (app_id, port) first
+  (endpoint/method/expected/timeout/interval), launch-time
+  `health_check_url` fallback (GET/200/5s/10s), neither → left alone
+  (optional-table contract). Respects per-row `interval_seconds`; sweeps
+  dead-pid rows; records up/down transitions. Updates `is_healthy` +
+  `last_health_check` (stored with `microsecond=0` — MySQL DATETIME rounds
+  .5s+ UP, which put stamps in the future and skipped the next pass).
+  `list_all_health()` — one-query per-app aggregation.
+- **`gui/sidecar/app.py`**: `_start_health_poller` startup hook — 10s
+  background task running `run_health_checks` in a worker thread;
+  best-effort, MySQL down never kills the loop.
+- **`gui/sidecar/routes/api_apps.py`**: `GET /api/apps/health` (fixed path
+  before `/{app_id}`) — aggregated health, degrades without MySQL.
+  Registered in HubApiExplorer (api-registry rule).
+- **`gui/desktop/src/components/ProjectsView.jsx`**: ♥ health chip on
+  running cards with HTTP health data (10s poll of `/api/apps/health`;
+  per-port tooltip), health ✓/✗/— column in the expanded process table.
+- **`gui/sidecar/scripts/seed_health_checks.py`** (new): probe-verified
+  seeding — for each typed ledger port that is LIVE, candidates
+  `/api/health → /health → /docs → /` probed and the first 200 wins; no
+  guessed rows. Dry-run default, `--apply` commits, idempotent.
+  **Applied 2026-07-03:** 5 endpoints seeded (agenticos-sidecar:5130,
+  battester:8090, hub:8085, keno:5100 — only `/` answers there —
+  mazegame:5107); 24 apps not running (re-run while up).
+- **`gui/sidecar/tests/test_phase13e.py`** (new): 10 tests — the full e2e
+  chain against a real fake-app HTTP server (launch via launch-config →
+  wait_for_port → healthy → flip to 500 → down transition → stop → pids
+  dead + port free + rows stopped), hard-kill of a SIGTERM-trapping
+  process, allocator refusing a live port, poll edge cases
+  (no_config/not_due/URL fallback/dead-pid sweep), aggregation exclusions,
+  route live+degraded, seeder plan/apply/idempotency.
+- Suites: **155 pytest** (stable ×2) / **584 vitest** green; build clean.
+- **Watch:** something answers `/api/health` 200 on **:8085** — that's the
+  DECOMMISSIONED hub's port. Investigate what's actually running there.
+
 ## 2026-07-03 — Phase 13d: Projects GUI
 
 - **`gui/desktop/src/components/ProjectsView.jsx`** (new): card grid over

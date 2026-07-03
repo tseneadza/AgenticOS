@@ -239,7 +239,7 @@ launch system.
 | 13b | Backfill: ports from registry/ledger; start.sh parsed for commands only; collisions logged | ✅ 2026-07-03 (`gui/sidecar/scripts/backfill_launch_config.py`, dry-run default + `--apply`; 19 tests) |
 | 13c | Extend process_manager for multi-step launches; evolve `/api/apps/*` routes; startup reconcile sweep; API Explorer registration | ✅ 2026-07-03 (process-group kill, app_processes persistence, `GET /api/apps/processes`; 12 tests, suite 141 green) |
 | 13d | ProjectsView.jsx — card grid, Start/Stop, status polling (new nav link, principle #7) | ✅ 2026-07-03 (Projects nav + ⌘8; `GET /api/apps/{id}/launch-plan`; 7 vitest + 4 pytest; suites 581/145 green) |
-| 13e | Integration testing (fake-app fixture: launch → port wait → health → stop) | ⬜ |
+| 13e | Integration testing (fake-app fixture: launch → port wait → health → stop) | ✅ 2026-07-03 (e2e + hard-kill + collision tests; PLUS active health polling: sidecar 10s poller, `GET /api/apps/health`, GUI health chip, probe-verified seeder — 5 endpoints seeded; suites 155/584 green) |
 | 13f | SQLAlchemy consolidation: migrate news_db/tasks_db off raw mysql.connector; convert legacy SQLite-bound tests to the MySQL fixture | ⬜ |
 
 **Future (own phase):** LangGraph MySQL checkpointer (note: `checkpoint*`

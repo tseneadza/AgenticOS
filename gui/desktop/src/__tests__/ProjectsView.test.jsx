@@ -29,9 +29,21 @@ const APPS = {
 const STATUS_WORLDWISE = {
   app_id: "worldwise", running: true, pid: 111, port: 5173,
   processes: [
-    { pid: 111, port: 8000, port_type: "backend", status: "running", started_at: "2026-07-03T10:00:00" },
-    { pid: 112, port: 5173, port_type: "frontend", status: "stopped", started_at: "2026-07-03T10:00:01" },
+    { pid: 111, port: 8000, port_type: "backend", status: "running", started_at: "2026-07-03T10:00:00",
+      is_healthy: true, last_health_check: "2026-07-03T10:05:00" },
+    { pid: 112, port: 5173, port_type: "frontend", status: "stopped", started_at: "2026-07-03T10:00:01",
+      is_healthy: true, last_health_check: null },
   ],
+};
+
+const HEALTH = {
+  available: true, total: 1,
+  apps: {
+    worldwise: {
+      healthy: true,
+      ports: [{ port: 8000, is_healthy: true, last_health_check: "2026-07-03T10:05:00" }],
+    },
+  },
 };
 
 const PLAN_WORLDWISE = {
@@ -54,6 +66,7 @@ function stubFetch(overrides = {}) {
     if (url.includes("/launch-plan")) return respond(overrides.plan ?? PLAN_WORLDWISE);
     if (url.includes("/status")) return respond(overrides.status ?? STATUS_WORLDWISE);
     if (url.includes("/start") || url.includes("/stop")) return respond({ ok: true });
+    if (url.includes("/api/apps/health")) return respond(overrides.health ?? HEALTH);
     if (url.includes("/api/apps")) return respond(overrides.apps ?? APPS);
     return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
   });
@@ -140,6 +153,38 @@ describe("ProjectsView", () => {
     await waitFor(() =>
       expect(calls.some((c) => c.method === "POST" && c.url.includes("/api/apps/keno/start")))
         .toBe(true));
+  });
+
+  it("shows the health chip for running apps with HTTP health data (13e)", async () => {
+    stubFetch();
+    render(<ProjectsView />);
+    await waitFor(() => expect(screen.getByTestId("pv-health-healthy")).toBeInTheDocument());
+    // keno is stopped + unchecked — exactly one chip
+    expect(screen.getAllByText(/healthy/).length).toBe(1);
+  });
+
+  it("shows an unhealthy chip when a checked port is failing", async () => {
+    stubFetch({
+      health: {
+        available: true, total: 1,
+        apps: { worldwise: { healthy: false,
+          ports: [{ port: 8000, is_healthy: false, last_health_check: "2026-07-03T10:05:00" }] } },
+      },
+    });
+    render(<ProjectsView />);
+    await waitFor(() => expect(screen.getByTestId("pv-health-unhealthy")).toBeInTheDocument());
+  });
+
+  it("renders per-process health marks in the expanded detail", async () => {
+    stubFetch();
+    render(<ProjectsView />);
+    await waitFor(() => expect(screen.getByTestId("pv-card-worldwise")).toBeInTheDocument());
+    fireEvent.click(
+      screen.getByTestId("pv-card-worldwise").querySelector(".pv-expand-toggle"));
+    await waitFor(() => expect(screen.getByTestId("pv-procs-worldwise")).toBeInTheDocument());
+    const table = screen.getByTestId("pv-procs-worldwise");
+    expect(table.textContent).toContain("✓");    // checked + healthy row
+    expect(table.textContent).toContain("—");    // unchecked row
   });
 
   it("degrades gracefully when the ledger is unavailable", async () => {

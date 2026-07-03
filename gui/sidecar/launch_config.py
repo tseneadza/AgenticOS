@@ -23,6 +23,8 @@ Public API:
     mark_process_stopped(pid, ...)                        -> bool
     reconcile_stale_processes(session=None)               -> dict
     list_all_processes(session=None)                      -> dict
+    run_health_checks(session=None)                       -> dict  (13e)
+    list_all_health(session=None)                         -> dict  (13e)
     log_collision(port, app_id_1, app_id_2, phase, ...)   -> None
 
 Template variables resolved by ``build_launch_command`` (in ``command``,
@@ -421,6 +423,149 @@ def list_all_processes(session=None) -> dict:
         if dirty:
             session.commit()
         return {"processes": processes, "total": len(processes)}
+    finally:
+        if owns:
+            session.close()
+
+
+# ── Phase 13e — active HTTP health polling ──────────────────────────────────────
+
+def _probe_health(url: str, *, method: str = "GET",
+                  expected_status: int = 200, timeout: int = 5) -> bool:
+    """One HTTP probe. Any transport error / wrong status → unhealthy."""
+    import httpx
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.request(method, url)
+        return resp.status_code == expected_status
+    except Exception:  # noqa: BLE001 — refused/timeout/reset all mean "down"
+        return False
+
+
+def run_health_checks(session=None) -> dict:
+    """Poll HTTP health endpoints for running ``app_processes`` rows (13e).
+
+    For each pid-verified 'running' row the health target resolves as:
+      1. the ``app_health_checks`` row matching (app_id, port) — authoritative
+         (endpoint/method/expected_status/timeout/interval), else
+      2. the row's launch-time ``health_check_url`` — fallback (defaults:
+         GET, 200, 5s timeout, 10s interval).
+    Rows with neither are left alone — pid/port state stays their only
+    signal (doc §app_health_checks: "optional table").
+
+    Respects ``interval_seconds``: a row checked more recently than its
+    interval is skipped this pass (``not_due``). Dead-pid rows are marked
+    stopped in place (same hygiene as ``list_all_processes``).
+
+    Updates ``is_healthy`` + ``last_health_check``. Returns a summary::
+
+        {"checked": N, "healthy": N, "unhealthy": N,
+         "no_config": N, "not_due": N, "transitions": ["app:port up|down", ...]}
+    """
+    from gui.sidecar.models import AppHealthCheck, AppProcess
+
+    session, owns = _session_scope(session)
+    try:
+        rows = (
+            session.query(AppProcess)
+            .filter_by(status="running")
+            .order_by(AppProcess.app_id, AppProcess.started_at)
+            .all()
+        )
+        configs = {
+            (hc.app_id, hc.port): hc
+            for hc in session.query(AppHealthCheck).filter_by(enabled=True).all()
+        }
+
+        summary = {"checked": 0, "healthy": 0, "unhealthy": 0,
+                   "no_config": 0, "not_due": 0, "transitions": []}
+        now = _utcnow()
+        dirty = False
+
+        for row in rows:
+            if not _pid_alive(row.pid):
+                row.status = "stopped"
+                row.stopped_at = now
+                dirty = True
+                continue
+
+            hc = configs.get((row.app_id, row.port))
+            if hc is not None:
+                url = f"http://localhost:{hc.port}{hc.endpoint}"
+                method, expected = hc.method, hc.expected_status_code
+                timeout, interval = hc.timeout_seconds, hc.interval_seconds
+            elif row.health_check_url:
+                url = row.health_check_url
+                method, expected, timeout, interval = "GET", 200, 5, 10
+            else:
+                summary["no_config"] += 1
+                continue
+
+            last = row.last_health_check
+            if last is not None and last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if last is not None and (now - last).total_seconds() < interval:
+                summary["not_due"] += 1
+                continue
+
+            healthy = _probe_health(url, method=method,
+                                    expected_status=expected, timeout=timeout)
+            if bool(row.is_healthy) != healthy:
+                summary["transitions"].append(
+                    f"{row.app_id}:{row.port} {'up' if healthy else 'down'}")
+            row.is_healthy = healthy
+            # microsecond=0: MySQL DATETIME rounds .5s+ UP, which would put
+            # the stored stamp in the future and wrongly skip the next pass
+            row.last_health_check = now.replace(microsecond=0)
+            dirty = True
+            summary["checked"] += 1
+            summary["healthy" if healthy else "unhealthy"] += 1
+
+        if dirty:
+            session.commit()
+        if summary["transitions"]:
+            log.warning("health transitions: %s", summary["transitions"])
+        return summary
+    finally:
+        if owns:
+            session.close()
+
+
+def list_all_health(session=None) -> dict:
+    """Aggregated per-app health view (backs GET /api/apps/health, 13e).
+
+    One query — keeps the GUI's card-level indicator off the per-app path.
+    Only running rows WITH a health signal (a ``last_health_check``) are
+    aggregated; apps whose processes have no configured checks don't appear.
+
+    Returns::
+
+        {"apps": {app_id: {"healthy": bool,           # AND over checked rows
+                            "ports": [{"port", "is_healthy",
+                                       "last_health_check"}, ...]}},
+         "total": N}
+    """
+    from gui.sidecar.models import AppProcess
+
+    session, owns = _session_scope(session)
+    try:
+        rows = (
+            session.query(AppProcess)
+            .filter(AppProcess.status == "running",
+                    AppProcess.last_health_check.isnot(None))
+            .order_by(AppProcess.app_id, AppProcess.port)
+            .all()
+        )
+        apps: dict[str, dict] = {}
+        for row in rows:
+            entry = apps.setdefault(row.app_id, {"healthy": True, "ports": []})
+            entry["healthy"] = entry["healthy"] and bool(row.is_healthy)
+            entry["ports"].append({
+                "port": row.port,
+                "is_healthy": bool(row.is_healthy),
+                "last_health_check": row.last_health_check.isoformat(),
+            })
+        return {"apps": apps, "total": len(apps)}
     finally:
         if owns:
             session.close()

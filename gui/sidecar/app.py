@@ -118,6 +118,34 @@ async def _reconcile_stale_processes() -> None:
 
 
 @app.on_event("startup")
+async def _start_health_poller() -> None:
+    """Phase 13e: background HTTP health polling for tracked processes.
+
+    Every 10s, ``launch_config.run_health_checks()`` probes the configured
+    endpoint of each running ``app_processes`` row (per-row
+    ``interval_seconds`` due-ness is respected inside). Runs in a worker
+    thread — its own DB session, blocking httpx probes off the event loop.
+    Best-effort: MySQL down or probe errors never kill the loop. The task
+    handle lives on app.state so it isn't garbage-collected.
+    """
+    import logging
+    _log = logging.getLogger("agenticos.health")
+
+    async def _loop() -> None:
+        while True:
+            await asyncio.sleep(10)
+            try:
+                from gui.sidecar import launch_config
+                summary = await asyncio.to_thread(launch_config.run_health_checks)
+                if summary.get("transitions"):
+                    _log.warning("health: %s", summary["transitions"])
+            except Exception:  # noqa: BLE001 — keep polling regardless
+                _log.debug("health poll skipped", exc_info=True)
+
+    app.state.health_poller = asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
 async def _attach_loop() -> None:
     """Bind the running asyncio event loop to the AG-UI event bus."""
     bus.attach_loop(asyncio.get_running_loop())

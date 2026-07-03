@@ -10,6 +10,10 @@
  *   GET /api/apps/{id}/status       — pid-verified app_processes rows (13c)
  *   GET /api/apps/{id}/launch-plan  — resolved build_launch_command steps
  *
+ * Health (13e): GET /api/apps/health polled every 10s — aggregated HTTP
+ * health for apps with configured checks (sidecar background poller updates
+ * the rows). Apps without checks show no health chip: pid/port state only.
+ *
  * Status badge: green = running, yellow = partial (some tracked processes
  * stopped while the app is up), red = stopped.
  *
@@ -21,6 +25,7 @@ import { get, post } from "../api";
 
 const POLL_MS = 5000;
 const POLL_MS_DOWN = 2000;
+const HEALTH_POLL_MS = 10000;
 
 // ── component-scoped stylesheet (rule 3) ────────────────────────────────────
 const STYLE_ID = "pv-styles";
@@ -100,6 +105,25 @@ const BADGE = {
   stopped: { color: "var(--red)", label: "stopped" },
 };
 
+// ── health chip (13e) — only rendered for apps with HTTP health data ───────
+function HealthChip({ health }) {
+  if (!health) return null;
+  const ok = health.healthy;
+  const color = ok ? "var(--green)" : "var(--red)";
+  return (
+    <span
+      className="pv-chip"
+      data-testid={`pv-health-${ok ? "healthy" : "unhealthy"}`}
+      title={health.ports
+        .map((p) => `:${p.port} ${p.is_healthy ? "healthy" : "UNHEALTHY"} (${p.last_health_check})`)
+        .join("\n")}
+      style={{ color, borderColor: color }}
+    >
+      ♥ {ok ? "healthy" : "unhealthy"}
+    </span>
+  );
+}
+
 function StatusBadge({ state }) {
   const b = BADGE[state] || BADGE.stopped;
   return (
@@ -134,7 +158,7 @@ function CardDetail({ appId, detail, plan }) {
       ) : (
         <table className="pv-detail-table" data-testid={`pv-procs-${appId}`}>
           <thead>
-            <tr><th>pid</th><th>port</th><th>type</th><th>status</th><th>started</th></tr>
+            <tr><th>pid</th><th>port</th><th>type</th><th>status</th><th>health</th><th>started</th></tr>
           </thead>
           <tbody>
             {procs.map((p, i) => (
@@ -144,6 +168,14 @@ function CardDetail({ appId, detail, plan }) {
                 <td>{p.port_type ?? "—"}</td>
                 <td style={{ color: p.status === "running" ? "var(--green)" : "var(--text-dim)" }}>
                   {p.status}
+                </td>
+                <td
+                  title={p.last_health_check ? `checked ${p.last_health_check}` : "no HTTP check configured"}
+                  style={{ color: p.last_health_check
+                    ? (p.is_healthy ? "var(--green)" : "var(--red)")
+                    : "var(--text-dim)" }}
+                >
+                  {p.last_health_check ? (p.is_healthy ? "✓" : "✗") : "—"}
                 </td>
                 <td>{p.started_at ? p.started_at.replace("T", " ").slice(0, 19) : "—"}</td>
               </tr>
@@ -188,7 +220,7 @@ function CardDetail({ appId, detail, plan }) {
 }
 
 // ── one project card ─────────────────────────────────────────────────────────
-function ProjectCard({ project, app, onAction, busy }) {
+function ProjectCard({ project, app, health, onAction, busy }) {
   const appId = project.id;
   const inRegistry = app != null;
   const running = !!app?.running;
@@ -226,6 +258,7 @@ function ProjectCard({ project, app, onAction, busy }) {
         {running && app?.port_live != null && app.port_live !== project.port && (
           <span className="pv-chip" style={{ color: "var(--yellow)" }}>live :{app.port_live}</span>
         )}
+        {running && <HealthChip health={health} />}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -283,6 +316,7 @@ export default function ProjectsView() {
   const [projects, setProjects] = useState(null);   // null = loading
   const [ledgerOk, setLedgerOk] = useState(true);
   const [apps, setApps] = useState({});             // app_id → enriched app row
+  const [health, setHealth] = useState({});         // app_id → {healthy, ports} (13e)
   const [sidecarOk, setSidecarOk] = useState(true);
   const [busy, setBusy] = useState({});             // app_id → bool
   const [error, setError] = useState(null);
@@ -303,7 +337,21 @@ export default function ProjectsView() {
       .catch(() => setSidecarOk(false));
   }, []);
 
+  const loadHealth = useCallback(() => {
+    get("/api/apps/health")
+      .then((d) => setHealth(d.apps || {}))
+      .catch(() => {});   // health is an enhancement — never an error state
+  }, []);
+
   useEffect(() => { loadProjects(); }, [loadProjects]);
+
+  // Health poll (10s) — slower than status: rows only change on the sidecar's
+  // own 10s poller cadence.
+  useEffect(() => {
+    loadHealth();
+    const id = setInterval(loadHealth, HEALTH_POLL_MS);
+    return () => clearInterval(id);
+  }, [loadHealth]);
 
   // Adaptive status polling (usePoll pattern: fast retry while the sidecar is down).
   useEffect(() => {
@@ -343,7 +391,7 @@ export default function ProjectsView() {
           <span style={{ fontSize: 11, color: "var(--red)" }}>sidecar unreachable</span>
         )}
         <span style={{ flex: 1 }} />
-        <button className="pv-btn" onClick={() => { loadProjects(); loadApps(); }}>
+        <button className="pv-btn" onClick={() => { loadProjects(); loadApps(); loadHealth(); }}>
           ↻ Refresh
         </button>
       </div>
@@ -370,6 +418,7 @@ export default function ProjectsView() {
             key={p.id}
             project={p}
             app={apps[p.id]}
+            health={health[p.id]}
             busy={!!busy[p.id]}
             onAction={onAction}
           />

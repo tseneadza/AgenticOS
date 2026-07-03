@@ -190,6 +190,24 @@ async def list_processes() -> dict:
                 "processes": [], "total": 0, "error": str(exc)}
 
 
+@router.get("/health")
+async def list_health() -> dict:
+    """Aggregated per-app HTTP health (Phase 13e — fixed path before /{app_id}).
+
+    One DB query over running ``app_processes`` rows that carry a health
+    signal; apps with no configured checks don't appear (their card keeps
+    the process-state badge only). Degrades gracefully without MySQL.
+    """
+    try:
+        from gui.sidecar import launch_config
+        result = launch_config.list_all_health()
+        return {"available": True, "source": "native", **result}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("GET /api/apps/health degraded: %s", exc)
+        return {"available": False, "source": "native",
+                "apps": {}, "total": 0, "error": str(exc)}
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Phase 9b — Lifecycle  (order matters: fixed paths before /{app_id})
 # ═══════════════════════════════════════════════════════════════════════════════

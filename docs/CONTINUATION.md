@@ -1,3 +1,84 @@
+# Session Continuation — 2026-07-03 Phase 13e SHIPPED ✅ (Integration + Health Polling)
+
+**Status:** ✅ 13e complete / ✅ 155 pytest green (145 + 10 new, stable ×2) / ✅ 584 vitest green (581 + 3 new) / ✅ vite build clean / ✅ health checks SEEDED live (5 rows) / ✅ committed & pushed
+
+## Decisions Locked This Session (with Tony)
+
+1. **Full 13e in one pass:** integration tests AND active health polling +
+   GUI indicator.
+2. **Health-check seeding = probe-verified only:** rows inserted only for
+   endpoints answering 200 RIGHT NOW (`/api/health → /health → /docs → /`,
+   first hit wins). No guessed rows; not-running apps get added by
+   re-running the seeder while they're up.
+
+## What Shipped (13e)
+
+- **`launch_config.run_health_checks()`** — polls running `app_processes`
+  rows: `app_health_checks` (app_id, port) config first, launch-time
+  `health_check_url` fallback, neither → untouched. Per-row
+  `interval_seconds` due-ness; dead-pid sweep; up/down transitions logged.
+  **Gotcha encoded in a comment + test:** MySQL DATETIME rounds ≥.5s UP —
+  store `last_health_check` with `microsecond=0` or the stamp lands in the
+  future and the next pass wrongly skips as not-due.
+- **Sidecar poller:** `_start_health_poller` startup hook — 10s asyncio
+  task, probe work via `asyncio.to_thread`, best-effort forever.
+- **`GET /api/apps/health`** — one-query aggregation (`list_all_health`);
+  fixed path BEFORE `/{app_id}`; HubApiExplorer registered.
+- **ProjectsView:** ♥ healthy/unhealthy chip (10s poll, per-port tooltip)
+  on running cards that HAVE health data; ✓/✗/— health column in the
+  expanded process table. 3 new vitest.
+- **`scripts/seed_health_checks.py`** — dry-run default / `--apply`,
+  idempotent (verified live: 2nd run inserts 0). **Applied:** 5 rows —
+  agenticos-sidecar:5130/api/health, battester:8090/api/health,
+  hub:8085/api/health, keno:5100/ (only `/` answers), mazegame:5107/api/health.
+  24 apps weren't running — re-run seeder while they're up to cover them.
+- **`tests/test_phase13e.py`** (10) — e2e fake-app chain (launch → port →
+  healthy → flip 500 → down transition → stop → pids dead/port free/rows
+  stopped), SIGTERM-trapping hard-kill (asserts ≥4.5s grace), allocator
+  refuses LIVE preferred port, no_config/not_due/URL-fallback/dead-sweep,
+  aggregation exclusion, route degrade, seeder plan/apply/idempotent.
+
+## Verify
+
+```bash
+cd ~/Codehome/AgenticOS
+.venv/bin/python -m pytest gui/sidecar/tests -q            # expect 155 passed
+cd gui/desktop && npx vitest run                           # expect 584 passed
+curl -s localhost:5130/api/apps/health                     # after sidecar restart
+.venv/bin/python -m gui.sidecar.scripts.seed_health_checks # dry-run: 5 existing
+```
+
+**Restart the sidecar** to start the poller + new route
+(`.venv/bin/python -m gui.sidecar` or via the app). Health chips appear
+only for apps with `app_processes` rows — i.e. apps (re)started through
+the manager — AND a seeded check.
+
+## ⚠️ Flagged for Tony
+
+1. **Something answers `/api/health` 200 on :8085 — the DECOMMISSIONED
+   hub's port.** Old hub still running? (13b noted agentic exports
+   HUB_PORT=8085.) Worth `lsof -i :8085` and killing/keeping deliberately.
+2. On-device visual check still pending for BOTH 13d ProjectsView and the
+   new health chips (`npm run tauri dev`, nav → Projects, ⌘8 after rebuild).
+
+## ▶ RESUME HERE — Phase 13f (SQLAlchemy consolidation)
+
+1. Migrate `news_db` / `tasks_db` off raw mysql.connector onto the
+   SQLAlchemy layer (`db.py`); fold the raw CREATE DATABASE bootstrap in
+   `db.init_db()` into it.
+2. Convert legacy SQLite-bound tests (test_phase11a/11c) to the MySQL
+   fixture (conftest `mysql_engine`/`db_session`).
+3. After 13f, Phase 13 is CLOSED → next: LangGraph MySQL checkpointer phase
+   (investigate the pre-existing `checkpoint*` tables first — 13a note).
+
+## Watch
+
+- `gui/mockups/dashboard.html` unrelated pre-existing modification — still
+  uncommitted, untouched.
+- :8085 mystery above.
+
+---
+
 # Session Continuation — 2026-07-03 Phase 13d SHIPPED ✅ (Projects GUI)
 
 **Status:** ✅ 13d complete / ✅ 145 pytest green (141 + 4 new, stable ×2) / ✅ 581 vitest green (574 + 7 new) / ✅ vite build + cargo check clean / ✅ committed & pushed

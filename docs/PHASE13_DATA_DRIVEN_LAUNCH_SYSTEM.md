@@ -818,10 +818,22 @@ POST /api/apps/worldwise/stop
       over `build_launch_command`, `configured=false` degrade for
       legacy-launch apps; registered in HubApiExplorer)
 
-### Phase 13e: Integration & Testing
-- [ ] End-to-end test (create project → launch → check health)
-- [ ] Test collision detection
-- [ ] Test graceful shutdown + hard kill
+### Phase 13e: Integration & Testing ✅ 2026-07-03
+- [x] End-to-end test (`test_phase13e.py`: real fake-app HTTP server —
+      seed config → manager.start via build_launch_command + wait_for_port
+      → run_health_checks healthy → flip to 500 → unhealthy transition →
+      stop → pids dead, port free, rows stopped)
+- [x] Test collision detection (allocator refuses a LIVE preferred port;
+      backfill collision logging covered in 13b tests)
+- [x] Test graceful shutdown + hard kill (SIGTERM-trapping process dies via
+      the SIGKILL fallback after the 5s grace)
+- [x] ALSO SHIPPED (13e): active HTTP health polling —
+      `launch_config.run_health_checks` (app_health_checks config first,
+      launch-time URL fallback, per-row interval due-ness, dead-pid sweep) +
+      10s background poller task in the sidecar; `list_all_health` +
+      `GET /api/apps/health`; ProjectsView health chip + per-process ✓/✗;
+      `scripts/seed_health_checks.py` (probe-verified seeding, dry-run
+      default) — 5 live endpoints seeded 2026-07-03
 
 ---
 
