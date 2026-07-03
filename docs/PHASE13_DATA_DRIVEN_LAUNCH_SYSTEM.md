@@ -69,6 +69,15 @@ written greenfield; implementation reconciled it against Phases 9/11/12.
     app are logged as collisions and left literal — never inserted, never
     templated.
 
+### 13d amendments (2026-07-03, with Tony)
+
+11. **`agenticos` + `hub` stay WITHOUT `app_commands` rows** (13c flagged
+    item resolved — skip both). `hub` was decommissioned in Phase 9d;
+    `agenticos` launching itself from its own sidecar is self-referential
+    (and a stop would kill the manager's own parent). The Projects GUI
+    shows them via the graceful `configured=false` launch-plan path; legacy
+    registry start still applies if ever invoked.
+
 ---
 
 ## 🎯 Executive Summary
@@ -794,14 +803,20 @@ POST /api/apps/worldwise/stop
       recorded on `app_processes` rows (active HTTP health polling lands
       with the GUI indicator in 13d/13e)
 - [x] 12 MySQL-backed tests (`test_phase13c.py`) — suite 141 green
-- [ ] Manual `app_commands` rows for `agenticos` + `hub` (needs Tony's
-      definition of what launching them means — deferred)
+- [x] Manual `app_commands` rows for `agenticos` + `hub` — RESOLVED 13d:
+      skip both (locked decision #11)
 
-### Phase 13d: Projects GUI
-- [ ] Build `ProjectsView.jsx`
-- [ ] Add Start/Stop buttons wired to API
-- [ ] Implement status polling
-- [ ] Add expanded port/command detail
+### Phase 13d: Projects GUI ✅ 2026-07-03
+- [x] Build `ProjectsView.jsx` (card grid over `GET /api/projects`, joined
+      with `GET /api/apps` live status; new "Projects" nav link + ⌘8 menu
+      item — GUI principle #7; theme tokens only, scoped `pv-*` stylesheet)
+- [x] Add Start/Stop buttons wired to API (`POST /api/apps/{id}/start|stop`)
+- [x] Implement status polling (adaptive 5s/2s over `GET /api/apps` —
+      in-memory hot path, no per-app DB hits; green/yellow-partial/red badge)
+- [x] Add expanded port/command detail (`app_processes` rows from
+      `/status` + NEW `GET /api/apps/{app_id}/launch-plan` — thin wrapper
+      over `build_launch_command`, `configured=false` degrade for
+      legacy-launch apps; registered in HubApiExplorer)
 
 ### Phase 13e: Integration & Testing
 - [ ] End-to-end test (create project → launch → check health)

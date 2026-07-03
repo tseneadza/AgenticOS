@@ -17,6 +17,7 @@ import SelfDiagnosticsView from "./components/SelfDiagnosticsView";  // Phase 12
 import WorkflowsWorkspace from "./components/WorkflowsWorkspace";
 import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
+import ProjectsView from "./components/ProjectsView";  // Phase 13d
 
 // Phase 9 Views
 import SettingsView from "./views/SettingsView";
@@ -1333,6 +1334,7 @@ const VIEWS = [
     purpose: "Edit and version your zsh configuration with safe rollbacks." },
   { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
     purpose: "Read and search the Brain2 Obsidian vault inside the app." },
+  { id: "projects", label: "Projects", component: ProjectsView },  // Phase 13d (⌘8 — appended after ⌘1–7 so existing bindings stay stable)
   { id: "hub-api", label: "Hub API", component: HubApiExplorer },
   { id: "settings", label: "Settings", component: SettingsView },
   { id: "agent", label: "Agent", component: AgentView, badge: "approvals" },

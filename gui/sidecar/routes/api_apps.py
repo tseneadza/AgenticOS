@@ -251,6 +251,33 @@ async def get_logs(app_id: str, lines: int = 100) -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.get("/{app_id}/launch-plan")
+async def get_launch_plan(app_id: str) -> dict:
+    """Return the resolved launch-config plan for an app (Phase 13d).
+
+    Thin read-only wrapper over ``launch_config.build_launch_command`` so the
+    Projects GUI can show the expandable port/command detail. Degrades
+    gracefully: apps with no ``app_commands`` rows (legacy-launch apps like
+    ``agenticos``/``hub`` — locked decision: intentionally unconfigured) or a
+    down MySQL return ``configured=False`` with a reason, never a 500.
+    """
+    _assert_exists(app_id)
+    try:
+        from gui.sidecar import launch_config
+        steps = launch_config.build_launch_command(app_id)
+        return {"available": True, "source": "native", "app_id": app_id,
+                "configured": True, "steps": steps, "total": len(steps)}
+    except (LookupError, ValueError) as exc:
+        return {"available": True, "source": "native", "app_id": app_id,
+                "configured": False, "steps": [], "total": 0,
+                "reason": str(exc)}
+    except Exception as exc:  # noqa: BLE001 — MySQL down etc.
+        log.warning("launch-plan(%s) degraded: %s", app_id, exc)
+        return {"available": False, "source": "native", "app_id": app_id,
+                "configured": False, "steps": [], "total": 0,
+                "reason": str(exc)}
+
+
 # Must be LAST so fixed sub-paths above match first
 @router.get("/{app_id}")
 async def get_app(app_id: str) -> dict:

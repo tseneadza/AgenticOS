@@ -106,6 +106,7 @@ const ENDPOINTS_HARDCODED = [
   { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps/{app_id}", desc:"Get app details", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
   { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps/processes", desc:"All DB-tracked running processes across apps (13c)", params:[] },
   { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps/{app_id}/status", desc:"Get app status (running/stopped + app_processes detail)", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
+  { group:"Apps (Sidecar)", server:"sidecar", method:"GET",    path:"/api/apps/{app_id}/launch-plan", desc:"Resolved launch-config steps (13d; configured=false for legacy-launch apps)", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
   { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/{app_id}/start", desc:"Start an app (launch-config plan or legacy registry)", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
   { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/{app_id}/stop",  desc:"Stop an app (process-group kill; returns killed_pids)", params:[{name:"app_id",_in:"path",type:"string",required:true}] },
   { group:"Apps (Sidecar)", server:"sidecar", method:"POST",   path:"/api/apps/{app_id}/restart", desc:"Restart an app", params:[{name:"app_id",_in:"path",type:"string",required:true}] },

@@ -1,3 +1,72 @@
+# Session Continuation — 2026-07-03 Phase 13d SHIPPED ✅ (Projects GUI)
+
+**Status:** ✅ 13d complete / ✅ 145 pytest green (141 + 4 new, stable ×2) / ✅ 581 vitest green (574 + 7 new) / ✅ vite build + cargo check clean / ✅ committed & pushed
+
+## Decisions Locked This Session (with Tony — PHASE13 doc §Locked Decisions #11)
+
+1. **13c flagged item RESOLVED — skip both:** no manual `app_commands` rows
+   for `agenticos` (self-referential — sidecar stopping itself kills the
+   manager) or `hub` (decommissioned 9d). They surface in the GUI via the
+   graceful `configured=false` launch-plan path.
+
+## What Shipped (13d)
+
+- **`gui/desktop/src/components/ProjectsView.jsx`** (new) — card grid over
+  `GET /api/projects` joined with `GET /api/apps` live status (adaptive
+  5s/2s poll; the in-memory hot path — deliberately NO per-app DB calls in
+  the grid, per 13c flagged item 2). Start/Stop → `POST /api/apps/{id}/
+  start|stop`; badge green/yellow(partial: mixed `app_processes` states)/
+  red; expand → `/status` process table + launch-plan table. Degrades:
+  ledger-down banner, sidecar-down banner, not-in-registry cards disabled.
+  Theme tokens only; scoped `pv-*` stylesheet.
+- **Nav:** "Projects" VIEWS entry in `App.jsx` + `view-projects` menu item
+  (⌘8) in `src-tauri/src/lib.rs` — appended so ⌘1–7 stay stable. Menu item
+  needs the next Tauri (re)build; the nav link is live on vite reload.
+- **`GET /api/apps/{app_id}/launch-plan`** (new, api_apps.py) — read-only
+  wrapper over `build_launch_command`; `configured=false`+reason on
+  LookupError/ValueError, `available=false` on DB-down; registered in
+  `HubApiExplorer.jsx` (api-registry rule).
+- **Tests:** `gui/sidecar/tests/test_phase13d.py` (4) +
+  `gui/desktop/src/__tests__/ProjectsView.test.jsx` (7).
+  Gotcha encoded: `AppCommand.working_directory` is RELATIVE to app root
+  (joined, not templated) — don't seed `{app_path}` into it.
+- Docs same-commit: CHANGELOG, roadmap 13d tick, PHASE13 §Locked Decisions
+  #11 + checklist, this file.
+
+## Verify
+
+```bash
+cd ~/Codehome/AgenticOS
+.venv/bin/python -m pytest gui/sidecar/tests -q          # expect 145 passed
+cd gui/desktop && npx vitest run                         # expect 581 passed
+npm run build                                            # clean
+npm run tauri dev                                        # rebuilds menu → ⌘8 Projects
+```
+
+**Restart the sidecar** to pick up the launch-plan route:
+`.venv/bin/python -m gui.sidecar` (or via the app). Then on-device visual
+check: nav → Projects — 27 cards, badges, Start/Stop, expand detail.
+
+## ▶ RESUME HERE — Phase 13e (Integration + health polling)
+
+1. Integration test: fake-app fixture — create → launch → wait_for_port →
+   health → stop (collision + graceful-shutdown/hard-kill paths).
+2. Active HTTP health polling (health_check config already attached to steps
+   and recorded on `app_processes` rows) + GUI health indicator in
+   ProjectsView (the badge currently reflects process state only).
+3. Consider 13c flagged item 2 revisit: does ProjectsView need DB detail in
+   the LIST call? (Currently no — detail is fetch-on-expand, feels right.)
+4. Then 13f: SQLAlchemy consolidation (news_db/tasks_db, SQLite-bound tests).
+
+## Watch
+
+- `gui/mockups/dashboard.html` unrelated pre-existing modification — still
+  uncommitted, untouched.
+- LangGraph `checkpoint*` tables note from 13a still stands.
+- On-device visual check of ProjectsView not yet done (needs `tauri dev`).
+
+---
+
 # Session Continuation — 2026-07-03 Phase 13c SHIPPED ✅ (Execution Layer)
 
 **Status:** ✅ 13c complete / ✅ 141 pytest green (129 + 12 new, stable ×2) / ✅ vite build clean / ✅ committed & pushed (scheduled autonomous run)

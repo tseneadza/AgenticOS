@@ -155,6 +155,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     let v_zsh       = MenuItem::with_id(app, "view-zsh-config", "Zsh Config Editor", true, Some("cmd+5"))?;
     let v_obsidian  = MenuItem::with_id(app, "view-obsidian",   "Obsidian Viewer",   true, Some("cmd+6"))?;
     let v_agent     = MenuItem::with_id(app, "view-agent",      "Agent",             true, Some("cmd+7"))?;
+    let v_projects  = MenuItem::with_id(app, "view-projects",   "Projects",          true, Some("cmd+8"))?; // Phase 13d — cmd+8 so cmd+1–7 stay stable
     let sep_view    = PredefinedMenuItem::separator(app)?;
     let v_reload    = MenuItem::with_id(app, "view-reload",     "Reload",            true, Some("cmd+r"))?;
 
@@ -174,7 +175,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
 
     let view_menu = Submenu::with_items(
         app, "View", true,
-        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_obsidian, &v_agent,
+        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_obsidian, &v_projects, &v_agent,
           &sep_theme, &theme_menu, &sep_view, &v_reload],
     )?;
 

@@ -1,3 +1,33 @@
+## 2026-07-03 — Phase 13d: Projects GUI
+
+- **`gui/desktop/src/components/ProjectsView.jsx`** (new): card grid over
+  the `projects` ledger (`GET /api/projects`, 27 rows) joined with live
+  running status from `GET /api/apps` (adaptive 5s/2s polling — the
+  in-memory `status_all()` hot path, no per-app DB hits). Start/Stop wired
+  to `POST /api/apps/{id}/start|stop`; status badge green (running) /
+  yellow (partial — some tracked `app_processes` rows stopped) / red
+  (stopped); expandable detail shows the pid-verified process table
+  (from `/status`) and the resolved launch plan. Graceful degrades for
+  ledger-down, sidecar-down, and not-in-registry projects. Theme tokens
+  only; scoped `pv-*` injected stylesheet (frontend conventions rules 1+3).
+- **New nav link "Projects"** (GUI principle #7): `App.jsx` VIEWS entry +
+  native menu item in `src-tauri/src/lib.rs` (⌘8 — appended after ⌘1–7 so
+  existing bindings stay stable; needs a Tauri rebuild to appear in the menu).
+- **`gui/sidecar/routes/api_apps.py`**: new `GET /api/apps/{app_id}/launch-plan`
+  — thin read-only wrapper over `launch_config.build_launch_command` for the
+  expandable card detail. `configured=false` + reason for legacy-launch apps
+  (no `app_commands`); `available=false` when MySQL is down; never a 500.
+  Registered in `HubApiExplorer.jsx` in the same change (api-registry rule).
+- **Locked decision #11 (13c flagged item resolved with Tony): skip both**
+  manual `app_commands` rows — `hub` decommissioned (9d), `agenticos`
+  self-launch is self-referential. They surface via the `configured=false`
+  path in the GUI.
+- **Tests:** `test_phase13d.py` (4 pytest — configured plan, unconfigured
+  degrade, DB-down degrade, 404) + `ProjectsView.test.jsx` (7 vitest —
+  cards, badges incl. partial, expand detail + plan, no-config note,
+  start/stop POSTs, ledger-down degrade). Suites: **145 pytest** (stable
+  ×2) / **581 vitest** green; `npm run build` + `cargo check` clean.
+
 ## 2026-07-03 — Phase 13c: Launch-System Execution Layer
 
 - **`core/process_manager.py`** (extended — ONE launch system, PHASE13 doc
