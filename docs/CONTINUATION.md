@@ -31,7 +31,12 @@
   idempotent (verified live: 2nd run inserts 0). **Applied:** 5 rows —
   agenticos-sidecar:5130/api/health, battester:8090/api/health,
   hub:8085/api/health, keno:5100/ (only `/` answers), mazegame:5107/api/health.
-  24 apps weren't running — re-run seeder while they're up to cover them.
+  **UPDATE (same day, Tony started many apps + re-ran seeder): +17 rows →
+  22 of 29 ledger ports covered.** Still missing (weren't up):
+  astro-physics-hub:5112, jupyter-notebook:8888, shuffle:5108,
+  taste-dees:3002, template-app:5109, worldwise:5173 + :8000 — re-run
+  `.venv/bin/python -m gui.sidecar.scripts.seed_health_checks --apply`
+  while they're running.
 - **`tests/test_phase13e.py`** (10) — e2e fake-app chain (launch → port →
   healthy → flip 500 → down transition → stop → pids dead/port free/rows
   stopped), SIGTERM-trapping hard-kill (asserts ≥4.5s grace), allocator
