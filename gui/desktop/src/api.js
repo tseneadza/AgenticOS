@@ -1,14 +1,16 @@
-// Sidecar API client (port 5130 — see hub/docs/PORT_ASSIGNMENTS.md, TR-10)
-const BASE = "http://localhost:5130";
+// Sidecar API client (default port 5130 — see hub/docs/PORT_ASSIGNMENTS.md,
+// TR-10). Base URL is user-configurable via Settings (settings.js) and read
+// lazily per request so changes apply without a reload.
+import { sidecarUrl, sidecarWsUrl } from "./settings";
 
 export async function get(path) {
-  const r = await fetch(`${BASE}${path}`);
+  const r = await fetch(`${sidecarUrl()}${path}`);
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
 }
 
 export async function post(path, body) {
-  const r = await fetch(`${BASE}${path}`, {
+  const r = await fetch(`${sidecarUrl()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
@@ -23,7 +25,7 @@ export function connectAgui(onEvent, onStatus) {
   let closed = false;
 
   function open() {
-    ws = new WebSocket(`ws://localhost:5130/ws/agui`);
+    ws = new WebSocket(sidecarWsUrl("/ws/agui"));
     ws.onopen = () => onStatus?.(true);
     ws.onmessage = (m) => {
       try {

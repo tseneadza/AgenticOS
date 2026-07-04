@@ -22,7 +22,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { get, post } from "../api";
+import { pollMs } from "../settings";
 
+// Base intervals — scaled by the user's polling-speed setting (settings.js).
 const POLL_MS = 5000;
 const POLL_MS_DOWN = 2000;
 const HEALTH_POLL_MS = 10000;
@@ -349,14 +351,14 @@ export default function ProjectsView() {
   // own 10s poller cadence.
   useEffect(() => {
     loadHealth();
-    const id = setInterval(loadHealth, HEALTH_POLL_MS);
+    const id = setInterval(loadHealth, pollMs(HEALTH_POLL_MS));
     return () => clearInterval(id);
   }, [loadHealth]);
 
   // Adaptive status polling (usePoll pattern: fast retry while the sidecar is down).
   useEffect(() => {
     loadApps();
-    const ms = sidecarOk ? POLL_MS : POLL_MS_DOWN;
+    const ms = pollMs(sidecarOk ? POLL_MS : POLL_MS_DOWN);
     pollRef.current = setInterval(loadApps, ms);
     return () => clearInterval(pollRef.current);
   }, [sidecarOk, loadApps]);

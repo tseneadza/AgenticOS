@@ -1,673 +1,166 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import EnvironmentPanel from "../components/EnvironmentPanel";
+import { DEFAULT_SIDECAR_URL } from "../settings";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Test Suite: EnvironmentPanel
+// Test Suite: EnvironmentPanel (Settings rework)
 //
-// EnvironmentPanel was refactored to AUTO-SAVE (debounced, 500ms) on any
-// settings change. There is no longer a manual "Save" button or a dirty/enable
-// flow. These tests assert the current auto-save contract:
-//   - changing a field persists to localStorage["agentic-os.settings"]
-//     (asserted via waitFor after the debounce), and
-//   - the "✓ Saved" indicator appears after a save.
+// The panel was rebuilt so every control drives real behavior:
+//   - Appearance    → theme.js applyTheme via the __agenticOsSetTheme bridge
+//   - Polling speed → settings.polling_speed (consumed via pollMs())
+//   - Connection    → settings.sidecar_url (consumed via sidecarUrl())
+//   - Diagnostics   → read-only info rows
+// The old Phase 9 API-key fields / dead toggles are GONE, and legacy stored
+// fields are purged (covered in settings.test.js; asserted here at the UI
+// level too).
 // ─────────────────────────────────────────────────────────────────────────
 
-// Helper: read the persisted settings object (or null if not yet written).
-function readStoredSettings() {
-  const raw = localStorage.getItem("agentic-os.settings");
-  return raw ? JSON.parse(raw) : null;
-}
+const LS_KEY = "agentic-os.settings";
+const readStored = () => JSON.parse(localStorage.getItem(LS_KEY) || "null");
 
-describe("EnvironmentPanel Component", () => {
+describe("EnvironmentPanel (Settings)", () => {
   beforeEach(() => {
-    // Clear localStorage before each test
     localStorage.clear();
-
-    // Mock clipboard API. navigator.clipboard is getter-only in jsdom, so it
-    // must be (re)defined rather than assigned.
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      writable: true,
-      value: { writeText: vi.fn(() => Promise.resolve()) },
-    });
+    document.documentElement.removeAttribute("data-theme");
+    // Sidecar health probe (mount + Test button).
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.AbortSignal.timeout = global.AbortSignal.timeout || (() => undefined);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    delete window.__agenticOsSetTheme;
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Rendering Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("rendering", () => {
-    it("should render without errors", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByTestId("environment-panel")).toBeInTheDocument();
-    });
-
-    it("should render settings header", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByText("Settings")).toBeInTheDocument();
-    });
-
-    it("should render close button when onClose is provided", () => {
-      render(<EnvironmentPanel onClose={vi.fn()} />);
-      expect(screen.getByTestId("close-settings")).toBeInTheDocument();
-    });
-
-    it("should render all API key inputs", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByTestId("api-key-input-anthropic_api_key")).toBeInTheDocument();
-      expect(screen.getByTestId("api-key-input-github_token")).toBeInTheDocument();
-    });
-
-    it("should render all feature toggles", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByTestId("toggle-dark_mode")).toBeInTheDocument();
-      expect(screen.getByTestId("toggle-animations")).toBeInTheDocument();
-      expect(screen.getByTestId("toggle-auto_refresh")).toBeInTheDocument();
-    });
-
-    it("should render all system settings", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByTestId("number-input-log_refresh_interval")).toBeInTheDocument();
-      expect(screen.getByTestId("number-input-api_timeout")).toBeInTheDocument();
-    });
-
-    it("should render the reset button (auto-save has no manual save button)", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByTestId("reset-settings")).toBeInTheDocument();
-      // Auto-save contract: there is no manual save button.
-      expect(screen.queryByTestId("save-settings")).not.toBeInTheDocument();
-    });
+  it("renders all four sections", () => {
+    render(<EnvironmentPanel />);
+    expect(screen.getByText("Appearance")).toBeInTheDocument();
+    expect(screen.getByText("Polling speed")).toBeInTheDocument();
+    expect(screen.getByText("Sidecar connection")).toBeInTheDocument();
+    expect(screen.getByText("Diagnostics")).toBeInTheDocument();
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // API Key Input Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("API key inputs", () => {
-    it("should mask API key input by default", () => {
-      render(<EnvironmentPanel />);
-      const input = screen.getByTestId("api-key-input-anthropic_api_key");
-      expect(input).toHaveAttribute("type", "password");
-    });
-
-    it("should toggle visibility of API key", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(input, "test-key-123");
-
-      const showButton = screen.getByTestId("toggle-show-anthropic_api_key");
-      expect(showButton).toBeInTheDocument();
-
-      await user.click(showButton);
-      expect(input).toHaveAttribute("type", "text");
-
-      await user.click(showButton);
-      expect(input).toHaveAttribute("type", "password");
-    });
-
-    it("should allow entering API key value", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(input, "sk-test-api-key");
-
-      expect(input).toHaveValue("sk-test-api-key");
-    });
-
-    it("should show copy button when key is entered", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("api-key-input-anthropic_api_key");
-      expect(screen.queryByTestId("copy-btn-anthropic_api_key")).not.toBeInTheDocument();
-
-      await user.type(input, "test-key");
-      expect(screen.getByTestId("copy-btn-anthropic_api_key")).toBeInTheDocument();
-    });
-
-    it("should copy API key to clipboard", async () => {
-      const user = userEvent.setup();
-      // Install our clipboard stub AFTER setup so it wins over userEvent's shim.
-      const writeText = vi.fn(() => Promise.resolve());
-      Object.defineProperty(navigator, "clipboard", {
-        configurable: true,
-        writable: true,
-        value: { writeText },
-      });
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(input, "sk-test-key");
-
-      const copyButton = screen.getByTestId("copy-btn-anthropic_api_key");
-      await user.click(copyButton);
-
-      expect(writeText).toHaveBeenCalledWith("sk-test-key");
-    });
-
-    it("should show 'Copied' feedback after copy", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(input, "test-key");
-
-      const copyButton = screen.getByTestId("copy-btn-anthropic_api_key");
-      await user.click(copyButton);
-
-      await waitFor(() => {
-        expect(copyButton).toHaveTextContent("Copied");
-      });
-    });
-
-    it("should mark required API keys with *", () => {
-      render(<EnvironmentPanel />);
-      const labels = screen.getAllByText(/Anthropic API Key/);
-      expect(labels[0].parentElement).toHaveTextContent("*");
-    });
-
-    it("should display descriptions for API keys", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByText("For Claude API calls")).toBeInTheDocument();
-      expect(screen.getByText("For git operations")).toBeInTheDocument();
-    });
-
-    it("should clear API key on clear button click", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(input, "test-key");
-      expect(input).toHaveValue("test-key");
-
-      const clearButton = screen.getByTestId("clear-anthropic_api_key");
-      await user.click(clearButton);
-
-      expect(input).toHaveValue("");
-    });
+  it("no longer renders API key inputs", () => {
+    render(<EnvironmentPanel />);
+    expect(screen.queryByText(/Anthropic API Key/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/GitHub Personal Access Token/i)).not.toBeInTheDocument();
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Feature Toggle Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("feature toggles", () => {
-    it("should render toggle switches", () => {
-      render(<EnvironmentPanel />);
-      const darkModeToggle = screen.getByTestId("toggle-dark_mode");
-      expect(darkModeToggle).toHaveAttribute("type", "checkbox");
-    });
-
-    it("should toggle feature flag on click", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const toggle = screen.getByTestId("toggle-dark_mode");
-      expect(toggle).toBeChecked();
-
-      await user.click(toggle);
-      expect(toggle).not.toBeChecked();
-
-      await user.click(toggle);
-      expect(toggle).toBeChecked();
-    });
-
-    it("should have default values for feature flags", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByTestId("toggle-dark_mode")).toBeChecked();
-      expect(screen.getByTestId("toggle-animations")).toBeChecked();
-      expect(screen.getByTestId("toggle-auto_refresh")).toBeChecked();
-    });
-
-    it("should display descriptions for feature flags", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByText("Enable dark theme")).toBeInTheDocument();
-      expect(screen.getByText("Enable smooth transitions")).toBeInTheDocument();
-      expect(screen.getByText("Automatically refresh log display")).toBeInTheDocument();
-    });
-
-    it("should toggle multiple feature flags independently", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const darkMode = screen.getByTestId("toggle-dark_mode");
-      const animations = screen.getByTestId("toggle-animations");
-
-      await user.click(darkMode);
-      expect(darkMode).not.toBeChecked();
-      expect(animations).toBeChecked();
-    });
+  // ── Appearance ──
+  it("applies a theme via the App bridge when present", async () => {
+    const bridge = vi.fn();
+    window.__agenticOsSetTheme = bridge;
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("theme-option-cyber-dark"));
+    expect(bridge).toHaveBeenCalledWith("cyber-dark");
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Number Input Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("number inputs", () => {
-    it("should render number inputs for system settings", () => {
-      render(<EnvironmentPanel />);
-      const logInterval = screen.getByTestId("number-input-log_refresh_interval");
-      expect(logInterval).toHaveAttribute("type", "number");
-    });
-
-    it("should accept valid number input", () => {
-      render(<EnvironmentPanel />);
-
-      // The controlled number input only commits valid values, so drive it
-      // with a single change event carrying the full value.
-      const input = screen.getByTestId("number-input-log_refresh_interval");
-      fireEvent.change(input, { target: { value: "10" } });
-
-      expect(input).toHaveValue(10);
-    });
-
-    it("should have default values", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByTestId("number-input-log_refresh_interval")).toHaveValue(5);
-      expect(screen.getByTestId("number-input-api_timeout")).toHaveValue(30);
-    });
-
-    it("should show error for value below minimum", async () => {
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("number-input-log_refresh_interval");
-      fireEvent.change(input, { target: { value: "0" } });
-
-      await waitFor(() => {
-        expect(screen.getByTestId("error-log_refresh_interval")).toBeInTheDocument();
-      });
-    });
-
-    it("should show error for value above maximum", async () => {
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("number-input-api_timeout");
-      fireEvent.change(input, { target: { value: "1000" } });
-
-      await waitFor(() => {
-        expect(screen.getByTestId("error-api_timeout")).toBeInTheDocument();
-      });
-    });
-
-    it("should show error for non-numeric input", async () => {
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("number-input-log_refresh_interval");
-      // A number input strips non-numeric characters, so emit the raw value
-      // directly to exercise the NaN validation branch.
-      fireEvent.change(input, { target: { value: "abc" } });
-
-      await waitFor(() => {
-        expect(screen.getByTestId("error-log_refresh_interval")).toBeInTheDocument();
-      });
-    });
-
-    it("should display descriptions for system settings", () => {
-      render(<EnvironmentPanel />);
-      expect(screen.getByText("How often to check for new logs")).toBeInTheDocument();
-      expect(
-        screen.getByText("Maximum time to wait for API responses")
-      ).toBeInTheDocument();
-    });
-
-    it("should accept values within valid range", () => {
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("number-input-log_refresh_interval");
-      fireEvent.change(input, { target: { value: "30" } });
-
-      expect(input).toHaveValue(30);
-      expect(screen.queryByTestId("error-log_refresh_interval")).not.toBeInTheDocument();
-    });
+  it("falls back to applyTheme (data-theme + persist) without the bridge", async () => {
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("theme-option-term-light"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("term-light");
+    expect(localStorage.getItem("agentic-os.theme")).toBe("term-light");
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Auto-save & Persistence Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("auto-save to localStorage", () => {
-    it("should auto-save an entered API key to localStorage", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "sk-test-key");
-
-      await waitFor(() => {
-        expect(readStoredSettings()?.anthropic_api_key).toBe("sk-test-key");
-      });
-    });
-
-    it("should show the ✓ Saved indicator after a change", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "sk-test-key");
-
-      await waitFor(() => {
-        expect(screen.getByText("✓ Saved")).toBeInTheDocument();
-      });
-    });
-
-    it("should load settings from localStorage on mount", () => {
-      const settings = {
-        anthropic_api_key: "sk-stored-key",
-        dark_mode: false,
-        log_refresh_interval: 15,
-      };
-      localStorage.setItem("agentic-os.settings", JSON.stringify(settings));
-
-      render(<EnvironmentPanel />);
-
-      expect(screen.getByTestId("api-key-input-anthropic_api_key")).toHaveValue(
-        "sk-stored-key"
-      );
-      expect(screen.getByTestId("toggle-dark_mode")).not.toBeChecked();
-      expect(screen.getByTestId("number-input-log_refresh_interval")).toHaveValue(15);
-    });
-
-    it("should persist settings across remounts", async () => {
-      const user = userEvent.setup();
-      const { unmount } = render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "sk-test-key");
-
-      // Wait for the debounced auto-save to persist.
-      await waitFor(() => {
-        expect(readStoredSettings()?.anthropic_api_key).toBe("sk-test-key");
-      });
-
-      unmount();
-
-      // Remount
-      render(<EnvironmentPanel />);
-
-      expect(screen.getByTestId("api-key-input-anthropic_api_key")).toHaveValue(
-        "sk-test-key"
-      );
-    });
-
-    it("should auto-save feature toggle changes", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const darkModeToggle = screen.getByTestId("toggle-dark_mode");
-      await user.click(darkModeToggle);
-
-      await waitFor(() => {
-        expect(readStoredSettings()?.dark_mode).toBe(false);
-      });
-    });
-
-    it("should auto-save system setting changes", async () => {
-      render(<EnvironmentPanel />);
-
-      const numberInput = screen.getByTestId("number-input-log_refresh_interval");
-      fireEvent.change(numberInput, { target: { value: "20" } });
-
-      await waitFor(() => {
-        expect(readStoredSettings()?.log_refresh_interval).toBe(20);
-      });
-    });
+  it("marks the active theme button", async () => {
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("theme-option-future-dark"));
+    expect(screen.getByTestId("theme-option-future-dark").className).toContain("sv-active");
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Validation Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("validation", () => {
-    it("should warn when the required API key is missing on mount", () => {
-      render(<EnvironmentPanel />);
-      // No key stored → the required-key warning is shown.
-      const warning = screen.getByTestId("required-warning");
-      expect(warning).toBeInTheDocument();
-      expect(warning).toHaveTextContent(/Anthropic API Key is required/);
-    });
-
-    it("should not show the required warning when a key is already stored", () => {
-      localStorage.setItem(
-        "agentic-os.settings",
-        JSON.stringify({ anthropic_api_key: "sk-existing" })
-      );
-      render(<EnvironmentPanel />);
-      expect(screen.queryByTestId("required-warning")).not.toBeInTheDocument();
-    });
-
-    it("should validate number ranges on input", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(input);
-      await user.type(input, "100");
-
-      await waitFor(() => {
-        expect(screen.getByTestId("error-log_refresh_interval")).toBeInTheDocument();
-      });
-    });
-
-    it("should not persist an out-of-range number value", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const input = screen.getByTestId("number-input-log_refresh_interval");
-      await user.clear(input);
-      await user.type(input, "100");
-
-      await waitFor(() => {
-        expect(screen.getByTestId("error-log_refresh_interval")).toBeInTheDocument();
-      });
-
-      // Invalid values are rejected before reaching state, so the persisted
-      // value must never become the out-of-range number.
-      expect(readStoredSettings()?.log_refresh_interval).not.toBe(100);
-    });
+  // ── Polling ──
+  it("persists polling speed and shows the saved indicator", async () => {
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("polling-fast"));
+    expect(readStored().polling_speed).toBe("fast");
+    expect(screen.getByTestId("save-indicator")).toBeInTheDocument();
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Reset Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("reset to defaults", () => {
-    it("should reset all settings to defaults on reset button click", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "sk-test-key");
-
-      const numberInput = screen.getByTestId("number-input-log_refresh_interval");
-      fireEvent.change(numberInput, { target: { value: "20" } });
-
-      const resetButton = screen.getByTestId("reset-settings");
-
-      // Mock window.confirm
-      window.confirm = vi.fn(() => true);
-      await user.click(resetButton);
-
-      expect(apiKeyInput).toHaveValue("");
-      expect(numberInput).toHaveValue(5);
-    });
-
-    it("should ask for confirmation before reset", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      window.confirm = vi.fn(() => false);
-
-      const resetButton = screen.getByTestId("reset-settings");
-      await user.click(resetButton);
-
-      expect(window.confirm).toHaveBeenCalled();
-    });
-
-    it("should not reset if user cancels confirmation", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "sk-test-key");
-
-      window.confirm = vi.fn(() => false);
-
-      const resetButton = screen.getByTestId("reset-settings");
-      await user.click(resetButton);
-
-      expect(apiKeyInput).toHaveValue("sk-test-key");
-    });
+  // ── Connection ──
+  it("commits a valid sidecar URL on Enter (trailing slash stripped)", async () => {
+    render(<EnvironmentPanel />);
+    const input = screen.getByTestId("sidecar-url-input");
+    await userEvent.clear(input);
+    await userEvent.type(input, "http://myhost:6001/{enter}");
+    expect(readStored().sidecar_url).toBe("http://myhost:6001");
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Keyboard Accessibility Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("keyboard accessibility", () => {
-    it("should allow Tab navigation through all inputs", async () => {
-      render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      apiKeyInput.focus();
-      expect(apiKeyInput).toHaveFocus();
-    });
-
-    it("should keep feature flags keyboard-focusable and toggleable", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const toggle = screen.getByTestId("toggle-dark_mode");
-      toggle.focus();
-      expect(toggle).toHaveFocus();
-      expect(toggle).toBeChecked();
-
-      // Checkboxes toggle on Space (Enter is a no-op per the HTML spec).
-      await user.keyboard(" ");
-      expect(toggle).not.toBeChecked();
-    });
-
-    it("should allow Space to toggle feature flags", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const toggle = screen.getByTestId("toggle-dark_mode");
-      toggle.focus();
-      expect(toggle).toBeChecked();
-
-      await user.keyboard(" ");
-      expect(toggle).not.toBeChecked();
-    });
-
-    it("should have proper labels for all inputs", () => {
-      render(<EnvironmentPanel />);
-      // "Anthropic API Key" appears in both the field label and the required
-      // warning, so assert at least one match rather than a unique one.
-      expect(screen.getAllByText(/Anthropic API Key/).length).toBeGreaterThan(0);
-      expect(screen.getByText("Dark Mode Enabled")).toBeInTheDocument();
-    });
+  it("rejects an invalid URL with an error and does not persist it", async () => {
+    render(<EnvironmentPanel />);
+    const input = screen.getByTestId("sidecar-url-input");
+    await userEvent.clear(input);
+    await userEvent.type(input, "not-a-url{enter}");
+    expect(screen.getByTestId("sidecar-url-error")).toBeInTheDocument();
+    expect(readStored()?.sidecar_url ?? DEFAULT_SIDECAR_URL).toBe(DEFAULT_SIDECAR_URL);
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Mobile Responsiveness Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("mobile responsiveness", () => {
-    it("should render in mobile viewport", () => {
-      const { container } = render(<EnvironmentPanel />);
-      const panel = container.querySelector('[data-testid="environment-panel"]');
-      expect(panel).toHaveStyle({ display: "flex" });
-    });
-
-    it("should show content in scrollable area", () => {
-      const { container } = render(<EnvironmentPanel />);
-      const content = container.querySelector('[data-testid="settings-content"]');
-      expect(content).toHaveStyle({ overflow: "auto" });
-    });
-
-    it("should not hide content on dark mode", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
-
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      expect(apiKeyInput).toBeVisible();
-
-      const toggle = screen.getByTestId("toggle-dark_mode");
-      await user.click(toggle);
-
-      expect(apiKeyInput).toBeVisible();
-    });
+  it("Test button reports online when /api/health responds ok", async () => {
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("test-connection"));
+    await waitFor(() => expect(screen.getByTestId("test-result")).toHaveTextContent("online"));
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${DEFAULT_SIDECAR_URL}/api/health`,
+      expect.anything(),
+    );
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Theme & Styling Tests
-  // ─────────────────────────────────────────────────────────────────────────
-
-  describe("theme and styling", () => {
-    it("should use theme variables for colors", () => {
-      const { container } = render(<EnvironmentPanel />);
-      const header = container.querySelector("h2");
-      // Header inherits panel text color; verify the panel uses the theme var.
-      const panel = container.querySelector('[data-testid="environment-panel"]');
-      expect(panel.style.color).toBe("var(--text)");
-      expect(header).toBeInTheDocument();
-    });
-
-    it("should render in all themes without errors", () => {
-      const themes = ["terracotta-light", "terracotta-dark"];
-      themes.forEach(() => {
-        const { unmount } = render(<EnvironmentPanel />);
-        expect(screen.getByTestId("environment-panel")).toBeInTheDocument();
-        unmount();
-      });
-    });
+  it("Test button reports unreachable on network failure", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("boom"));
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("test-connection"));
+    await waitFor(() => expect(screen.getByTestId("test-result")).toHaveTextContent("unreachable"));
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Integration Tests
-  // ─────────────────────────────────────────────────────────────────────────
+  it("Default button restores the default sidecar URL", async () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ sidecar_url: "http://other:9000" }));
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("reset-sidecar-url"));
+    expect(readStored().sidecar_url).toBe(DEFAULT_SIDECAR_URL);
+  });
 
-  describe("integration", () => {
-    it("should auto-save multiple changes together", async () => {
-      const user = userEvent.setup();
-      render(<EnvironmentPanel />);
+  // ── Diagnostics ──
+  it("shows sidecar online state, version, and storage rows", async () => {
+    render(<EnvironmentPanel />);
+    await waitFor(() => expect(screen.getByTestId("diag-sidecar")).toHaveTextContent("online"));
+    expect(screen.getByTestId("diag-url")).toHaveTextContent(DEFAULT_SIDECAR_URL);
+    expect(screen.getByTestId("diag-version").textContent).toMatch(/\d+\.\d+\.\d+/);
+    expect(screen.getByTestId("diag-storage")).toHaveTextContent(/keys/);
+  });
 
-      // Change multiple settings
-      const apiKeyInput = screen.getByTestId("api-key-input-anthropic_api_key");
-      await user.type(apiKeyInput, "sk-test-key");
+  it("shows sidecar offline when the health probe fails", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("down"));
+    render(<EnvironmentPanel />);
+    await waitFor(() => expect(screen.getByTestId("diag-sidecar")).toHaveTextContent("offline"));
+  });
 
-      const darkModeToggle = screen.getByTestId("toggle-dark_mode");
-      await user.click(darkModeToggle);
+  // ── Reset ──
+  it("Reset to Defaults restores default settings after confirm", async () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ polling_speed: "slow", sidecar_url: "http://x:1" }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("reset-settings"));
+    expect(readStored()).toEqual({ polling_speed: "normal", sidecar_url: DEFAULT_SIDECAR_URL });
+  });
 
-      const numberInput = screen.getByTestId("number-input-log_refresh_interval");
-      fireEvent.change(numberInput, { target: { value: "10" } });
+  it("Reset does nothing when confirm is declined", async () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ polling_speed: "slow" }));
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<EnvironmentPanel />);
+    await userEvent.click(screen.getByTestId("reset-settings"));
+    expect(readStored().polling_speed).toBe("slow");
+  });
 
-      // Verify all auto-saved
-      await waitFor(() => {
-        const stored = readStoredSettings();
-        expect(stored?.anthropic_api_key).toBe("sk-test-key");
-        expect(stored?.dark_mode).toBe(false);
-        expect(stored?.log_refresh_interval).toBe(10);
-      });
-    });
-
-    it("should handle close button", async () => {
-      const user = userEvent.setup();
-      const onClose = vi.fn();
-      render(<EnvironmentPanel onClose={onClose} />);
-
-      const closeButton = screen.getByTestId("close-settings");
-      await user.click(closeButton);
-
-      expect(onClose).toHaveBeenCalled();
-    });
+  // ── Migration (UI level) ──
+  it("purges legacy Phase 9 fields (API keys) from storage on open", () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      anthropic_api_key: "sk-secret", dark_mode: true, polling_speed: "slow",
+    }));
+    render(<EnvironmentPanel />);
+    const raw = readStored();
+    expect(raw.anthropic_api_key).toBeUndefined();
+    expect(raw.dark_mode).toBeUndefined();
+    expect(raw.polling_speed).toBe("slow");
   });
 });

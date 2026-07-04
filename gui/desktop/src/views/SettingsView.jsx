@@ -1,10 +1,12 @@
 import EnvironmentPanel from "../components/EnvironmentPanel";
 
 /**
- * SettingsView — Phase 9 Settings Page
- * Renders EnvironmentPanel as a full-page view in the main dashboard
+ * SettingsView — Settings page (reworked from the Phase 9 shell).
+ * Renders EnvironmentPanel as a full-page view in the main dashboard.
  * Navigation: Sidebar link "Settings" → setActiveView('settings')
- * State: EnvironmentPanel handles all localStorage persistence internally
+ *
+ * Every setting is wired to real behavior — see settings.js (registry +
+ * pollMs/sidecarUrl helpers) and theme.js (Appearance section).
  */
 export default function SettingsView() {
   return (

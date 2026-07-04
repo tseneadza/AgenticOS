@@ -2,6 +2,7 @@
  * Utility functions shared across explorers
  * Extracted from ScriptsExplorer and HubApiExplorer components
  */
+import { sidecarUrl } from "../settings";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Script utilities (from ScriptsExplorer.jsx)
@@ -229,8 +230,8 @@ export const METHOD_COLOR = {
  * @returns {string} Full URL
  */
 export function buildUrl(ep, paramValues, baseUrl = null) {
-  const SIDECAR = "http://localhost:5130";
-  const HUB = "http://localhost:8085/api";
+  const SIDECAR = sidecarUrl();               // user-configurable (settings.js)
+  const HUB = "http://localhost:8085/api";    // decommissioned hub — left for a later phase
 
   let path = ep.path;
   ep.params?.filter(p => p._in === "path").forEach(p => {

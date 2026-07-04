@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-
-const SIDECAR = "http://localhost:5130";
+import { pollMs, sidecarUrl } from "../settings";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -224,7 +223,7 @@ export default function ToolCallVisualizer() {
   // ── fetch run list ──
   const fetchRuns = useCallback(async () => {
     try {
-      const res = await fetch(`${SIDECAR}/api/runs?limit=50`);
+      const res = await fetch(`${sidecarUrl()}/api/runs?limit=50`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setRuns(data.runs || []);
@@ -237,7 +236,7 @@ export default function ToolCallVisualizer() {
 
   useEffect(() => {
     fetchRuns();
-    pollRef.current = setInterval(fetchRuns, 4000);
+    pollRef.current = setInterval(fetchRuns, pollMs(4000));
     return () => clearInterval(pollRef.current);
   }, [fetchRuns]);
 
@@ -247,7 +246,7 @@ export default function ToolCallVisualizer() {
     setSteps(null);
     setStepsErr(null);
     try {
-      const res = await fetch(`${SIDECAR}/api/runs/${runId}/steps`);
+      const res = await fetch(`${sidecarUrl()}/api/runs/${runId}/steps`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setSteps(data.steps || []);
@@ -269,7 +268,7 @@ export default function ToolCallVisualizer() {
     if (!selectedId) return;
     const isActive = activeRuns.some(r => r.run_id === selectedId);
     if (!isActive) return;
-    const id = setInterval(() => fetchSteps(selectedId), 2000);
+    const id = setInterval(() => fetchSteps(selectedId), pollMs(2000));
     return () => clearInterval(id);
   }, [selectedId, activeRuns, fetchSteps]);
 

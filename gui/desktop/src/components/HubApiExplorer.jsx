@@ -10,9 +10,9 @@ import CallLogEntry from "./CallLogEntry";
 import TabSwitcher from "./TabSwitcher";
 import EndpointListItem from "./EndpointListItem";
 import LogsExplorer from "./LogsExplorer";
+import { pollMs, sidecarUrl, sidecarHost } from "../settings";
 
-const HUB = "http://localhost:8085/api";
-const SIDECAR = "http://localhost:5130";
+const HUB = "http://localhost:8085/api";  // decommissioned hub — left for a later phase
 
 // All 75+ Hub + Sidecar + App API endpoints (comprehensive list)
 const ENDPOINTS_HARDCODED = [
@@ -303,7 +303,7 @@ function buildUrl(ep, paramValues) {
   });
   const qp = ep.params.filter(p => p._in === "query" && paramValues[p.name]);
   const qs = qp.map(p => `${p.name}=${encodeURIComponent(paramValues[p.name])}`).join("&");
-  const base = ep.server === "sidecar" ? SIDECAR
+  const base = ep.server === "sidecar" ? sidecarUrl()
              : ep.rootPath ? "http://localhost:8085" : HUB;
   return base + path + (qs ? "?" + qs : "");
 }
@@ -340,7 +340,7 @@ export default function HubApiExplorer() {
   const [hubColor, setHubColor]     = useState("#e0b84c");
   const [hubLabel, setHubLabel]     = useState("localhost:8085");
   const [sidecarColor, setSidecarColor] = useState("#e0b84c");
-  const [sidecarLabel, setSidecarLabel] = useState("localhost:5130");
+  const [sidecarLabel, setSidecarLabel] = useState(sidecarHost());
   const [copied, setCopied]         = useState(false);
 
   useEffect(() => {
@@ -355,23 +355,24 @@ export default function HubApiExplorer() {
       }
     };
     check();
-    const id = setInterval(check, 5000);
+    const id = setInterval(check, pollMs(5000));
     return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
     const check = async () => {
+      const host = sidecarHost();
       try {
-        const r = await fetch("http://localhost:5130/api/health", { signal: AbortSignal.timeout(2000) });
+        const r = await fetch(`${sidecarUrl()}/api/health`, { signal: AbortSignal.timeout(2000) });
         setSidecarColor(r.ok ? "#7fb069" : "#e0b84c");
-        setSidecarLabel(r.ok ? "localhost:5130 · online" : `localhost:5130 · ${r.status}`);
+        setSidecarLabel(r.ok ? `${host} · online` : `${host} · ${r.status}`);
       } catch {
         setSidecarColor("#d9534f");
-        setSidecarLabel("localhost:5130 · offline");
+        setSidecarLabel(`${host} · offline`);
       }
     };
     check();
-    const id = setInterval(check, 5000);
+    const id = setInterval(check, pollMs(5000));
     return () => clearInterval(id);
   }, []);
 
@@ -413,7 +414,7 @@ export default function HubApiExplorer() {
       setCallLog(prev => [{ method: ep.method, path: ep.path, status: res.status, dur, ok: res.ok, ts: new Date() }, ...prev].slice(0, 50));
     } catch (e) {
       const dur = Date.now() - start;
-      const where = ep.server === "sidecar" ? "the sidecar at localhost:5130" : "Hub at localhost:8085";
+      const where = ep.server === "sidecar" ? `the sidecar at ${sidecarHost()}` : "Hub at localhost:8085";
       setResponse({ status: 0, text: `Network error: ${e.message}\n\n(Is ${where} running?)`, ok: false, dur });
       setCallLog(prev => [{ method: ep.method, path: ep.path, status: 0, dur, ok: false, ts: new Date() }, ...prev].slice(0, 50));
     }

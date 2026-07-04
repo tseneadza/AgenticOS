@@ -1,452 +1,241 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { THEMES, loadTheme, applyTheme } from "../theme";
+import {
+  loadSettings, saveSettings, resetSettings,
+  POLL_SPEEDS, DEFAULT_SIDECAR_URL, sidecarUrl,
+} from "../settings";
+import pkg from "../../package.json";
 
 // ─────────────────────────────────────────────────────────────────────────
-// EnvironmentPanel Component
-// Manages API keys, feature toggles, and system settings
-// Persists to localStorage
+// EnvironmentPanel — the Settings view (reworked).
+//
+// Every control here is wired to real behavior:
+//   Appearance  → theme.js applyTheme (synced with the native View ▸ Theme
+//                 menu via the window.__agenticOsSetTheme bridge, FR-60)
+//   Polling     → settings.pollMs(), consumed by ProjectsView, explorers,
+//                 WorkflowsWorkspace, ToolCallVisualizer
+//   Connection  → settings.sidecarUrl(), consumed by api.js + all explorers
+//   Diagnostics → read-only live info (sidecar reachability, version, storage)
+//
+// The Phase 9 panel stored API keys + toggles nothing consumed; settings.js
+// purges those legacy fields from localStorage on load.
 // ─────────────────────────────────────────────────────────────────────────
 
-const API_KEYS = [
-  {
-    id: "anthropic_api_key",
-    label: "Anthropic API Key",
-    description: "For Claude API calls",
-    required: true,
-    secured: true,
-  },
-  {
-    id: "github_token",
-    label: "GitHub Personal Access Token",
-    description: "For git operations",
-    required: false,
-    secured: true,
-  },
-];
+// Scoped stylesheet (conventions rule 3 — hover states need real CSS).
+const STYLE_ID = "sv-styles";
+const STYLE_CSS = `
+.sv-theme-btn {
+  padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 4px;
+  background: var(--bg-inset); color: var(--text); font-size: 12px;
+  cursor: pointer; text-align: left; transition: border-color 100ms, background 100ms;
+}
+.sv-theme-btn:hover { border-color: var(--border); }
+.sv-theme-btn.sv-active {
+  border-color: var(--accent); background: var(--bg-panel);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.sv-speed-btn {
+  flex: 1; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 4px;
+  background: var(--bg-inset); color: var(--text); font-size: 12px;
+  cursor: pointer; transition: border-color 100ms, background 100ms;
+}
+.sv-speed-btn:hover { border-color: var(--border); }
+.sv-speed-btn.sv-active {
+  border-color: var(--accent); background: var(--bg-panel);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.sv-btn {
+  padding: 6px 12px; border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--text-dim); cursor: pointer;
+  font-size: 12px; transition: color 100ms, border-color 100ms;
+}
+.sv-btn:hover { color: var(--text); }
+`;
 
-const FEATURE_FLAGS = [
-  {
-    id: "dark_mode",
-    label: "Dark Mode Enabled",
-    description: "Enable dark theme",
-    default: true,
-  },
-  {
-    id: "animations",
-    label: "Animations Enabled",
-    description: "Enable smooth transitions",
-    default: true,
-  },
-  {
-    id: "auto_refresh",
-    label: "Auto-refresh Logs",
-    description: "Automatically refresh log display",
-    default: true,
-  },
-];
-
-const SYSTEM_SETTINGS = [
-  {
-    id: "log_refresh_interval",
-    label: "Log Refresh Interval (seconds)",
-    description: "How often to check for new logs",
-    type: "number",
-    default: 5,
-    min: 1,
-    max: 60,
-  },
-  {
-    id: "api_timeout",
-    label: "API Timeout (seconds)",
-    description: "Maximum time to wait for API responses",
-    type: "number",
-    default: 30,
-    min: 5,
-    max: 300,
-  },
-];
-
-const DEFAULT_SETTINGS = {
-  anthropic_api_key: "",
-  github_token: "",
-  dark_mode: true,
-  animations: true,
-  auto_refresh: true,
-  log_refresh_interval: 5,
-  api_timeout: 30,
-};
-
-// ─────────────────────────────────────────────────────────────────────────
-// ApiKeyInput Sub-component
-// ─────────────────────────────────────────────────────────────────────────
-
-function ApiKeyInput({ label, description, value, onChange, masked = true, required = false, id }) {
-  const [showValue, setShowValue] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value || "");
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
-      console.error("Failed to copy:", e);
-    }
-  };
-
-  return (
-    <div style={{ marginBottom: "16px" }}>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
-        <label
-          htmlFor={id}
-          style={{
-            fontSize: "12px",
-            fontWeight: "500",
-            color: "var(--text)",
-          }}
-        >
-          {label}
-          {required && <span style={{ color: "var(--red)" }}> *</span>}
-        </label>
-      </div>
-      {description && (
-        <div style={{ fontSize: "11px", color: "var(--text-dim)", marginBottom: "4px" }}>
-          {description}
-        </div>
-      )}
-      <div style={{ display: "flex", gap: "4px" }}>
-        <input
-          id={id}
-          data-testid={`api-key-input-${id}`}
-          type={showValue ? "text" : "password"}
-          value={value || ""}
-          onChange={(e) => onChange(e.target.value)}
-          style={{
-            flex: 1,
-            padding: "6px 8px",
-            border: "1px solid var(--border)",
-            borderRadius: "4px",
-            background: "var(--bg-inset)",
-            color: "var(--text)",
-            fontSize: "12px",
-            fontFamily: "var(--mono)",
-          }}
-        />
-        {value && (
-          <>
-            <button
-              data-testid={`toggle-show-${id}`}
-              onClick={() => setShowValue(!showValue)}
-              aria-label={showValue ? "Hide" : "Show"}
-              style={{
-                padding: "6px 8px",
-                border: "1px solid var(--border)",
-                borderRadius: "4px",
-                background: "transparent",
-                color: "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: "11px",
-                transition: "all 100ms",
-              }}
-            >
-              {showValue ? "Hide" : "Show"}
-            </button>
-            <button
-              data-testid={`copy-btn-${id}`}
-              onClick={handleCopy}
-              aria-label="Copy"
-              style={{
-                padding: "6px 8px",
-                border: "1px solid var(--border)",
-                borderRadius: "4px",
-                background: "transparent",
-                color: copied ? "var(--green)" : "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: "11px",
-                transition: "all 100ms",
-              }}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
+function useScopedStyles() {
+  useEffect(() => {
+    if (document.getElementById(STYLE_ID)) return;
+    const el = document.createElement("style");
+    el.id = STYLE_ID;
+    el.textContent = STYLE_CSS;
+    document.head.appendChild(el);
+  }, []);
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// FeatureToggle Sub-component
-// ─────────────────────────────────────────────────────────────────────────
+// ─── Section wrapper ──────────────────────────────────────────────────────
 
-function FeatureToggle({ id, label, description, value, onChange }) {
+function Section({ title, hint, children }) {
   return (
-    <div
-      style={{
-        marginBottom: "12px",
-        padding: "8px",
-        borderRadius: "4px",
-        background: "var(--bg-inset)",
-        border: "1px solid var(--border-soft)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <input
-          id={`toggle-${id}`}
-          data-testid={`toggle-${id}`}
-          type="checkbox"
-          checked={value || false}
-          onChange={(e) => onChange(e.target.checked)}
-          style={{
-            cursor: "pointer",
-            width: "16px",
-            height: "16px",
-          }}
-        />
-        <label htmlFor={`toggle-${id}`} style={{ flex: 1, cursor: "pointer" }}>
-          <div style={{ fontSize: "12px", fontWeight: "500", color: "var(--text)" }}>
-            {label}
-          </div>
-          {description && (
-            <div style={{ fontSize: "11px", color: "var(--text-dim)" }}>
-              {description}
-            </div>
-          )}
-        </label>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// NumberSetting Sub-component
-// ─────────────────────────────────────────────────────────────────────────
-
-function NumberSetting({ id, label, description, value, onChange, min, max }) {
-  const [error, setError] = useState("");
-
-  const handleChange = (newValue) => {
-    const num = parseInt(newValue, 10);
-    if (isNaN(num)) {
-      setError("Must be a number");
-      return;
-    }
-    if (num < min) {
-      setError(`Minimum value is ${min}`);
-      return;
-    }
-    if (num > max) {
-      setError(`Maximum value is ${max}`);
-      return;
-    }
-    setError("");
-    onChange(num);
-  };
-
-  return (
-    <div style={{ marginBottom: "16px" }}>
-      <label
-        htmlFor={id}
-        style={{
-          display: "block",
-          fontSize: "12px",
-          fontWeight: "500",
-          color: "var(--text)",
-          marginBottom: "4px",
-        }}
-      >
-        {label}
-      </label>
-      {description && (
-        <div style={{ fontSize: "11px", color: "var(--text-dim)", marginBottom: "4px" }}>
-          {description}
-        </div>
-      )}
-      <input
-        id={id}
-        data-testid={`number-input-${id}`}
-        type="number"
-        value={value || ""}
-        onChange={(e) => handleChange(e.target.value)}
-        min={min}
-        max={max}
-        style={{
-          width: "100%",
-          padding: "6px 8px",
-          border: error ? "2px solid var(--red)" : "1px solid var(--border)",
-          borderRadius: "4px",
-          background: "var(--bg-inset)",
-          color: "var(--text)",
-          fontSize: "12px",
-          fontFamily: "var(--mono)",
-          boxSizing: "border-box",
-        }}
-      />
-      {error && (
-        <div
-          data-testid={`error-${id}`}
-          style={{
-            marginTop: "4px",
-            fontSize: "11px",
-            color: "var(--red)",
-          }}
-        >
-          {error}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// SettingRow Sub-component
-// ─────────────────────────────────────────────────────────────────────────
-
-function SettingRow({ title, children }) {
-  return (
-    <div style={{ marginBottom: "24px" }}>
+    <div style={{ marginBottom: "28px" }}>
       <div
         style={{
-          fontSize: "13px",
-          fontWeight: "600",
-          color: "var(--accent)",
-          marginBottom: "12px",
-          paddingBottom: "8px",
+          fontSize: "13px", fontWeight: 600, color: "var(--accent)",
+          marginBottom: "4px", paddingBottom: "6px",
           borderBottom: "1px solid var(--border-soft)",
         }}
       >
         {title}
       </div>
+      {hint && (
+        <div style={{ fontSize: "11px", color: "var(--text-dim)", margin: "6px 0 10px" }}>
+          {hint}
+        </div>
+      )}
       {children}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Main EnvironmentPanel Component
-// ─────────────────────────────────────────────────────────────────────────
+// ─── Diagnostics row ──────────────────────────────────────────────────────
+
+function DiagRow({ label, children, testid }) {
+  return (
+    <div
+      data-testid={testid}
+      style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "6px 8px", borderBottom: "1px solid var(--border-soft)",
+        fontSize: "12px",
+      }}
+    >
+      <span style={{ color: "var(--text-dim)" }}>{label}</span>
+      <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{children}</span>
+    </div>
+  );
+}
+
+// Approximate bytes used by the app's localStorage keys.
+function storageUsage() {
+  let bytes = 0, count = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      bytes += k.length + (localStorage.getItem(k)?.length || 0);
+      count++;
+    }
+  } catch {}
+  return { bytes, count };
+}
+
+// ─── Main component ───────────────────────────────────────────────────────
 
 export default function EnvironmentPanel({ onClose }) {
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [requiredKeysWarning, setRequiredKeysWarning] = useState("");
+  useScopedStyles();
 
-  // Load settings from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem("agentic-os.settings");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed });
-      } catch (e) {
-        console.error("Failed to parse settings:", e);
-      }
-    }
+  const [settings, setSettings] = useState(loadSettings);
+  const [theme, setTheme] = useState(loadTheme);
+  const [urlDraft, setUrlDraft] = useState(() => loadSettings().sidecar_url);
+  const [urlError, setUrlError] = useState("");
+  const [testResult, setTestResult] = useState(null); // {ok, label}
+  const [testing, setTesting] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [sidecarUp, setSidecarUp] = useState(null);
+  const [storage, setStorage] = useState(storageUsage);
+  const savedTimer = useRef(null);
 
-    // Check for required keys
-    const anthropicKey = stored ? JSON.parse(stored).anthropic_api_key : "";
-    if (!anthropicKey) {
-      setRequiredKeysWarning("Anthropic API Key is required for Claude API calls");
-    }
+  const flashSaved = useCallback(() => {
+    setSaved(true);
+    clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSaved(false), 1500);
   }, []);
+  useEffect(() => () => clearTimeout(savedTimer.current), []);
 
-  // Auto-save to localStorage with debouncing (500ms)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        setIsSaving(true);
-        localStorage.setItem("agentic-os.settings", JSON.stringify(settings));
-        setSaveSuccess(true);
-        setIsSaving(false);
-        setTimeout(() => setSaveSuccess(false), 1500);
-      } catch (e) {
-        console.error("Failed to auto-save settings:", e);
-        setIsSaving(false);
-      }
-    }, 500); // 500ms debounce to avoid excessive writes
+  const update = useCallback((patch) => {
+    setSettings(saveSettings(patch));
+    setStorage(storageUsage());
+    flashSaved();
+  }, [flashSaved]);
 
-    return () => clearTimeout(timer);
-  }, [settings]);
-
-  // Update setting value
-  const updateSetting = useCallback((key, value) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-  }, []);
-
-  // Manual save trigger (for explicit validation)
-  const handleSave = useCallback(() => {
-    // Validate required fields
-    let isValid = true;
-    if (!settings.anthropic_api_key) {
-      setRequiredKeysWarning("Anthropic API Key is required");
-      isValid = false;
+  // ── Appearance ──
+  const pickTheme = useCallback((key) => {
+    // Prefer the App.jsx bridge (FR-60) so the HUD window re-skins and the
+    // native View ▸ Theme menu stays in sync; fall back to applyTheme.
+    if (typeof window.__agenticOsSetTheme === "function") {
+      window.__agenticOsSetTheme(key);
     } else {
-      setRequiredKeysWarning("");
+      applyTheme(key);
     }
+    setTheme(key);
+    flashSaved();
+  }, [flashSaved]);
 
-    if (!isValid) return;
+  // ── Connection ──
+  const validateUrl = (raw) => {
+    const v = (raw || "").trim();
+    if (!/^https?:\/\/.+/.test(v)) return "Must start with http:// or https://";
+    try { new URL(v); } catch { return "Not a valid URL"; }
+    return "";
+  };
 
-    // Force immediate save
+  const commitUrl = useCallback((raw) => {
+    const err = validateUrl(raw);
+    setUrlError(err);
+    if (!err) {
+      update({ sidecar_url: raw.trim().replace(/\/+$/, "") });
+      setTestResult(null);
+    }
+  }, [update]);
+
+  const testConnection = useCallback(async () => {
+    const candidate = (urlDraft || "").trim().replace(/\/+$/, "");
+    if (validateUrl(candidate)) { setTestResult({ ok: false, label: "invalid URL" }); return; }
+    setTesting(true);
+    setTestResult(null);
     try {
-      setIsSaving(true);
-      localStorage.setItem("agentic-os.settings", JSON.stringify(settings));
-      setSaveSuccess(true);
-      setIsSaving(false);
-      setTimeout(() => setSaveSuccess(false), 1500);
-    } catch (e) {
-      console.error("Failed to save settings:", e);
-      setIsSaving(false);
+      const r = await fetch(`${candidate}/api/health`, { signal: AbortSignal.timeout(2500) });
+      setTestResult(r.ok ? { ok: true, label: "online" } : { ok: false, label: `HTTP ${r.status}` });
+    } catch {
+      setTestResult({ ok: false, label: "unreachable" });
+    } finally {
+      setTesting(false);
     }
-  }, [settings]);
+  }, [urlDraft]);
 
-  // Reset to defaults
+  // ── Diagnostics: sidecar reachability on mount ──
+  useEffect(() => {
+    let alive = true;
+    fetch(`${sidecarUrl()}/api/health`, { signal: AbortSignal.timeout(2500) })
+      .then((r) => { if (alive) setSidecarUp(r.ok); })
+      .catch(() => { if (alive) setSidecarUp(false); });
+    return () => { alive = false; };
+  }, [settings.sidecar_url]);
+
+  // ── Reset all ──
   const handleReset = useCallback(() => {
-    if (confirm("Reset all settings to defaults?")) {
-      // Auto-save effect persists the reset; no manual dirty flag needed.
-      setSettings(DEFAULT_SETTINGS);
-      setSaveSuccess(false);
-    }
-  }, []);
+    if (!confirm("Reset all settings to defaults? (Theme is kept.)")) return;
+    const next = resetSettings();
+    setSettings(next);
+    setUrlDraft(next.sidecar_url);
+    setUrlError("");
+    setTestResult(null);
+    flashSaved();
+  }, [flashSaved]);
 
-  // Clear a specific API key
-  const handleClearKey = useCallback((key) => {
-    updateSetting(key, "");
-  }, [updateSetting]);
+  const activeThemeLabel = THEMES.find((t) => t.key === theme)?.label || theme;
 
   return (
     <div
       data-testid="environment-panel"
       style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        background: "var(--bg)",
-        color: "var(--text)",
+        display: "flex", flexDirection: "column", height: "100%",
+        background: "var(--bg)", color: "var(--text)",
       }}
     >
       {/* Header */}
       <div
         style={{
-          padding: "12px 16px",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
+          padding: "12px 16px", borderBottom: "1px solid var(--border)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
         }}
       >
-        <h2 style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>
-          Settings
-        </h2>
+        <h2 style={{ margin: 0, fontSize: "14px", fontWeight: 600 }}>Settings</h2>
         {onClose && (
           <button
             data-testid="close-settings"
             onClick={onClose}
             style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--text-dim)",
-              cursor: "pointer",
-              fontSize: "16px",
+              background: "transparent", border: "none", color: "var(--text-dim)",
+              cursor: "pointer", fontSize: "16px",
             }}
           >
             ✕
@@ -455,131 +244,123 @@ export default function EnvironmentPanel({ onClose }) {
       </div>
 
       {/* Content */}
-      <div
-        data-testid="settings-content"
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: "16px",
-        }}
-      >
-        {/* Warnings */}
-        {requiredKeysWarning && (
-          <div
-            data-testid="required-warning"
-            style={{
-              marginBottom: "16px",
-              padding: "8px 12px",
-              background: "rgba(255, 107, 107, 0.1)",
-              border: "1px solid var(--red)",
-              borderRadius: "4px",
-              color: "var(--red)",
-              fontSize: "12px",
-            }}
-          >
-            ⚠ {requiredKeysWarning}
+      <div data-testid="settings-content" style={{ flex: 1, overflow: "auto", padding: "16px", maxWidth: "560px" }}>
+        {/* ── Appearance ── */}
+        <Section title="Appearance" hint="Applies instantly, syncs with the native View ▸ Theme menu, and persists across restarts.">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
+            {THEMES.map((t) => (
+              <button
+                key={t.key}
+                data-testid={`theme-option-${t.key}`}
+                className={`sv-theme-btn${theme === t.key ? " sv-active" : ""}`}
+                onClick={() => pickTheme(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
-        )}
+        </Section>
 
-        {/* API Keys Section */}
-        <SettingRow title="API Keys">
-          {API_KEYS.map((key) => (
-            <div key={key.id}>
-              <ApiKeyInput
-                id={key.id}
-                label={key.label}
-                description={key.description}
-                value={settings[key.id]}
-                onChange={(value) => updateSetting(key.id, value)}
-                masked={key.secured}
-                required={key.required}
-              />
-              {settings[key.id] && (
-                <button
-                  data-testid={`clear-${key.id}`}
-                  onClick={() => handleClearKey(key.id)}
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--red)",
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Clear {key.label}
-                </button>
-              )}
+        {/* ── Polling ── */}
+        <Section
+          title="Polling speed"
+          hint="Scales the refresh cadence of Projects, health chips, API/Scripts explorers, and Workflows. Open views pick the new speed up when re-opened."
+        >
+          <div style={{ display: "flex", gap: "8px" }}>
+            {POLL_SPEEDS.map((s) => (
+              <button
+                key={s.key}
+                data-testid={`polling-${s.key}`}
+                className={`sv-speed-btn${settings.polling_speed === s.key ? " sv-active" : ""}`}
+                onClick={() => update({ polling_speed: s.key })}
+              >
+                <div style={{ fontWeight: 500 }}>{s.label}</div>
+                <div style={{ fontSize: "11px", color: "var(--text-dim)" }}>{s.hint}</div>
+              </button>
+            ))}
+          </div>
+        </Section>
+
+        {/* ── Connection ── */}
+        <Section
+          title="Sidecar connection"
+          hint={`Base URL of the AgenticOS sidecar (default ${DEFAULT_SIDECAR_URL}). Used by every view; applies immediately to new requests.`}
+        >
+          <div style={{ display: "flex", gap: "6px" }}>
+            <input
+              data-testid="sidecar-url-input"
+              type="text"
+              value={urlDraft}
+              onChange={(e) => setUrlDraft(e.target.value)}
+              onBlur={() => commitUrl(urlDraft)}
+              onKeyDown={(e) => { if (e.key === "Enter") commitUrl(urlDraft); }}
+              spellCheck={false}
+              style={{
+                flex: 1, padding: "6px 8px", borderRadius: "4px",
+                border: urlError ? "2px solid var(--red)" : "1px solid var(--border)",
+                background: "var(--bg-inset)", color: "var(--text)",
+                fontSize: "12px", fontFamily: "var(--mono)",
+              }}
+            />
+            <button data-testid="test-connection" className="sv-btn" onClick={testConnection} disabled={testing}>
+              {testing ? "Testing…" : "Test"}
+            </button>
+            <button
+              data-testid="reset-sidecar-url"
+              className="sv-btn"
+              onClick={() => { setUrlDraft(DEFAULT_SIDECAR_URL); commitUrl(DEFAULT_SIDECAR_URL); }}
+            >
+              Default
+            </button>
+          </div>
+          {urlError && (
+            <div data-testid="sidecar-url-error" style={{ marginTop: "4px", fontSize: "11px", color: "var(--red)" }}>
+              {urlError}
             </div>
-          ))}
-        </SettingRow>
+          )}
+          {testResult && (
+            <div
+              data-testid="test-result"
+              style={{ marginTop: "4px", fontSize: "11px", color: testResult.ok ? "var(--green)" : "var(--red)" }}
+            >
+              {testResult.ok ? "✓" : "✗"} {testResult.label}
+            </div>
+          )}
+        </Section>
 
-        {/* Feature Flags Section */}
-        <SettingRow title="Features">
-          {FEATURE_FLAGS.map((flag) => (
-            <FeatureToggle
-              key={flag.id}
-              id={flag.id}
-              label={flag.label}
-              description={flag.description}
-              value={settings[flag.id]}
-              onChange={(value) => updateSetting(flag.id, value)}
-            />
-          ))}
-        </SettingRow>
-
-        {/* System Settings Section */}
-        <SettingRow title="System Settings">
-          {SYSTEM_SETTINGS.map((setting) => (
-            <NumberSetting
-              key={setting.id}
-              id={setting.id}
-              label={setting.label}
-              description={setting.description}
-              value={settings[setting.id]}
-              onChange={(value) => updateSetting(setting.id, value)}
-              min={setting.min}
-              max={setting.max}
-            />
-          ))}
-        </SettingRow>
+        {/* ── Diagnostics ── */}
+        <Section title="Diagnostics" hint="Read-only snapshot — refreshed when you open Settings or change the sidecar URL.">
+          <div style={{ border: "1px solid var(--border-soft)", borderRadius: "4px", background: "var(--bg-inset)" }}>
+            <DiagRow label="Sidecar" testid="diag-sidecar">
+              {sidecarUp == null ? "checking…" : sidecarUp ? (
+                <span style={{ color: "var(--green)" }}>● online</span>
+              ) : (
+                <span style={{ color: "var(--red)" }}>● offline</span>
+              )}
+            </DiagRow>
+            <DiagRow label="Sidecar URL" testid="diag-url">{sidecarUrl()}</DiagRow>
+            <DiagRow label="App version" testid="diag-version">{pkg.version}</DiagRow>
+            <DiagRow label="Active theme" testid="diag-theme">{activeThemeLabel}</DiagRow>
+            <DiagRow label="Local storage" testid="diag-storage">
+              {storage.count} keys · {(storage.bytes / 1024).toFixed(1)} KB
+            </DiagRow>
+          </div>
+        </Section>
       </div>
 
       {/* Footer */}
       <div
         style={{
-          padding: "12px 16px",
-          borderTop: "1px solid var(--border)",
-          display: "flex",
-          gap: "8px",
-          justifyContent: "flex-end",
-          alignItems: "center",
+          padding: "12px 16px", borderTop: "1px solid var(--border)",
+          display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center",
         }}
       >
-        {isSaving && (
-          <div style={{ color: "var(--text-dim)", fontSize: "12px" }}>
-            Saving...
-          </div>
-        )}
-        {saveSuccess && !isSaving && (
-          <div style={{ color: "var(--green)", fontSize: "12px" }}>
+        {saved && (
+          <div data-testid="save-indicator" style={{ color: "var(--green)", fontSize: "12px" }}>
             ✓ Saved
           </div>
         )}
-        <button
-          data-testid="reset-settings"
-          onClick={handleReset}
-          style={{
-            padding: "6px 12px",
-            border: "1px solid var(--border)",
-            borderRadius: "4px",
-            background: "transparent",
-            color: "var(--text-dim)",
-            cursor: "pointer",
-            fontSize: "12px",
-            transition: "all 100ms",
-          }}
-        >
+        <button data-testid="reset-settings" className="sv-btn" onClick={handleReset}>
           Reset to Defaults
         </button>
       </div>

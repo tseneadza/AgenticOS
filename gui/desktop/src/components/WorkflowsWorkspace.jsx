@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { get, post, fmtAge } from "../api";
+import { pollMs } from "../settings";
 
 /**
  * WorkflowsWorkspace — unified Workflows + Run Visualizer view.
@@ -227,7 +228,7 @@ export default function WorkflowsWorkspace({ ctx }) {
 
   useEffect(() => {
     fetchRuns();
-    const id = setInterval(fetchRuns, 4000);
+    const id = setInterval(fetchRuns, pollMs(4000));
     return () => clearInterval(id);
   }, [fetchRuns, refreshKey]);
 
@@ -248,7 +249,7 @@ export default function WorkflowsWorkspace({ ctx }) {
   useEffect(() => {
     if (!selRun) return;
     if (!activeRuns.some((r) => r.run_id === selRun)) return;
-    const id = setInterval(() => fetchSteps(selRun), 2000);
+    const id = setInterval(() => fetchSteps(selRun), pollMs(2000));
     return () => clearInterval(id);
   }, [selRun, activeRuns, fetchSteps]);
 

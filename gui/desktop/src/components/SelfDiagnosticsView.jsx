@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { get } from "../api";
+import { sidecarWsUrl, sidecarHost } from "../settings";
 
 /**
  * SelfDiagnosticsView — the hidden self-diagnostics dashboard (Phase 12).
@@ -19,7 +20,8 @@ import { get } from "../api";
  * conventions — inline styles can't express pseudo-states.
  */
 
-const WS_URL = "ws://localhost:5130/api/diagnostics/ws/run";
+// Sidecar WS endpoint — resolved lazily from Settings (settings.js).
+const wsUrl = () => sidecarWsUrl("/api/diagnostics/ws/run");
 const MAX_LOG = 200;
 
 const STATUS_META = {
@@ -165,7 +167,7 @@ export default function SelfDiagnosticsView({ onClose }) {
       .then((s) => {
         if (alive && s?.checks) setSystem({ checks: s.checks, summary: s.summary });
       })
-      .catch(() => setError("Sidecar unreachable — is it running on :5130?"));
+      .catch(() => setError(`Sidecar unreachable — is it running on ${sidecarHost()}?`));
     return () => { alive = false; };
   }, []);
 
@@ -191,7 +193,7 @@ export default function SelfDiagnosticsView({ onClose }) {
     setSuites({}); // clear prior suite rows so pills show "running"
     let ws;
     try {
-      ws = new WebSocket(WS_URL);
+      ws = new WebSocket(wsUrl());
     } catch {
       setError("Could not open diagnostics socket.");
       setRunning(false);

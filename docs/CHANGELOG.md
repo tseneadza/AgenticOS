@@ -1,3 +1,39 @@
+## 2026-07-03 — Settings rework: every setting now drives real behavior
+
+The Phase 9 Settings page saved API keys + toggles to
+`localStorage["agentic-os.settings"]` that NOTHING consumed (dark_mode
+duplicated theme.js, keys sat in plaintext, intervals were ignored).
+Rebuilt so every control is wired end-to-end:
+
+- **`gui/desktop/src/settings.js`** (new): settings registry mirroring
+  theme.js — load/save/subscribe on one localStorage key + derived helpers
+  `pollMs(base)` (Slow 2× / Normal / Fast ½× scaling) and `sidecarUrl()` /
+  `sidecarWsUrl()` / `sidecarHost()` (validated, trailing-slash-stripped,
+  falls back to http://localhost:5130). Loads PURGE the legacy Phase 9
+  fields — stored plaintext API keys are dropped from disk on first read.
+- **`gui/desktop/src/components/EnvironmentPanel.jsx`**: rewritten —
+  Appearance (8-theme picker via the `__agenticOsSetTheme` bridge, FR-60,
+  native View ▸ Theme menu + HUD stay in sync), Polling speed, Sidecar
+  connection (URL + Test button + Default), read-only Diagnostics (sidecar
+  online/offline, URL, app version, active theme, localStorage usage).
+  API-key fields and dead toggles removed. Scoped `sv-*` stylesheet
+  (conventions rule 3).
+- **Consumers wired — sidecar URL now read lazily per request** (applies
+  without reload): `api.js` (get/post/AG-UI WS), `utils/explorers.js`
+  `buildUrl`, HubApiExplorer (status pill label + probe), ScriptsExplorer,
+  ToolCallVisualizer, SelfDiagnosticsView (diagnostics WS + error message).
+  Hub `:8085` references deliberately untouched (decommissioned — later
+  phase).
+- **Poll intervals scaled by `pollMs()`**: ProjectsView (5s/2s status,
+  10s health), HubApiExplorer + ScriptsExplorer server checks (5s),
+  WorkflowsWorkspace + ToolCallVisualizer runs/steps (4s/2s). Base values
+  unchanged at Normal; open views pick up a new speed on remount.
+- **Tests**: `settings.test.js` (13, new), `EnvironmentPanel.test.jsx`
+  (16, rewritten), `SettingsView.integration.test.jsx` (13, rewritten —
+  covers the click → settings.js → consumer chain). Old 73 tests asserted
+  the dead Phase 9 contract; suite now 553 vitest green + 155 pytest green,
+  vite build clean.
+
 ## 2026-07-03 — Phase 13e: Integration Testing + Active Health Polling
 
 - **`gui/sidecar/launch_config.py`**: `run_health_checks()` — polls the HTTP

@@ -1,3 +1,43 @@
+# ⏹ SESSION CLOSED 2026-07-03 (evening) — SETTINGS REWORK SHIPPED (side-quest)
+
+Tony noticed the Settings view "seems to do nothing." Diagnosis: it wasn't
+broken, it was ORPHANED — the Phase 9 EnvironmentPanel saved API keys +
+toggles to `localStorage["agentic-os.settings"]` that nothing consumed.
+Rebuilt (decisions locked with Tony):
+
+1. **Redesign around real needs** — not wiring up the dead settings.
+2. **API keys REMOVED from Settings** (plaintext localStorage, no consumer;
+   sidecar owns credentials via env). settings.js purges stored legacy
+   fields — old plaintext keys are dropped from disk on first load.
+3. **Hub :8085 refs left as-is** (decommissioned — later phase).
+
+What shipped (full detail in CHANGELOG top entry):
+
+- **`gui/desktop/src/settings.js`** (new) — registry mirroring theme.js:
+  `pollMs()` (Slow/Normal/Fast scaling) + `sidecarUrl()/sidecarWsUrl()/
+  sidecarHost()` (lazy per request — URL changes apply without reload).
+- **EnvironmentPanel rewritten** — 4 wired sections: Appearance (8-theme
+  picker via `__agenticOsSetTheme` bridge), Polling speed, Sidecar
+  connection (URL + Test + Default), Diagnostics (read-only).
+- **Consumers wired:** api.js, utils/explorers.js, HubApiExplorer,
+  ScriptsExplorer, ToolCallVisualizer, SelfDiagnosticsView, ProjectsView,
+  WorkflowsWorkspace.
+- **Tests:** 42 new/rewritten (settings 13, panel 16, integration 13)
+  replacing 73 that asserted the dead Phase 9 contract.
+  **Suites: 553 vitest / 155 pytest green, vite build clean.**
+
+**Gotcha encoded:** vitest count DROPPED 584 → 553 on purpose — the old
+Settings tests tested removed features; delta = −73 + 42, verified exactly.
+
+**On-device visual check pending:** Settings view (⌘… nav → Settings) —
+theme picker, speed buttons, URL Test button, Diagnostics rows. Still also
+pending from last session: 13d ProjectsView + 13e health chips.
+
+**NEXT: Phase 13f unchanged** (SQLAlchemy consolidation — see 13e entry).
+Watch items unchanged: :8085 mystery, `gui/mockups/dashboard.html` mod.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-03 (afternoon) — 13d + 13e SHIPPED, seeding ×2
 
 One session shipped BOTH remaining build phases of the launch system:

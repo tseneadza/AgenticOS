@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import ScriptTypeBadge from "./ScriptTypeBadge";
 import ScriptGroupHeader from "./ScriptGroupHeader";
 import ScriptItem from "./ScriptItem";
+import { pollMs, sidecarUrl } from "../settings";
 
-const SIDECAR = "http://localhost:5130/api";
-const HUB = SIDECAR; // Phase 9c: native sidecar, no Hub dependency
+// Sidecar API base — lazy so the Settings sidecar-URL change applies live.
+// (Phase 9c: native sidecar, no Hub dependency.)
+const API = () => `${sidecarUrl()}/api`;
 
 // ─── Type classification ─────────────────────────────────────────────────────
 // Type hues encode meaning (semantic) and stay fixed across themes; their
@@ -234,12 +236,12 @@ export default function ScriptsExplorer() {
   useEffect(() => {
     const check = async () => {
       try {
-        const r = await fetch("http://localhost:5130/api/health", { signal: AbortSignal.timeout(2000) });
+        const r = await fetch(`${API()}/health`, { signal: AbortSignal.timeout(2000) });
         setHubOk(r.ok);
       } catch { setHubOk(false); }
     };
     check();
-    const id = setInterval(check, 5000);
+    const id = setInterval(check, pollMs(5000));
     return () => clearInterval(id);
   }, []);
 
@@ -248,7 +250,7 @@ export default function ScriptsExplorer() {
     const load = async () => {
       setLoading(true);
       try {
-        const r = await fetch(`${SIDECAR}/apps/scripts`);
+        const r = await fetch(`${API()}/apps/scripts`);
         const d = await r.json();
         const enriched = (d.scripts || []).map(s => ({
           ...s,
@@ -275,7 +277,7 @@ export default function ScriptsExplorer() {
       setScriptInfo(null);
       setInfoErr(null);
       try {
-        const r = await fetch(`${SIDECAR}/apps/scripts/info?id=${encodeURIComponent(sc.app_id + '/' + sc.name)}`);
+        const r = await fetch(`${API()}/apps/scripts/info?id=${encodeURIComponent(sc.app_id + '/' + sc.name)}`);
         if (!r.ok) throw new Error(`Hub returned ${r.status}`);
         const ct = r.headers.get("content-type") || "";
         if (!ct.includes("application/json")) throw new Error("Hub returned non-JSON (HTML catch-all)");
@@ -339,7 +341,7 @@ export default function ScriptsExplorer() {
     setRunning(true); setOutput(null);
     const start = Date.now();
     try {
-      const res = await fetch(`${SIDECAR}/apps/scripts/run`, {
+      const res = await fetch(`${API()}/apps/scripts/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ app_id: sc.app_id, script_id: sc.name }),
