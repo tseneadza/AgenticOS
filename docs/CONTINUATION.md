@@ -1,4 +1,19 @@
-# ⏹ SESSION CLOSED 2026-07-03 (evening) — SETTINGS REWORK SHIPPED (side-quest)
+# ⏹ SESSION CLOSED 2026-07-03 (evening) — SETTINGS REWORK + LIGHT-THEME FIX + VERSION SYNC
+
+Three commits, all pushed: `2fdf7e7` Settings rework · `3f94fcf` light-theme
+nav fix · `3a7b112` version sync 0.2.0 + sync_version.py. Suites at close:
+553 vitest / 155 pytest green, vite build clean, `sync_version.py --check` ✓.
+
+**Settings view on-device check: DONE** — Tony reviewed it live (light theme),
+approved, and caught two follow-ups that shipped same-session (nav contrast,
+version drift). Still pending on-device: 13d ProjectsView + 13e health chips.
+
+**NEXT: Phase 13f** (SQLAlchemy consolidation — details in the 13e entry).
+Details of this session below.
+
+---
+
+# Session Continuation — 2026-07-03 (evening) Settings rework details
 
 Tony noticed the Settings view "seems to do nothing." Diagnosis: it wasn't
 broken, it was ORPHANED — the Phase 9 EnvironmentPanel saved API keys +
@@ -29,9 +44,8 @@ What shipped (full detail in CHANGELOG top entry):
 **Gotcha encoded:** vitest count DROPPED 584 → 553 on purpose — the old
 Settings tests tested removed features; delta = −73 + 42, verified exactly.
 
-**On-device visual check pending:** Settings view (⌘… nav → Settings) —
-theme picker, speed buttons, URL Test button, Diagnostics rows. Still also
-pending from last session: 13d ProjectsView + 13e health chips.
+**On-device visual check:** Settings view DONE (Tony, light theme — looks
+good). Still pending from last session: 13d ProjectsView + 13e health chips.
 
 **Same session, follow-ups from Tony's on-device check:**
 
