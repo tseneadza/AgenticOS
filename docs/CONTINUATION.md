@@ -1,3 +1,75 @@
+# ⏹ SESSION CLOSED 2026-07-04 (early AM) — 13f COMMITTED + housekeeping + RAM fix
+
+Five commits this session, **all LOCAL / not pushed** (push when ready):
+`5c06a1c` Phase 13f · `f8b1100` docs correction · `9baa995` cruft removal ·
+`31d5205` RAM used/percent fix · plus this checkpoint commit.
+
+Working tree: only `gui/mockups/dashboard.html` (the long-standing sample-number
+tweak — agreed to revert, not yet done). Suites: 155 pytest green (re-run twice);
+frontend untouched this session so vitest unchanged (553).
+
+## What happened this session
+
+1. **Phase 13f SHIPPED + committed** (`5c06a1c`) — SQLAlchemy consolidation done
+   via subagent, reviewed + verified by me. ORM models NewsCategory/NewsFeed/Task;
+   news_db + tasks_db rewritten on the ORM (identical public APIs); db.py raw
+   `mysql.connector` retired (server-level SQLAlchemy engine for CREATE DATABASE +
+   ping); 11a/11c tests moved to `agenticos_test` fixtures. **Phase 13 CLOSED.**
+
+2. **Stale roadmap pointer corrected** (`f8b1100`) — the "LangGraph MySQL
+   checkpointer" that prior notes called the next phase is ALREADY DONE (shipped
+   2026-06-24, commit `2e4ae4a`): `core/memory.py` uses
+   `langgraph-checkpoint-mysql`'s `PyMySQLSaver`; `checkpoint*` tables live in
+   `agenticos`; `data/state.db` retired. That was the last SQLite holdout.
+   **There is NO defined next phase.**
+
+3. **Codebase cruft removed** (`9baa995` + local deletes) — ~300MB freed:
+   `.autoclaude/logs` (175MB) + monitoring.log + cache, empty
+   `.claude_agent_farm_backups`, `data/state.db.bak`, caches (all gitignored/
+   untracked). Tracked removals committed: `menubar_{right,test}.png`,
+   `icons/32x32.png.bak`, `PHASE7_GIT_COMMIT_MESSAGE.txt`,
+   `AgenticOS Enhanced copy.pdf`. AutoClaude config/scripts KEPT.
+
+4. **RAM used/percent inconsistency fixed** (`31d5205`) — System Health +
+   Diagnostics MEMORY showed e.g. `6.5 / 17.2 GB (74%)` (6.5/17.2 is only ~38%).
+   Cause: `used_gb` used psutil `vm.used` but the % used `vm.percent`
+   ((total-available)/total). `gui/sidecar/panels.py` now reports
+   `used_gb = (vm.total - vm.available)/1e9` so number + % agree
+   (~12.6/17.2 GB (73%)). One backend change fixes BOTH panels (shared
+   `panels.system_health()` source); no frontend edit. Gotcha documented in a
+   code comment.
+
+## Operational learnings (encode these)
+
+- **Sidecar must be restarted to pick up any Python change.** After the RAM fix,
+  the app still showed old values because the sidecar process (PID 68757, up
+  since Thu) was serving pre-fix code. Restarted via
+  `nohup .venv/bin/python -m gui.sidecar > /tmp/sidecar_restart.log 2>&1 &` —
+  new PID 26289 now returns the consistent `12.6/17.2 GB (73.5%)`. Panels poll
+  on an interval and refresh on their own.
+- **MacOS-MCP Shell timeouts:** pytest needs `timeout>=45`; backgrounding a
+  process with `&` in one call can hang the call — verify in a separate call.
+
+## Parked idea (NOT a committed phase)
+
+SysOps "operate your fleet" data-first dashboard redesign — Tony liked it as a
+future north-star (reorganize the grid around apps/health/cost/approvals rather
+than system internals; drop the dead :8085 Hub panel, surface Phase 13 Projects
++ health). Explicitly deferred; revisit only when Tony pulls it in.
+
+## ▶ RESUME HERE — Phase 13 CLOSED, no defined next phase. Await Tony's direction.
+
+Pending housekeeping when you resume:
+1. **Push** the 5 local commits.
+2. **Revert** `gui/mockups/dashboard.html` (throwaway mockup tweak) for a clean tree.
+3. On-device visual check still pending: 13d ProjectsView + 13e health chips
+   (`npm run tauri dev`, ⌘8 Projects).
+4. Watch: `:8085` still answers 200 (decommissioned hub) — `lsof -i :8085`.
+5. Optional: pick the next direction — pull in the SysOps redesign, or choose
+   from `docs/feature-backlog.md`.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-03 (late) — PHASE 13f SHIPPED ✅, PHASE 13 CLOSED (pending commit)
 
 SQLAlchemy consolidation done via a subagent, reviewed + independently verified
