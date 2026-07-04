@@ -74,7 +74,13 @@ def system_health() -> dict:
         "cpu_percent": psutil.cpu_percent(interval=None),
         "cpu_per_core": cpu_per_core,
         "ram": {
-            "used_gb": round(vm.used / 1e9, 1),
+            # "used" = total - available, so it agrees with vm.percent, which
+            # psutil defines as (total - available) / total, NOT used / total.
+            # On macOS vm.used (active+wired+compressed) is far below
+            # total-available (cache/inactive pages psutil won't call "free"),
+            # so vm.used / total and vm.percent disagree badly. Reporting
+            # total-available keeps the number and the percentage consistent.
+            "used_gb": round((vm.total - vm.available) / 1e9, 1),
             "total_gb": round(vm.total / 1e9, 1),
             "percent": vm.percent,
         },

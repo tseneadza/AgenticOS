@@ -1,3 +1,15 @@
+## 2026-07-04 — fix: RAM used/percent now consistent in System Health + Diagnostics
+
+The System Health panel and the expanded Diagnostics MEMORY row read the same
+`ram` object from `panels.system_health()`, which reported `used_gb` from
+psutil `vm.used` while the percentage came from `vm.percent`. Those are
+different measures — `vm.percent` is `(total - available) / total`, not
+`used / total` — so on macOS the number and the percent disagreed badly
+(e.g. `6.8 / 17.2 GB (76%)`, though 6.8/17.2 is ~40%). `used_gb` is now
+`total - available`, so the GB figure and the percentage line up
+(`~13 / 17.2 GB (76%)`). One backend change fixes both consumers; no frontend
+edit needed. Comment in `panels.py` documents the macOS gotcha.
+
 ## 2026-07-03 — Phase 13f: SQLAlchemy consolidation (data layer unified)
 
 The last two raw-SQL stores and the final `mysql.connector` bootstrap are
