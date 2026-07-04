@@ -48,11 +48,15 @@ vitest unchanged at 553. Imports clean. Raw `mysql.connector` fully retired
 3. **:8085 mystery** — decommissioned hub port still answered 200; worth
    `lsof -i :8085`.
 
-## ▶ RESUME HERE — Phase 13 is CLOSED. Next major phase:
+## ▶ RESUME HERE — Phase 13 CLOSED. No defined next phase.
 
-**LangGraph MySQL checkpointer** — move LangGraph's `data/state.db` (SQLite)
-checkpointer to MySQL. Investigate the pre-existing `checkpoint*` tables first
-(13a note). This is the last SQLite holdout.
+**Correction (verified this session):** the "LangGraph MySQL checkpointer"
+that prior notes listed as the next phase is ALREADY DONE — shipped 2026-06-24
+in commit `2e4ae4a`. `core/memory.py` uses `langgraph-checkpoint-mysql`'s
+`PyMySQLSaver`; the `checkpoint*` tables (144 checkpoints / 399 writes) live in
+the `agenticos` schema; `data/state.db` is gone. That was the LAST SQLite
+holdout. **No engineering phase is queued** — await Tony's direction on what's
+next. Minor optional cleanup: `data/state.db.bak` (696KB, Jun 24) can be removed.
 
 ---
 

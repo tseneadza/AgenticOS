@@ -242,5 +242,8 @@ launch system.
 | 13e | Integration testing (fake-app fixture: launch → port wait → health → stop) | ✅ 2026-07-03 (e2e + hard-kill + collision tests; PLUS active health polling: sidecar 10s poller, `GET /api/apps/health`, GUI health chip, probe-verified seeder — 5 endpoints seeded; suites 155/584 green) |
 | 13f | SQLAlchemy consolidation: migrate news_db/tasks_db off raw mysql.connector; convert legacy SQLite-bound tests to the MySQL fixture | ✅ 2026-07-03 (full ORM models NewsCategory/NewsFeed/Task; news_db + tasks_db rewritten on the ORM with identical public API; db.py `CREATE DATABASE`/ping via server-level SQLAlchemy engine — `mysql.connector` fully retired; 11a/11c converted to the `agenticos_test` fixtures; suite 155 green) |
 
-**Future (own phase):** LangGraph MySQL checkpointer (note: `checkpoint*`
-tables already present in the live `agenticos` schema — investigate).
+**✅ Already done (2026-06-24, commit `2e4ae4a`):** the LangGraph checkpointer
+runs on MySQL — `core/memory.py` uses `langgraph-checkpoint-mysql`'s `PyMySQLSaver`,
+the `checkpoint*` tables live in the `agenticos` schema, and `data/state.db` is
+retired (only a stale `data/state.db.bak` remains). This was the last SQLite
+holdout, so no checkpointer phase remains — the roadmap has no defined next phase.
