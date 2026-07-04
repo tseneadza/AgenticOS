@@ -225,7 +225,7 @@ a real regression test). Suite now 25 files / 574 tests green; backend 76.
 **Remaining:** on-device visual check of the reveal gesture (`npm run tauri dev`).
 
 
-## Phase 13 — Data-Driven App Launch System 🔨 IN PROGRESS (13a ✅ 2026-07-02, 13b ✅ 2026-07-03, 13c ✅ 2026-07-03)
+## Phase 13 — Data-Driven App Launch System ✅ CLOSED 2026-07-03 (13a ✅ 2026-07-02, 13b–13f ✅ 2026-07-03)
 
 Replace fragile start.sh launches with database-driven launch configuration.
 Design: `docs/PHASE13_DATA_DRIVEN_LAUNCH_SYSTEM.md` (see its "Locked
@@ -240,7 +240,7 @@ launch system.
 | 13c | Extend process_manager for multi-step launches; evolve `/api/apps/*` routes; startup reconcile sweep; API Explorer registration | ✅ 2026-07-03 (process-group kill, app_processes persistence, `GET /api/apps/processes`; 12 tests, suite 141 green) |
 | 13d | ProjectsView.jsx — card grid, Start/Stop, status polling (new nav link, principle #7) | ✅ 2026-07-03 (Projects nav + ⌘8; `GET /api/apps/{id}/launch-plan`; 7 vitest + 4 pytest; suites 581/145 green) |
 | 13e | Integration testing (fake-app fixture: launch → port wait → health → stop) | ✅ 2026-07-03 (e2e + hard-kill + collision tests; PLUS active health polling: sidecar 10s poller, `GET /api/apps/health`, GUI health chip, probe-verified seeder — 5 endpoints seeded; suites 155/584 green) |
-| 13f | SQLAlchemy consolidation: migrate news_db/tasks_db off raw mysql.connector; convert legacy SQLite-bound tests to the MySQL fixture | ⬜ |
+| 13f | SQLAlchemy consolidation: migrate news_db/tasks_db off raw mysql.connector; convert legacy SQLite-bound tests to the MySQL fixture | ✅ 2026-07-03 (full ORM models NewsCategory/NewsFeed/Task; news_db + tasks_db rewritten on the ORM with identical public API; db.py `CREATE DATABASE`/ping via server-level SQLAlchemy engine — `mysql.connector` fully retired; 11a/11c converted to the `agenticos_test` fixtures; suite 155 green) |
 
 **Future (own phase):** LangGraph MySQL checkpointer (note: `checkpoint*`
 tables already present in the live `agenticos` schema — investigate).

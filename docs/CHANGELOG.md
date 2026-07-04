@@ -1,3 +1,32 @@
+## 2026-07-03 — Phase 13f: SQLAlchemy consolidation (data layer unified)
+
+The last two raw-SQL stores and the final `mysql.connector` bootstrap are
+retired — SQLAlchemy is now the sole MySQL access layer everywhere.
+
+- **`gui/sidecar/models.py`**: added full ORM models `NewsCategory`
+  (`news_categories`), `NewsFeed` (`news_feeds`), and `Task` (`tasks`),
+  mirroring the live schema exactly. ENUM columns are portable `String(32)`
+  validated in Python; `created_at`/`updated_at` use `server_default=func.now()`
+  (tasks.`updated_at` also `onupdate=_utcnow`). Unique constraint on
+  `news_categories.name`; indexes match live.
+- **`gui/sidecar/routes/news_db.py`**: rewritten on the ORM (session-per-call).
+  Public API + return shapes unchanged, so `routes/api_news.py` needs no edits;
+  joined-feed dicts still carry `domain`/`color`, `enabled` stays a real bool,
+  seed catalogue preserved verbatim. `ensure_schema()` now delegates table
+  creation to `db.init_db()` then seeds.
+- **`gui/sidecar/routes/tasks_db.py`**: rewritten on the ORM. Same public API;
+  priority ordering via `func.field(...)`, `task_stats()` computed with
+  `func.sum(case(...))` and cast to `int` (was Decimal).
+- **`gui/sidecar/db.py`**: retired raw `mysql.connector` — `CREATE DATABASE`
+  and the availability ping now run through a server-level SQLAlchemy engine
+  (no database selected). `init_db()` stays idempotent/non-raising; the
+  Phase 13a ALTER migration step is intact.
+- **Tests**: `test_phase11a.py` + `test_phase11c.py` converted off in-memory
+  SQLite onto the conftest MySQL fixtures (`agenticos_test`), so they skip
+  cleanly when MySQL is down and test what production runs.
+- **Suites green**: `155 passed`. Frontend untouched (no JS/JSX changes);
+  Phase 13 is now CLOSED.
+
 ## 2026-07-03 — Version sync: one number everywhere (0.2.0) + light-theme nav fix
 
 - **Versions had drifted to 4 values across 5 declarations** (v0.4 brand

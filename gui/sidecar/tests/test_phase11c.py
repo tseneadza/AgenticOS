@@ -1,12 +1,13 @@
 """Phase 11c — unit tests for the REST API + full async orchestration.
 
-Self-contained; MUST NOT require a live MySQL server or the network:
-    * The REST shape tests (/templates, /subfolders, /port-check) run a tiny
-      FastAPI app that mounts ONLY ``api_projects.router`` — app.py's heavy
-      startup hooks are never imported.
-    * The orchestration test drives ``create_project_full`` against an in-memory
-      SQLite session, with GitHub creation stubbed to None (no-token path),
-      folders redirected to ``tmp_path``, and port allocation made deterministic.
+    * The REST shape tests (/templates, /subfolders) run a tiny FastAPI app
+      that mounts ONLY ``api_projects.router`` — app.py's heavy startup hooks
+      are never imported; they need no DB or network.
+    * The /port-check + orchestration tests are DB-backed (Phase 13f — against
+      the ``agenticos_test`` MySQL schema via the conftest fixtures, no more
+      in-memory SQLite) and skip cleanly when MySQL is down. GitHub creation is
+      stubbed to None (no-token path), folders redirect to ``tmp_path``, and
+      port allocation is made deterministic.
 
 Run from the repo root using the repo venv:
 
@@ -70,18 +71,22 @@ def test_list_subfolders_shape(client, monkeypatch):
 
 # ── REST: /port-check (sqlite-backed ledger) ──────────────────────────────────
 
-def test_port_check_free(client, monkeypatch):
-    from sqlalchemy import create_engine
+def test_port_check_free(client, monkeypatch, mysql_engine):
     from sqlalchemy.orm import sessionmaker
 
-    from gui.sidecar.db import Base
     from gui.sidecar import models  # noqa: F401  (registers Port on Base)
 
-    engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
+    # Phase 13f: bind to the ``agenticos_test`` MySQL schema (was in-memory
+    # SQLite). Clear any existing ports rows first for determinism.
+    Session = sessionmaker(bind=mysql_engine, future=True)
+    _cleanup = Session()
+    try:
+        _cleanup.query(models.Port).delete()
+        _cleanup.commit()
+    finally:
+        _cleanup.close()
 
-    # Point the route's DB access at the sqlite sessionmaker + neutralise probe.
+    # Point the route's DB access at the MySQL sessionmaker + neutralise probe.
     import gui.sidecar.db as db_mod
     monkeypatch.setattr(db_mod, "SessionLocal", Session)
     monkeypatch.setattr(pm, "_port_in_use", lambda port: False)
@@ -95,11 +100,7 @@ def test_port_check_free(client, monkeypatch):
 
 # ── orchestration: create_project_full end-to-end (sqlite + no network) ────────
 
-def test_create_project_full(monkeypatch, tmp_path):
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    from gui.sidecar.db import Base
+def test_create_project_full(monkeypatch, tmp_path, db_session):
     from gui.sidecar import models  # noqa: F401  (registers Project + Port)
     import gui.sidecar.github_integration as gh
 
@@ -114,11 +115,9 @@ def test_create_project_full(monkeypatch, tmp_path):
     # gui.sidecar.github_integration, so patch that module attribute.
     monkeypatch.setattr(gh, "setup_repo", lambda *a, **k: None)
 
-    # In-memory SQLite session for both allocate_port + Project registration.
-    engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
-    session = Session()
+    # Phase 13f: use the conftest ``db_session`` (agenticos_test MySQL schema)
+    # for both allocate_port + Project registration (was in-memory SQLite).
+    session = db_session
 
     events: list[tuple[str, str]] = []
 
@@ -170,4 +169,5 @@ def test_create_project_full(monkeypatch, tmp_path):
         # monorepo is not a python template -> no venv step emitted.
         assert not any(step == "venv" for step, _ in events)
     finally:
-        session.close()
+        # db_session fixture owns the session lifecycle (wipe + close).
+        pass

@@ -1,3 +1,61 @@
+# ⏹ SESSION CLOSED 2026-07-03 (late) — PHASE 13f SHIPPED ✅, PHASE 13 CLOSED (pending commit)
+
+SQLAlchemy consolidation done via a subagent, reviewed + independently verified
+by the supervising session. **NOT yet committed** — staged for Tony's review.
+
+**Suites:** 155 pytest green (independently re-run, 17.3s); no JS touched so
+vitest unchanged at 553. Imports clean. Raw `mysql.connector` fully retired
+(only docstring mentions remain).
+
+## What shipped (13f)
+
+- **`gui/sidecar/models.py`** — added 3 ORM models matching live schemas
+  exactly: `NewsCategory` (news_categories), `NewsFeed` (news_feeds), `Task`
+  (tasks). ENUMs modeled as validated `String` (models.py design rule);
+  `created_at` = `server_default=func.now()`; `tasks.updated_at` uses ORM
+  `onupdate=_utcnow` so it bumps on any dialect; `tags` = JSON; unique on
+  category.name; indexes per live.
+- **`routes/news_db.py`** — rewritten on SQLAlchemy ORM (session-per-call).
+  Public API byte-identical so `api_news.py` is untouched. `list_feeds`/
+  `get_feed` keep the joined `domain`(=category.name)/`color` keys + real-bool
+  `enabled`; ordering preserved; all 30 seed feeds copied verbatim.
+  `ensure_schema()` now delegates to `db.init_db()` then seeds if empty;
+  `is_available()` delegates to `db`.
+- **`routes/tasks_db.py`** — rewritten on ORM. Public API identical so
+  `api_tasks.py` is untouched. Priority ordering via `func.field(...)`;
+  `task_stats()` via `func.sum(case(...))` cast to `int` (was Decimal/None —
+  strictly better, JSON-safe); tags guarded to list.
+- **`gui/sidecar/db.py`** — retired raw `mysql.connector`: `CREATE DATABASE`
+  and the availability ping now run through a server-level SQLAlchemy engine
+  (`_server_url()`, no DB selected). `init_db()` stays idempotent/non-raising;
+  Phase 13a ALTER migration (step 4) intact.
+- **Tests converted off SQLite → `agenticos_test`:** `test_phase11a.py`
+  (`sqlite_session` fixture rebound to conftest `db_session` + the
+  app_registry/_port_in_use monkeypatches; bodies untouched) and
+  `test_phase11c.py` (`test_port_check_free` binds `sessionmaker(mysql_engine)`
+  + clears ports; `test_create_project_full` takes `db_session`). Both skip
+  cleanly when MySQL is down.
+- Docs same-change: CHANGELOG top entry, roadmap 13f tick + Phase 13 CLOSED.
+
+## ⚠️ Pending / next
+
+1. **COMMIT:** working tree has the 13f changes staged for review + the
+   long-standing `gui/mockups/dashboard.html` mod (pre-existing, untouched —
+   keep out of the 13f commit). Suggested: `git add gui/sidecar docs/CHANGELOG.md
+   docs/roadmap.md docs/CONTINUATION.md && git commit` then push.
+2. On-device visual checks STILL pending from prior sessions: 13d ProjectsView
+   + 13e health chips (`npm run tauri dev`, ⌘8 Projects).
+3. **:8085 mystery** — decommissioned hub port still answered 200; worth
+   `lsof -i :8085`.
+
+## ▶ RESUME HERE — Phase 13 is CLOSED. Next major phase:
+
+**LangGraph MySQL checkpointer** — move LangGraph's `data/state.db` (SQLite)
+checkpointer to MySQL. Investigate the pre-existing `checkpoint*` tables first
+(13a note). This is the last SQLite holdout.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-03 (evening) — SETTINGS REWORK + LIGHT-THEME FIX + VERSION SYNC
 
 Three commits, all pushed: `2fdf7e7` Settings rework · `3f94fcf` light-theme

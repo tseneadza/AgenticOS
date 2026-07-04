@@ -1,64 +1,41 @@
 """
-MySQL-backed task store for AgenticOS.
+SQLAlchemy-backed task store for AgenticOS.
 
-Reads connection config from ~/.agentic-os/.env (never committed to git).
-Falls back gracefully if MySQL is unavailable so the sidecar still starts.
+As of Phase 13f this store runs entirely on the shared SQLAlchemy ORM layer
+(``gui.sidecar.db`` + ``gui.sidecar.models.Task``); no raw ``mysql.connector``
+code remains. Connection config is read from ~/.agentic-os/.env (never
+committed) by ``gui.sidecar.db``; it falls back gracefully when MySQL is
+unavailable so the sidecar still starts.
 
-Connection env vars:
-    MYSQL_HOST  (default: localhost)
-    MYSQL_USER  (default: root)
-    MYSQL_PASS  (default: "")
-    MYSQL_DB    (default: agenticos)
-    MYSQL_PORT  (default: 3306)
+Public API (signatures + return shapes are stable — routes/api_tasks.py depends
+on them): is_available, list_tasks, get_task, create_task, update_task,
+delete_task, task_stats.
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
 import uuid
 from datetime import datetime
-from pathlib import Path
-from typing import Any
 
-from dotenv import load_dotenv
+from sqlalchemy import case, func
 
-# Load .env from ~/.agentic-os/.env — never raises if file is absent
-load_dotenv(Path.home() / ".agentic-os" / ".env", override=False)
+from gui.sidecar import db as _db
+from gui.sidecar.db import get_session
+from gui.sidecar.models import Task
 
 _log = logging.getLogger("agentcos.tasks_db")
 
-# ── connection config ─────────────────────────────────────────────────────────
-_CFG = {
-    "host":     os.getenv("MYSQL_HOST", "localhost"),
-    "user":     os.getenv("MYSQL_USER", "root"),
-    "password": os.getenv("MYSQL_PASS", ""),
-    "database": os.getenv("MYSQL_DB",   "agenticos"),
-    "port":     int(os.getenv("MYSQL_PORT", "3306")),
-}
-
-_AVAILABLE: bool | None = None   # None = not yet checked
-
-
-def _connect():
-    """Return a new mysql.connector connection. Raises on failure."""
-    import mysql.connector  # type: ignore
-    return mysql.connector.connect(**_CFG)
+# Columns on the Task model (used to build full task dicts).
+_TASK_COLUMNS = (
+    "id", "title", "description", "type", "status", "priority",
+    "project", "workflow", "run_id", "tags", "due_at", "started_at",
+    "completed_at", "created_at", "updated_at", "created_by", "notes",
+)
 
 
 def is_available() -> bool:
-    """True if MySQL is reachable. Result is cached after first check."""
-    global _AVAILABLE
-    if _AVAILABLE is not None:
-        return _AVAILABLE
-    try:
-        conn = _connect()
-        conn.close()
-        _AVAILABLE = True
-    except Exception as exc:
-        _log.warning("MySQL unavailable — tasks disabled: %s", exc)
-        _AVAILABLE = False
-    return _AVAILABLE
+    """True if MySQL is reachable (delegates to gui.sidecar.db)."""
+    return _db.is_available()
 
 
 def _gen_id() -> str:
@@ -66,25 +43,22 @@ def _gen_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
-def _row_to_dict(cursor, row: tuple) -> dict:
-    """Convert a database row tuple to a dict, deserializing JSON tags and datetimes.
+def _task_to_dict(t: Task) -> dict:
+    """Convert a Task row to a dict, normalising tags + datetimes.
 
-    Args:
-        cursor: The database cursor (used to read column names).
-        row: The raw row tuple from a fetchone/fetchall call.
-
-    Returns:
-        A dictionary mapping column names to their values.
+    ``tags`` is a JSON column (SQLAlchemy returns a Python list), but guard
+    for a raw string just in case; datetimes are ISO-formatted.
     """
-    cols = [d[0] for d in cursor.description]
-    d = dict(zip(cols, row))
-    # Deserialise JSON tags stored as string (mysql-connector returns str)
-    if isinstance(d.get("tags"), str):
+    d = {col: getattr(t, col) for col in _TASK_COLUMNS}
+    tags = d.get("tags")
+    if isinstance(tags, str):
+        import json
         try:
-            d["tags"] = json.loads(d["tags"])
+            d["tags"] = json.loads(tags)
         except Exception:
             d["tags"] = []
-    # Serialise datetimes to ISO strings
+    elif tags is None:
+        d["tags"] = []
     for k, v in d.items():
         if isinstance(v, datetime):
             d[k] = v.isoformat()
@@ -114,28 +88,24 @@ def list_tasks(
     Returns:
         A list of task dictionaries.
     """
-    conn = _connect()
+    s = get_session()
     try:
-        cur = conn.cursor()
-        where, params = [], []
+        q = s.query(Task)
         if status:
-            where.append("status = %s");   params.append(status)
+            q = q.filter(Task.status == status)
         if type_:
-            where.append("type = %s");     params.append(type_)
+            q = q.filter(Task.type == type_)
         if priority:
-            where.append("priority = %s"); params.append(priority)
+            q = q.filter(Task.priority == priority)
         if project:
-            where.append("project = %s");  params.append(project)
-        sql = "SELECT * FROM tasks"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY FIELD(priority,'urgent','high','medium','low'), created_at DESC"
-        sql += " LIMIT %s OFFSET %s"
-        params += [limit, offset]
-        cur.execute(sql, params)
-        return [_row_to_dict(cur, r) for r in cur.fetchall()]
+            q = q.filter(Task.project == project)
+        q = q.order_by(
+            func.field(Task.priority, "urgent", "high", "medium", "low"),
+            Task.created_at.desc(),
+        ).limit(limit).offset(offset)
+        return [_task_to_dict(t) for t in q.all()]
     finally:
-        conn.close()
+        s.close()
 
 
 def get_task(task_id: str) -> dict | None:
@@ -147,14 +117,12 @@ def get_task(task_id: str) -> dict | None:
     Returns:
         The task as a dictionary, or None if not found.
     """
-    conn = _connect()
+    s = get_session()
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
-        row = cur.fetchone()
-        return _row_to_dict(cur, row) if row else None
+        t = s.get(Task, task_id)
+        return _task_to_dict(t) if t else None
     finally:
-        conn.close()
+        s.close()
 
 
 def create_task(
@@ -188,25 +156,25 @@ def create_task(
         The newly created task as a dictionary.
     """
     task_id = _gen_id()
-    conn = _connect()
+    s = get_session()
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO tasks
-               (id, title, description, type, priority, project, workflow,
-                tags, due_at, notes, created_by)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (
-                task_id, title, description, type_, priority,
-                project, workflow,
-                json.dumps(tags or []),
-                due_at, notes, created_by,
-            ),
-        )
-        conn.commit()
-        return get_task(task_id)
+        s.add(Task(
+            id=task_id,
+            title=title,
+            description=description,
+            type=type_,
+            priority=priority,
+            project=project,
+            workflow=workflow,
+            tags=tags or [],
+            due_at=due_at,
+            notes=notes,
+            created_by=created_by,
+        ))
+        s.commit()
     finally:
-        conn.close()
+        s.close()
+    return get_task(task_id)
 
 
 def update_task(task_id: str, updates: dict) -> dict | None:
@@ -226,20 +194,17 @@ def update_task(task_id: str, updates: dict) -> dict | None:
     if fields.get("status") in ("completed", "cancelled", "failed") and "completed_at" not in fields:
         fields["completed_at"] = datetime.utcnow().isoformat()
 
-    # Serialise tags
-    if "tags" in fields and isinstance(fields["tags"], list):
-        fields["tags"] = json.dumps(fields["tags"])
-
-    conn = _connect()
+    s = get_session()
     try:
-        cur = conn.cursor()
-        set_clause = ", ".join(f"{k} = %s" for k in fields)
-        values = list(fields.values()) + [task_id]
-        cur.execute(f"UPDATE tasks SET {set_clause} WHERE id = %s", values)
-        conn.commit()
-        return get_task(task_id)
+        t = s.get(Task, task_id)
+        if t is None:
+            return None
+        for k, v in fields.items():
+            setattr(t, k, v)
+        s.commit()
     finally:
-        conn.close()
+        s.close()
+    return get_task(task_id)
 
 
 def delete_task(task_id: str) -> bool:
@@ -251,37 +216,40 @@ def delete_task(task_id: str) -> bool:
     Returns:
         True if the task was deleted, False if not found.
     """
-    conn = _connect()
+    s = get_session()
     try:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
-        conn.commit()
-        return cur.rowcount > 0
+        deleted = s.query(Task).filter(Task.id == task_id).delete()
+        s.commit()
+        return deleted > 0
     finally:
-        conn.close()
+        s.close()
 
 
 def task_stats() -> dict:
     """Summary counts by status and type."""
-    conn = _connect()
+    def _sum(expr):
+        return func.sum(case((expr, 1), else_=0))
+
+    s = get_session()
     try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT
-                COUNT(*)                                              AS total,
-                SUM(status='pending')                                AS pending,
-                SUM(status='in_progress')                            AS in_progress,
-                SUM(status='completed')                              AS completed,
-                SUM(status='cancelled')                              AS cancelled,
-                SUM(status='failed')                                 AS failed,
-                SUM(`type`='manual')                                 AS manual_count,
-                SUM(`type`='agent')                                  AS agent_count,
-                SUM(`type`='project')                                AS project_count,
-                SUM(priority='urgent' AND status='pending')          AS urgent_pending
-            FROM tasks
-        """)
-        row = cur.fetchone()
-        cols = [d[0] for d in cur.description]
-        return dict(zip(cols, row))
+        row = s.query(
+            func.count().label("total"),
+            _sum(Task.status == "pending").label("pending"),
+            _sum(Task.status == "in_progress").label("in_progress"),
+            _sum(Task.status == "completed").label("completed"),
+            _sum(Task.status == "cancelled").label("cancelled"),
+            _sum(Task.status == "failed").label("failed"),
+            _sum(Task.type == "manual").label("manual_count"),
+            _sum(Task.type == "agent").label("agent_count"),
+            _sum(Task.type == "project").label("project_count"),
+            _sum((Task.priority == "urgent") & (Task.status == "pending")).label("urgent_pending"),
+        ).one()
+        keys = (
+            "total", "pending", "in_progress", "completed", "cancelled",
+            "failed", "manual_count", "agent_count", "project_count",
+            "urgent_pending",
+        )
+        # Cast to int (JSON-serialisable; sums come back as Decimal/None).
+        return {k: int(getattr(row, k) or 0) for k in keys}
     finally:
-        conn.close()
+        s.close()

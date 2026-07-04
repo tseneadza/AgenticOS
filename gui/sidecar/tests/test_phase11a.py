@@ -1,9 +1,10 @@
 """Phase 11a — unit tests for Project Creation Scaffolding.
 
-These tests are self-contained and MUST NOT require a live MySQL server:
     * template_registry is pure (no DB / FS / network) and imported directly.
-    * project_manager.allocate_port is exercised against an in-memory SQLite
-      engine, with the app_registry lookup and TCP probe monkeypatched out.
+    * project_manager.allocate_port is exercised against the ``agenticos_test``
+      MySQL schema (via the conftest ``db_session`` fixture; Phase 13f — no
+      more in-memory SQLite), with the app_registry lookup and TCP probe
+      monkeypatched out. These DB-backed tests skip cleanly when MySQL is down.
 
 Run from the repo root using the repo venv:
 
@@ -151,32 +152,23 @@ def test_scan_codehome_structure_db_unavailable(monkeypatch):
 # ── allocate_port tests (in-memory SQLite) ────────────────────────────────────
 
 @pytest.fixture()
-def sqlite_session(monkeypatch):
-    """A SQLAlchemy session bound to a fresh in-memory SQLite DB.
+def sqlite_session(db_session, monkeypatch):
+    """A SQLAlchemy session on the ``agenticos_test`` MySQL schema.
 
-    The ``ports`` table is materialised from the real Port model, so this never
-    touches MySQL. app_registry.get_all and pm._port_in_use are neutralised.
+    Phase 13f: converted off in-memory SQLite to the conftest ``db_session``
+    fixture (which wipes every table after each test, so the ledger starts
+    clean). Skips cleanly when MySQL is down. app_registry.get_all and
+    pm._port_in_use are neutralised so allocation is deterministic.
+
+    The fixture name is kept as ``sqlite_session`` so the test bodies below are
+    unchanged.
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    from gui.sidecar.db import Base
-    from gui.sidecar import models  # noqa: F401  (registers Port on Base)
-
-    engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
-
     # Neutralise external influences on the unavailable-port set.
     from core import app_registry
     monkeypatch.setattr(app_registry, "get_all", lambda: [])
     monkeypatch.setattr(pm, "_port_in_use", lambda port: False)
 
-    session = Session()
-    try:
-        yield session
-    finally:
-        session.close()
+    yield db_session
 
 
 def test_allocate_port_sequential(sqlite_session):

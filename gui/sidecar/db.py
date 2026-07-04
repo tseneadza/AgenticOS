@@ -1,21 +1,23 @@
 """
-Phase 11a — SQLAlchemy data layer for the AgenticOS FastAPI sidecar.
+Phase 11a / 13f — SQLAlchemy data layer for the AgenticOS FastAPI sidecar.
 
-Introduces SQLAlchemy alongside the existing raw ``mysql.connector`` code
-(they coexist — the legacy modules are untouched). Tables self-bootstrap via
-``Base.metadata.create_all()`` on startup; there is no Alembic.
+SQLAlchemy is the sole access layer for the MySQL ``agenticos`` schema. As of
+Phase 13f the last of the raw ``mysql.connector`` code is retired: even the
+server-level ``CREATE DATABASE`` bootstrap now runs through a SQLAlchemy engine.
+Tables self-bootstrap via ``Base.metadata.create_all()`` on startup; there is
+no Alembic (idempotent ALTERs live in ``migrations.ensure_phase13_schema``).
 
 Connection config is read from ~/.agentic-os/.env (never committed), using the
-same env vars as the legacy stores (news_db / tasks_db):
+same env vars as the stores (news_db / tasks_db):
     MYSQL_HOST  (default: localhost)
     MYSQL_USER  (default: root)
     MYSQL_PASS  (default: "")
     MYSQL_DB    (default: AgenticOS)
     MYSQL_PORT  (default: 3306)
 
-The SQLAlchemy engine is built lazily and resiliently — importing this module
+The SQLAlchemy engines are built lazily and resiliently — importing this module
 never requires a live MySQL server, so unit tests can import it (and bind the
-models to an in-memory SQLite engine) without a database present.
+models to the ``agenticos_test`` schema) without a database present.
 """
 from __future__ import annotations
 
@@ -25,7 +27,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
@@ -59,6 +61,19 @@ def _build_url() -> str:
     return f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{db}"
 
 
+def _server_url() -> str:
+    """Build a SQLAlchemy URL to the MySQL *server* — no database selected.
+
+    Used to CREATE DATABASE (before it exists) and to ping availability,
+    mirroring ``conftest._server_url``.
+    """
+    user = quote_plus(_CFG["user"])
+    password = quote_plus(_CFG["password"])
+    host = _CFG["host"]
+    port = _CFG["port"]
+    return f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/"
+
+
 # ── declarative base + engine (lazy) ──────────────────────────────────────────
 Base = declarative_base()
 
@@ -79,27 +94,22 @@ _AVAILABLE: bool | None = None   # None = not yet checked
 _SCHEMA_READY = False
 
 
-def _connect_raw(use_db: bool = True):
-    """Return a raw mysql.connector connection (mirrors news_db._connect).
-
-    use_db=False connects to the server without selecting a database — needed
-    to CREATE DATABASE before it exists. Raises on failure.
-    """
-    import mysql.connector  # type: ignore
-    cfg = dict(_CFG)
-    if not use_db:
-        cfg.pop("database", None)
-    return mysql.connector.connect(**cfg)
-
-
 def is_available() -> bool:
-    """True if the MySQL server is reachable. Cached after first check."""
+    """True if the MySQL server is reachable. Cached after first check.
+
+    Pings via a short-lived server-level SQLAlchemy engine (no database
+    selected), so it succeeds even before the ``agenticos`` schema exists.
+    """
     global _AVAILABLE
     if _AVAILABLE is not None:
         return _AVAILABLE
     try:
-        conn = _connect_raw(use_db=False)
-        conn.close()
+        server = create_engine(_server_url(), pool_pre_ping=True, future=True)
+        try:
+            with server.connect():
+                pass
+        finally:
+            server.dispose()
         _AVAILABLE = True
     except Exception as exc:  # noqa: BLE001
         log.warning("MySQL unavailable — SQLAlchemy data layer disabled: %s", exc)
@@ -119,10 +129,11 @@ def init_db() -> None:
     """Ensure the database + tables exist. Idempotent; safe at startup.
 
     Steps:
-      1. Connect without a DB selected and ``CREATE DATABASE IF NOT EXISTS``
-         (exactly like news_db, via a raw mysql.connector connection).
+      1. ``CREATE DATABASE IF NOT EXISTS`` via a server-level SQLAlchemy engine
+         (no database selected).
       2. Import the models module so all tables register on ``Base.metadata``.
       3. ``Base.metadata.create_all(engine)`` to materialise the tables.
+      4. Apply the idempotent Phase 13a ALTER migration.
 
     If MySQL is unreachable this logs a warning and returns without raising,
     so a failed database never blocks sidecar startup.
@@ -137,16 +148,15 @@ def init_db() -> None:
 
     try:
         # 1. Create the database if it doesn't exist (no DB selected).
-        conn = _connect_raw(use_db=False)
+        server = create_engine(_server_url(), pool_pre_ping=True, future=True)
         try:
-            cur = conn.cursor()
-            cur.execute(
-                f"CREATE DATABASE IF NOT EXISTS `{_DB_NAME}` "
-                "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-            )
-            conn.commit()
+            with server.begin() as conn:
+                conn.execute(text(
+                    f"CREATE DATABASE IF NOT EXISTS `{_DB_NAME}` "
+                    "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                ))
         finally:
-            conn.close()
+            server.dispose()
 
         # 2. Import models so their tables register on Base.metadata.
         from gui.sidecar import models  # noqa: F401

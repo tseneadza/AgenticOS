@@ -40,6 +40,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 
 from gui.sidecar.db import Base
@@ -211,4 +212,94 @@ class PortCollisionLog(Base):
         return (
             f"<PortCollisionLog port={self.port!r} "
             f"apps=({self.app_id_1!r}, {self.app_id_2!r}) resolved={self.resolved!r}>"
+        )
+
+
+# ── Phase 13f — News store + Task store ORM models ────────────────────────────
+#
+# These consolidate the last two raw-SQL stores (news_db / tasks_db) onto the
+# shared SQLAlchemy layer. Schemas mirror the live `agenticos` tables exactly.
+# Per the design notes above, MySQL ENUMs are modeled as portable ``String``
+# columns validated in Python — keeping ``create_all`` working on the test
+# schema (``agenticos_test``) without dialect-specific ENUM DDL.
+
+
+class NewsCategory(Base):
+    """A news feed category (Web News view)."""
+
+    __tablename__ = "news_categories"
+    __table_args__ = (
+        UniqueConstraint("name", name="uk_news_categories_name"),
+    )
+
+    id = Column(String(64), primary_key=True)
+    name = Column(String(128), nullable=False)
+    color = Column(String(16), nullable=False, default="#888780")
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+    def __repr__(self) -> str:
+        return (
+            f"<NewsCategory id={self.id!r} name={self.name!r} "
+            f"sort_order={self.sort_order!r}>"
+        )
+
+
+class NewsFeed(Base):
+    """An RSS/Atom feed belonging to a NewsCategory."""
+
+    __tablename__ = "news_feeds"
+
+    id = Column(String(64), primary_key=True)
+    label = Column(String(255), nullable=False)
+    url = Column(String(512), nullable=False)
+    category_id = Column(String(64), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+    def __repr__(self) -> str:
+        return (
+            f"<NewsFeed id={self.id!r} label={self.label!r} "
+            f"category_id={self.category_id!r} enabled={self.enabled!r}>"
+        )
+
+
+class Task(Base):
+    """A task in the AgenticOS task system.
+
+    ``type``/``status``/``priority`` are portable ``String`` columns (the live
+    schema uses ENUMs) validated in the Python layer. ``updated_at`` bumps via
+    the ORM-level ``onupdate`` so it fires regardless of dialect.
+    """
+
+    __tablename__ = "tasks"
+
+    id = Column(String(12), primary_key=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    type = Column(String(32), nullable=False, default="manual", index=True)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    priority = Column(String(32), nullable=False, default="medium", index=True)
+    project = Column(String(100), nullable=True, index=True)
+    workflow = Column(String(100), nullable=True)
+    run_id = Column(String(12), nullable=True)
+    tags = Column(JSON, nullable=True)
+    due_at = Column(DateTime, nullable=True, index=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        onupdate=_utcnow,
+    )
+    created_by = Column(String(50), nullable=False, default="user")
+    notes = Column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return (
+            f"<Task id={self.id!r} title={self.title!r} "
+            f"status={self.status!r} priority={self.priority!r}>"
         )
