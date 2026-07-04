@@ -2,6 +2,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./api";
 import { applyTheme, loadTheme } from "./theme";
+import pkg from "../package.json"; // single source of truth for the version (scripts/sync_version.py)
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -1490,7 +1491,7 @@ export default function App() {
     <div className="shell">
       {/* FR-36: sidebar is navigation only */}
       <aside className="sidebar">
-        <div className="brand">OSA<small>agentic os · v0.4</small></div>
+        <div className="brand">OSA<small>agentic os · v{pkg.version}</small></div>
         <nav className="nav">
           {VIEWS.map((v) => (
             <button

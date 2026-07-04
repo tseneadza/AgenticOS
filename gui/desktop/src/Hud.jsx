@@ -16,6 +16,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emit, listen } from "@tauri-apps/api/event";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
+import pkg from "../package.json"; // single source of truth for the version (scripts/sync_version.py)
 import "./App.css";
 
 // Mirrors the VIEWS registry in App.jsx (id + label). Order locked to match.
@@ -95,7 +96,7 @@ export default function Hud() {
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", color: "var(--text)", overflow: "hidden" }}>
       {/* Brand header (matches the sidebar) — draggable, with Expand */}
       <div className="brand" data-tauri-drag-region style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>OSA<small>agentic os · v0.4</small></div>
+        <div>OSA<small>agentic os · v{pkg.version}</small></div>
         <button className="hud-btn" style={{ margin: 0, padding: "4px 9px", fontSize: 11 }} onClick={expand} title="Expand to the full app">
           ⤢ Expand
         </button>

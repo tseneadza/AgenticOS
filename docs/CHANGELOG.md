@@ -1,3 +1,23 @@
+## 2026-07-03 — Version sync: one number everywhere (0.2.0) + light-theme nav fix
+
+- **Versions had drifted to 4 values across 5 declarations** (v0.4 brand
+  badge hardcoded in App.jsx/Hud.jsx, 0.2.0 tauri.conf.json + sidecar
+  FastAPI, 0.1.0 package.json + Cargo.toml) — surfaced by the new Settings
+  Diagnostics row. All set to **0.2.0** (Tony's call).
+- **`scripts/sync_version.py`** (new): `gui/desktop/package.json` is the
+  single source of truth; script rewrites tauri.conf.json, Cargo.toml,
+  Cargo.lock (desktop entry), and sidecar `FastAPI(version=)`. Modes:
+  sync / `--set X.Y.Z` / `--bump major|minor|patch` / `--check` (exit 1 on
+  drift). Errors loudly if a target's pattern is missing.
+- **App.jsx + Hud.jsx brand badges** now render `v{pkg.version}` from
+  package.json — no more hand-edited version strings in JSX.
+- **`docs/VERSIONING.md`** (new): procedure + bump policy — minor per
+  completed roadmap phase, patch for fixes between phases.
+- **Light-theme fix** (separate commit `3f94fcf`): `.nav-item.active`,
+  `.nav-item:hover`, `.side-item:hover`, `.approval` used hardcoded dark
+  hexes — unreadable dark-on-dark chips on light themes; now derived from
+  the active theme via color-mix.
+
 ## 2026-07-03 — Settings rework: every setting now drives real behavior
 
 The Phase 9 Settings page saved API keys + toggles to

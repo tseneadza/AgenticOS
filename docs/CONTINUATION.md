@@ -33,6 +33,15 @@ Settings tests tested removed features; delta = −73 + 42, verified exactly.
 theme picker, speed buttons, URL Test button, Diagnostics rows. Still also
 pending from last session: 13d ProjectsView + 13e health chips.
 
+**Same session, follow-ups from Tony's on-device check:**
+
+- **Light-theme nav fix** (`3f94fcf`) — `.nav-item.active`/hovers/`.approval`
+  used hardcoded dark hexes; now color-mix from theme tokens.
+- **Version sync** — 5 version declarations had 4 values; all now **0.2.0**.
+  `scripts/sync_version.py` (package.json = source of truth; `--bump`/`--set`/
+  `--check`), brand badges import pkg.version, procedure in
+  **docs/VERSIONING.md**. Policy locked: minor per phase, patch between.
+
 **NEXT: Phase 13f unchanged** (SQLAlchemy consolidation — see 13e entry).
 Watch items unchanged: :8085 mystery, `gui/mockups/dashboard.html` mod.
 
