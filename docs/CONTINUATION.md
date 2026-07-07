@@ -1,3 +1,59 @@
+# ⏹ SESSION CLOSED 2026-07-07 — OSA WIRED INTO THE AGENT VIEW ✅ (typed chat live)
+
+Follow-on to 14a (same day). Two shipped + pushed commits make OSA actually
+typeable in the app. **On-device visual check by Tony still pending.**
+
+## What shipped
+
+1. **Bug fix — `GET /api/agent/models` regression** (`7030ca6`). The endpoint
+   had regressed to a thin `registry()` payload missing `active` / `ollama_up`
+   and per-model `available` / `is_local`, so `AgentView` treated the active
+   model as unavailable and **disabled the chat textarea** (this is why Tony
+   couldn't type). Restored it to delegate to `core.llm.list_models()` (its
+   documented payload). Verified live: active=`qwen2.5:7b-instruct`
+   `available:true`, both cloud models `available:true` (Anthropic key good).
+   Full suite 199 passed.
+2. **Agent view now chats with OSA** (`8d920d0`) — Tony's decision: **replace**
+   the governor in this view. `AgentView` (`gui/desktop/src/App.jsx`) now POSTs
+   the synchronous `/api/osa/chat` (`{message, thread_id}`), keeps a local
+   transcript, persists `thread_id` across the session, renders `tool_trace`
+   chips + a per-turn route/model badge, and shows a read-only OSA status strip
+   from `/api/osa/state`. Removed the governor model selector + escalate toggle +
+   `activeAvailable` gating; input is enabled whenever OSA is ready. Governor
+   API paths left intact (just unused by this view). vitest 558 passed (5 new).
+
+## Design decisions locked this session
+
+- **Q1 RESOLVED:** on the Agent view, **OSA replaces the governor** (governor
+   still reachable via its API, and still powers Workflows). Recorded in
+   `docs/PHASE14_OSA_ASSISTANT.md` §6.0.
+- **Presence model (Tony):** OSA is an ambient presence on every dashboard —
+   an OSA presence *area* on non-Agent views (JARVIS output/captions), and the
+   Agent view is the two-way *typing* home. That ambient presence on other views
+   is still TODO (14e). Doc §6.0.
+- OSA chat is **synchronous request/response** for now ("thinking…" then reply);
+   token streaming over AGUI is a later enhancement.
+
+## ▶ RESUME HERE
+
+1. **Tony: on-device visual check** — `npm run tauri dev`, open the **Agent**
+   view, confirm the box types to OSA (reply + tool chips + route badge + status
+   strip look right). Sidecar was restarted this session (current PID via
+   `pgrep -f gui.sidecar`).
+2. Then **14b** (deferred): OSA tools `apps_health` / `list_projects` /
+   `web_news`; destructive-control approval gate (`app_stop` → constitution +
+   bridge inline approval in the Agent view); fake-app fixture tests.
+3. Later: ambient OSA presence area on non-Agent views (14e), voice (14d),
+   token streaming.
+
+## Still open / housekeeping
+
+- `.env.local` still holds the `sk-admin-` key under `ANTHROPIC_API_KEY` —
+   relabel to `ANTHROPIC_ADMIN_KEY`.
+- Sidecar must be restarted to pick up Python changes (done this session).
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 — PHASE 14a SHIPPED ✅ (OSA text MVP, committed + pushed)
 
 **Phase 14a — OSA text MVP — BUILT, GREEN, COMMITTED + PUSHED.** Built via a
