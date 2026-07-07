@@ -1,3 +1,174 @@
+# ⏹ SESSION CLOSED 2026-07-07 — PHASE 14a SHIPPED ✅ (OSA text MVP, committed + pushed)
+
+**Phase 14a — OSA text MVP — BUILT, GREEN, COMMITTED + PUSHED.** Built via a
+subagent, independently verified by the supervising session (diffs read, full
+suite re-run). Type-to-OSA works end to end: it answers in persona and can drive
+one control tool. **No voice** (that's 14d).
+
+## What shipped (14a)
+
+1. **Soul fork (locked with Tony — OSA-only sharp persona).** Sharp persona →
+   new `config/Soul_OSA.md` (3242 B). `config/Soul.md` restored to the plainer
+   pre-rewrite identity from git HEAD (942 B; `git diff` empty) so governor +
+   briefing get the shared plain soul again. `core/soul.py` gained an optional
+   `soul_name` param on `identity_preamble`/`load_soul`/`soul_path` (defaults to
+   `Soul.md`; governor/briefing call the no-arg form, unchanged). `Memory.md`
+   stays shared. **The Soul.md-scope open item from last session is RESOLVED.**
+2. **`agents/osa_agent.py`** — dedicated LangGraph ReAct agent mirroring the
+   governor: spoken-style/status-first system prompt over the `Soul_OSA.md`
+   preamble + tool manifest; plain LangChain-free `OSAToolbox` of guarded,
+   string-returning tools (`system_health`, `app_status`, `start_app`,
+   `stop_app`, `remember`) over existing capability (`panels.py`,
+   `process_manager.py`, `soul.py`); `constitution.guard` on every side-effect.
+   `build_agent` compiles with the MySQL checkpointer
+   (`core.memory.get_checkpointer`). **Model routing:** pure `route_turn`
+   heuristic → `pick_model` (local Ollama for chit-chat/acks, Claude for
+   reasoning + any tool turn). **Ollama ensure-on-init (decision #9):**
+   `warm_ollama()` calls `llm.ensure_ollama_running()` once (cached, best-effort,
+   never raises); if down, local turns fall back to Claude.
+3. **`gui/sidecar/routes/api_osa.py`** — `POST /api/osa/chat` (warms Ollama,
+   routes, runs the checkpointed graph under a `thread_id`, returns spoken reply
+   + tool_trace) and `GET /api/osa/state` (active model, ollama up/warmed, ready).
+   Registered in `app.py` (`include_router`) and in `HubApiExplorer.jsx` (both
+   routes, api-registry rule). CHANGELOG entry added.
+4. **Tests:** `gui/sidecar/tests/test_phase14a_osa.py` (44 new) — routing
+   classifier, Ollama warm up/down/binary-missing/cached-once/fallback, toolbox
+   tools + guard/approval/blocked + remember, routes via TestClient (agent +
+   checkpointer patched). **Full suite: 199 passed** (re-run independently by the
+   supervisor, 18.4s; 19 warnings are pre-existing FastAPI on_event deprecations).
+
+## ⚠️ Open / flagged for next session
+
+- **`.env.local` relabel still pending:** repo `.env.local` holds the `sk-admin-`
+  admin key under `ANTHROPIC_API_KEY` — relabel to `ANTHROPIC_ADMIN_KEY`. (The
+  working key lives in `~/.agentic-os/.env`; that's what the sidecar loads.)
+- **Sidecar restart** needed to serve the new routes + key + Soul files live.
+- **14b approval gates:** `app_start`/`app_stop` are NOT in
+  `constitution.yaml` `approval_required`, so they pass the guard straight
+  through today (blocked-substring check still applies) — matches
+  process_manager's own policy. Adding explicit destructive-control approval is
+  14b work; the `_guarded` plumbing is already in place.
+
+## ▶ RESUME HERE — Phase 14b (tools + control/monitoring + approval gates)
+
+Per design doc §8: wire the remaining tools (`list_projects`, `apps_health`,
+`web_news`), add destructive-control approval gates via the Constitution, tests
+spawning a fake app (reuse Phase 13c/e fixtures). Then 14c (OSA nav view / ⌘9),
+14d (voice), 14e (HUD + proactive), 14f (hardening). Full checklist: design doc
+§8. Build via subagents (Tony's preference), supervisor-verified.
+
+## Verify
+
+```bash
+cd ~/Codehome/AgenticOS && .venv/bin/python -m pytest -q   # expect 199 passed
+git log --oneline -1                                        # the 14a commit
+```
+
+---
+
+# ⏹ SESSION CLOSED 2026-07-07 — PHASE 14 (OSA) DESIGN + PERSONA + KEY FIX + DIAGRAM
+
+**New capability kicked off: Phase 14 — OSA, a voice-driven ambient assistant
+(JARVIS analog).** Design + setup session; **no OSA code built yet.** All changes
+are **LOCAL / uncommitted:** `docs/PHASE14_OSA_ASSISTANT.md` (new),
+`docs/diagrams/OSA_voice_architecture.excalidraw` (new), `config/Soul.md`
+(rewritten). Suites untouched (not run this session).
+
+## What happened this session
+
+1. **Design doc created** — `docs/PHASE14_OSA_ASSISTANT.md`. Architecture grounded
+   in the real repo: OSA is a voice+conversation shell over existing machinery
+   (LangGraph, `core/llm.py` Claude+Ollama routing, `core/soul.py` Soul/Memory,
+   MySQL checkpointer, process_manager control, health poller, HUD). Subphases
+   14a–14f. **Read this doc first next session.**
+
+2. **Locked decisions (interview with Tony):**
+   - Name **OSA**, wake word "OSA", mimics JARVIS in role not identity.
+   - v1 scope = all four (conversation · system/app control · proactive
+     monitoring · voice), phased.
+   - **Voice = local/offline:** openWakeWord → faster-whisper → Piper.
+   - **Brain = dedicated `agents/osa_agent.py` LangGraph graph** (NOT a governor
+     fork), sharing the same MySQL memory + Soul/Memory.
+   - **Model = both, routed** (`core/llm.py`): local Ollama for quick/private
+     turns, Claude for reasoning + tool use.
+   - **Surface = both:** new OSA nav view (⌘9) + HUD orb presence.
+   - **Decision #9 — Ollama lifecycle = ensure-on-OSA-init, NOT ensure-on-boot.**
+     Confirmed the sidecar does NOT start Ollama at boot (none of the 8
+     `@app.on_event("startup")` hooks touch it; `ollama serve` is spawned lazily
+     by `core/llm.ensure_ollama_running()` only when `list_models(ensure_ollama
+     =True)` runs, e.g. `/api/models?start=true`). OSA warms Ollama on its OWN
+     first-use (agent/route init + voice-service start), best-effort, Claude/text
+     fallback. Folded into the 14a checklist.
+
+3. **Anthropic key gap FOUND + FIXED.** `~/.agentic-os/.env` (the file the sidecar
+   loads via `core/memory.py`/`gui/sidecar/db.py`) had only `ANTHROPIC_ADMIN_KEY`
+   = an `sk-admin-` **admin** key; repo `.env.local`'s `ANTHROPIC_API_KEY` was the
+   SAME admin key (mislabeled). Admin keys can't call the Messages API — live test
+   returned **HTTP 401 invalid x-api-key**, so the existing governor/briefing cloud
+   path was silently failing to local/template. Tony created a proper
+   `sk-ant-api03-` key and added `ANTHROPIC_API_KEY` to `~/.agentic-os/.env`;
+   **re-test returns HTTP 200** (Claude Haiku replied). Repo `.env.local` still
+   holds the admin key under `ANTHROPIC_API_KEY` — relabel later. Ollama **UP**.
+
+4. **`config/Soul.md` rewritten** to deepen OSA's persona per interview: cheeky,
+   dry, witty/sarcastic with an earned cutting edge; calm+competent underneath;
+   **a blunt sparring partner** (challenges Tony, not a yes-man); warm where it
+   counts. Addresses Tony as **"Tony"** casually / **"Sir"** for acks + serious
+   moments. Spoken-economy + status-first delivery. Signature habits left to
+   emerge. Boundaries: confirm destructive actions; rare high-signal proactive
+   interrupts; edge stays affectionate. NOTE: the soul was ALREADY named "Osa" —
+   OSA is the existing identity, now voiced/embodied, not a new one.
+
+5. **Diagram incorporated.** Tony's prior-session
+   `OSA_voice_architecture.excalidraw` copied into
+   `docs/diagrams/OSA_voice_architecture.excalidraw` and linked from the design
+   doc §2 (editable source-of-truth; ASCII mirror kept inline). Matches the doc's
+   three-tier design: voice service → sidecar/osa_agent → Tauri UI (OSAView + HUD).
+
+## ⚠️ Open / flagged for next session
+
+- **Soul.md scope fork:** Soul.md loads into EVERY agent (governor + briefing), so
+  the sharper OSA tone now colors the morning brief too. Decide: keep shared, or
+  have `osa_agent` load this soul while governor/briefing keep a plainer one.
+- **Sidecar restart needed** to load the new `ANTHROPIC_API_KEY` + new Soul.md.
+- Repo `.env.local` `ANTHROPIC_API_KEY` still holds the admin key — relabel to
+  `ANTHROPIC_ADMIN_KEY` to avoid future confusion.
+
+## ▶ RESUME HERE — build Phase 14a (text MVP), via a subagent (Tony's preference)
+
+1. **14a:** `agents/osa_agent.py` (LangGraph graph; system prompt = Soul.md +
+   Memory.md via `core/soul.py`; MySQL checkpointer via `core/memory.py`; model
+   routing via `core/llm.py`) + `gui/sidecar/routes/api_osa.py`
+   (`POST /api/osa/chat`, `GET /api/osa/state`); register routes in
+   `HubApiExplorer.jsx` (api-registry rule); **Ollama ensure-on-OSA-init**
+   (decision #9) with Ollama up/down/binary-missing tests; pytest for graph +
+   routes against `agenticos_test`. Deliverable: type to OSA → in-persona reply
+   + one control tool call.
+2. Resolve the Soul.md-scope + `.env.local` relabel items above.
+3. Then 14b (tools/control/monitoring) → 14c (OSA nav view) → 14d (voice) →
+   14e (HUD + proactive) → 14f (hardening). Full checklist in the design doc §8.
+
+## Verify
+
+```bash
+cd ~/Codehome/AgenticOS
+# key works (expect 200):
+K=$(grep '^ANTHROPIC_API_KEY=' ~/.agentic-os/.env | cut -d= -f2-); \
+  curl -s -o /dev/null -w '%{http_code}\n' https://api.anthropic.com/v1/messages \
+  -H "x-api-key: $K" -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' \
+  -d '{"model":"claude-haiku-4-5-20251001","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}'
+curl -s -m2 http://localhost:11434/api/tags >/dev/null && echo "ollama UP" || echo "ollama down"
+# restart sidecar to load new key + Soul.md:
+# .venv/bin/python -m gui.sidecar   (or via the app)
+```
+
+## Watch
+- `docs/PHASE14_OSA_ASSISTANT.md`, `docs/diagrams/OSA_voice_architecture.excalidraw`,
+  `config/Soul.md` are uncommitted — the whole session's output; commit when ready.
+- `gui/mockups/dashboard.html` long-standing pre-existing mod, still untouched.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-04 (early AM) — 13f COMMITTED + housekeeping + RAM fix
 
 Five commits this session, **all LOCAL / not pushed** (push when ready):

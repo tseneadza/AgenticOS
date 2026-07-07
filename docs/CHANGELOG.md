@@ -1,3 +1,41 @@
+## 2026-07-07 — Phase 14a: OSA assistant — text MVP (agent + routes)
+
+First slice of Phase 14 (OSA, the JARVIS-style assistant): type to OSA, it
+replies in its persona and can drive one control tool. No voice (that's 14d).
+
+- **Soul fork** (locked decision — OSA-only sharp persona): the sharp OSA
+  persona moved to `config/Soul_OSA.md`; `config/Soul.md` was restored to the
+  plainer pre-rewrite identity (recovered from git HEAD) so the governor +
+  briefing agents get the shared, plainer soul again. `core/soul.py` gained an
+  optional `soul_name` parameter on `identity_preamble` / `load_soul` /
+  `soul_path` (defaults to `Soul.md`; governor/briefing call the no-arg form
+  unchanged). Memory (`Memory.md`) stays shared across all agents.
+- **`agents/osa_agent.py`** — dedicated LangGraph ReAct agent tuned for OSA:
+  spoken-style, status-first system prompt on top of the `Soul_OSA.md` preamble
+  + a tool manifest (mirrors the governor). A plain, LangChain-free `OSAToolbox`
+  of guarded, string-returning tools (`system_health`, `app_status`,
+  `start_app`, `stop_app`, `remember`) wraps existing capability
+  (`gui/sidecar/panels.py`, `core/process_manager.py`, `core/soul.py`); every
+  side-effectful call passes `constitution.guard` like the governor. `build_agent`
+  compiles the graph with the MySQL checkpointer (`core.memory.get_checkpointer`)
+  under a per-conversation `thread_id` so threads are durable.
+- **Model routing (decision #6):** `route_turn` / `pick_model` — a cheap, pure,
+  unit-tested classifier picks `local` (Ollama) for chit-chat/acks and `default`
+  (Claude) for reasoning + any tool-worthy turn.
+- **Ollama ensure-on-OSA-init (decision #9):** `warm_ollama()` calls
+  `core.llm.ensure_ollama_running()` at most once per process (best-effort,
+  cached, non-blocking). If Ollama can't come up, local turns fall back to
+  Claude — OSA never hard-fails. Tested up, down, and binary-missing.
+- **`gui/sidecar/routes/api_osa.py`** — `POST /api/osa/chat`
+  (`{message, thread_id?}` → spoken reply + tool trace; warms Ollama, routes,
+  runs the checkpointed graph) and `GET /api/osa/state` (active model, Ollama
+  up/warmed, ready flag). Registered in `gui/sidecar/app.py` and in
+  `gui/desktop/src/components/HubApiExplorer.jsx` (api-registry rule).
+- **Tests**: `gui/sidecar/tests/test_phase14a_osa.py` (44 tests) — routing,
+  toolbox guard/approval/`remember`, warm-on-init (up/down/missing/exception),
+  routes via TestClient (agent + checkpointer patched, no live LLM/MySQL), and
+  the soul fork. **Suite green: `199 passed`.**
+
 ## 2026-07-04 — fix: RAM used/percent now consistent in System Health + Diagnostics
 
 The System Health panel and the expanded Diagnostics MEMORY row read the same

@@ -127,6 +127,10 @@ const ENDPOINTS_HARDCODED = [
   { group:"Diagnostics (Sidecar)", server:"sidecar", method:"GET", path:"/api/diagnostics/cached", desc:"Last cached full diagnostics result (system + pytest + vitest)", params:[] },
   // WS /api/diagnostics/ws/run — streams a full pytest + vitest + system run (not HTTP-invocable from this Explorer)
 
+  // ─── OSA Assistant (Sidecar) — Phase 14a text MVP ────────────────────
+  { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/chat",  desc:"Run one OSA turn — spoken-style reply + tool trace (routes local/cloud per turn)", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"message":"how\'s my memory?","thread_id":"osa-abc123"}'}] },
+  { group:"OSA (Sidecar)", server:"sidecar", method:"GET",  path:"/api/osa/state", desc:"OSA readiness: active model, Ollama up/warmed, ready flag", params:[] },
+
   // ─── Keno (Georgia Lottery) (Flask @ :5000) ──────────────────────────
   { group:"Keno (Flask)", method:"GET",  path:"/api/status",        desc:"API health check", params:[] },
   { group:"Keno (Flask)", method:"GET",  path:"/api/draws/latest",  desc:"Get latest draws from database", params:[{name:"count",_in:"query",type:"number",required:false,hint:"5 (max 100)"}] },

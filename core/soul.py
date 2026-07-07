@@ -36,9 +36,30 @@ def _resolve(names: tuple[str, ...]) -> Path:
     return _CONFIG / names[0]
 
 
-def soul_path() -> Path:
-    """Return the resolved path to the Soul identity file."""
-    return _resolve(_SOUL_NAMES)
+def _soul_names(soul_name: str | None) -> tuple[str, ...]:
+    """Resolve which soul-file candidates to load.
+
+    ``None`` (the default) keeps the historical behaviour — the shared
+    ``Soul.md`` (with a ``.yaml`` fallback). A concrete name like
+    ``"Soul_OSA.md"`` selects a forked persona file, so the governing/briefing
+    agents can keep the plain shared identity while OSA loads its sharper one.
+    """
+    if not soul_name:
+        return _SOUL_NAMES
+    stem = Path(soul_name).name  # strip any path components (defensive)
+    if stem.endswith(".md"):
+        base = stem[: -len(".md")]
+        return (stem, f"{base}.yaml")
+    return (stem,)
+
+
+def soul_path(soul_name: str | None = None) -> Path:
+    """Return the resolved path to the Soul identity file.
+
+    Pass ``soul_name`` (e.g. ``"Soul_OSA.md"``) to select a forked persona;
+    omit it to resolve the shared ``Soul.md``.
+    """
+    return _resolve(_soul_names(soul_name))
 
 
 def memory_path() -> Path:
@@ -54,9 +75,13 @@ def _read(path: Path) -> str:
         return ""
 
 
-def load_soul() -> str:
-    """Load and return the Soul identity text from config/Soul.md."""
-    return _read(soul_path())
+def load_soul(soul_name: str | None = None) -> str:
+    """Load and return the Soul identity text.
+
+    Defaults to ``config/Soul.md``; pass ``soul_name`` to load a forked persona
+    file (e.g. ``"Soul_OSA.md"``).
+    """
+    return _read(soul_path(soul_name))
 
 
 def load_memory() -> str:
@@ -64,13 +89,16 @@ def load_memory() -> str:
     return _read(memory_path())
 
 
-def identity_preamble() -> str:
+def identity_preamble(soul_name: str | None = None) -> str:
     """Compose the Soul + Memory block to prepend to an agent's system prompt.
 
     Returns "" when neither file has content, so callers can inject
-    unconditionally without emitting an empty header.
+    unconditionally without emitting an empty header. ``soul_name`` selects a
+    forked persona file (e.g. ``"Soul_OSA.md"``); omit it for the shared
+    ``Soul.md`` — so existing callers (governor, briefing) are unaffected.
+    Memory (``Memory.md``) is always shared across every agent.
     """
-    soul = load_soul()
+    soul = load_soul(soul_name)
     memory = load_memory()
     if not soul and not memory:
         return ""
