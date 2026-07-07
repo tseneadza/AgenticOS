@@ -70,7 +70,8 @@ OSA_SYSTEM = (
     "apps are up' / 'are my apps healthy' -> apps_health; 'what projects do I "
     "have' / 'list my projects' -> list_projects; 'launch X' / 'start X' -> "
     "start_app; 'stop X' / 'shut down X' -> stop_app; 'remember that ...' -> "
-    "remember.\n"
+    "remember; 'switch to Sonnet' / 'use your local brain' / 'back to auto' "
+    "-> switch_model.\n"
     "- Side-effectful actions pass a safety guard. If a destructive action comes "
     "back 'DENIED', it just needs Tony's OK first — don't treat it as a hard "
     "failure or tell him to authorize it elsewhere. Say what you're about to do "
@@ -176,25 +177,61 @@ def route_turn(message: str) -> str:
     return "default"
 
 
-def pick_model(message: str, *, ollama_ready: bool | None = None) -> str:
-    """Resolve a turn to a concrete alias, honoring Ollama availability.
+def _pin_is_local(pin: str) -> bool:
+    """Whether a pinned model id runs on a local provider (Ollama).
 
-    Combines ``route_turn`` with the ensure-on-init state: if a turn would go
-    to ``local`` but Ollama isn't up, it falls back to ``default`` (Claude) so
-    OSA never hard-fails on a cold/absent local model (decision #9 / §10).
+    Registry metadata only — no network. Unknown ids (which validation should
+    have kept out) are treated as cloud so the pin is still honored verbatim.
+    """
+    try:
+        from core import llm
+
+        info = llm.get_model_info(pin)
+        return bool(info is not None and info.is_local)
+    except Exception:  # noqa: BLE001 — never let a lookup break routing
+        return False
+
+
+def pick_model(
+    message: str,
+    *,
+    ollama_ready: bool | None = None,
+    pin: str | None = None,
+) -> str:
+    """Resolve a turn to an alias or pinned model id, honoring the brain pin.
+
+    Pin rules (OSA brain switching, 2026-07-07):
+      * ``pin`` is a cloud model  → that id for EVERY turn, chit-chat included.
+      * ``pin`` is a local model  → that id for conversational turns; any
+        tool-worthy turn (``route_turn`` says ``default``) escalates to Claude
+        because 7B local models are unreliable tool-callers; Ollama down →
+        ``default`` too (the existing never-hard-fail fallback).
+      * ``pin`` is None (auto)    → today's router, unchanged: ``route_turn``
+        plus the Ollama-down downgrade (decision #9 / §10).
 
     Args:
         message: The user's turn text.
         ollama_ready: Whether Ollama is up. ``None`` uses the cached warm state.
+        pin: Pinned model id from ``gui.sidecar.osa_settings.get_model_pin``,
+            or ``None`` for automatic routing. Passed explicitly by the caller
+            (the chat route) so this function stays pure and testable.
 
     Returns:
-        ``"local"`` or ``"default"``.
+        ``"local"``, ``"default"``, or a concrete pinned model id — all three
+        pass through ``core.llm.resolve`` unchanged or alias-mapped.
     """
-    alias = route_turn(message)
-    if alias == "local":
-        ready = _ollama_ready if ollama_ready is None else ollama_ready
+    ready = _ollama_ready if ollama_ready is None else ollama_ready
+    if pin:
+        if not _pin_is_local(pin):
+            return pin
+        if route_turn(message) == "default":
+            return "default"  # tool guardrail: local pins don't get the keys
         if not ready:
-            return "default"
+            return "default"  # never hard-fail on a cold/absent local model
+        return pin
+    alias = route_turn(message)
+    if alias == "local" and not ready:
+        return "default"
     return alias
 
 
@@ -435,6 +472,64 @@ class OSAToolbox:
 
         return self._run("list_projects", "", _do)
 
+    # ------------------------------------------------------- brain switching
+    def switch_model(self, target: str) -> str:
+        """Switch OSA's brain — pin every turn to one model, or back to auto.
+
+        Use for 'switch to Sonnet', 'use your local brain', 'back to auto'.
+        ``target`` is the brain in the user's words ('sonnet', 'haiku',
+        'local', 'qwen', a full model id, or 'auto'). The pin is durable
+        (survives restarts); a local pin still sends tool work to Claude.
+        Not destructive — no approval needed.
+        """
+        target = (target or "").strip()
+
+        def _do() -> str:
+            """Resolve the spoken name, validate, pin, confirm in persona."""
+            from core import llm
+            from gui.sidecar import osa_settings
+
+            res = osa_settings.resolve_brain(target)
+            status = res.get("status")
+            if status == "ambiguous":
+                opts = ", ".join(res.get("matches", []))
+                return (
+                    f"Which brain did you mean? That matches {opts}. "
+                    "Say the word and I'll switch."
+                )
+            if status == "unknown":
+                valid = ", ".join(res.get("valid", []))
+                return (
+                    f"No brain called '{target}' on the shelf. "
+                    f"I've got auto, {valid}."
+                )
+            if status == "auto":
+                osa_settings.set_model_pin(None)
+                return (
+                    "Back on automatic routing. "
+                    "I'll pick the right brain per turn."
+                )
+            model = res["model"]
+            try:
+                osa_settings.set_model_pin(model)
+            except osa_settings.UnavailableBrainError as exc:
+                return f"Can't switch — {exc}. Staying where I am."
+            info = llm.get_model_info(model)
+            label = info.label if info else model
+            if info is not None and info.is_local:
+                return (
+                    f"Switched to {label}. Anything needing tools still goes "
+                    "to Claude — the local brain doesn't get the keys."
+                )
+            return (
+                f"Switched to {label}. Every turn goes there "
+                "until you say otherwise."
+            )
+
+        # Same _guarded plumbing as every other tool for consistency — the
+        # Constitution has no switch_model approval gate, so this never blocks.
+        return self._guarded("switch_model", target, _do)
+
     # -------------------------------------------------------------- memory
     def remember(self, note: str) -> str:
         """Save a durable fact, preference, or context to long-term memory.
@@ -517,6 +612,7 @@ def build_tools(toolbox: OSAToolbox) -> list:
         (toolbox.start_app, "start_app"),
         (toolbox.stop_app, "stop_app"),
         (toolbox.remember, "remember"),
+        (toolbox.switch_model, "switch_model"),
     ]
     return [
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())

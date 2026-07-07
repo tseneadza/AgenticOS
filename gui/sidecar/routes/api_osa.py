@@ -9,12 +9,20 @@ GET  /api/osa/events  — proactive ring-buffer messages (health transitions +
                         briefings) newer than an optional ``after`` cursor.
 POST /api/osa/briefing — compose + announce a status briefing on demand
                         (always announced — an explicit ask beats quiet hours).
+GET  /api/osa/model   — OSA brain pin: pinned model (null = auto), mode, and
+                        the valid registry choices with availability/reason.
+POST /api/osa/model   — pin OSA's brain ({model: "<registry id>"|"auto"});
+                        422 unknown, 409 unavailable-with-reason. Durable
+                        (MySQL osa_settings) via gui.sidecar.osa_settings.
 
 The OSA graph is a dedicated LangGraph ReAct agent (``agents/osa_agent.py``)
 compiled with the MySQL checkpointer (``core.memory.get_checkpointer``) so a
 conversation keyed by ``thread_id`` is durable across sidecar restarts. Model
 routing is per turn: ``osa_agent.pick_model`` chooses the local Ollama model for
-chit-chat/acks and Claude for reasoning or any tool-worthy turn (decision #6).
+chit-chat/acks and Claude for reasoning or any tool-worthy turn (decision #6) —
+unless Tony has pinned a brain (``osa_settings.get_model_pin``): a cloud pin
+takes every turn; a local pin takes conversational turns while tool-worthy ones
+still escalate to Claude (and the reply says so in one short clause).
 
 Ollama is warmed on OSA's first use here (``osa_agent.warm_ollama`` —
 best-effort, cached, non-blocking; decision #9). If it can't come up, local
@@ -206,10 +214,22 @@ def osa_chat(body: OSAChat) -> dict:
     # Decision #9: warm Ollama once on first OSA use (best-effort, cached).
     ollama_ready = osa_agent.warm_ollama()
 
-    # Decision #6: route this turn, honoring Ollama availability, then resolve
-    # the alias to a concrete model id for the graph.
-    alias = osa_agent.pick_model(message, ollama_ready=ollama_ready)
-    model_id = llm.resolve(alias)
+    # Brain pin (2026-07-07): a pinned model overrides the per-turn router.
+    # Cached read — no MySQL on the turn path; DB down ⇒ auto (never raises).
+    from gui.sidecar import osa_settings
+
+    pin = osa_settings.get_model_pin()
+
+    # Decision #6: route this turn (pin-aware), honoring Ollama availability,
+    # then resolve the alias/id to a concrete model id for the graph.
+    chosen = osa_agent.pick_model(message, ollama_ready=ollama_ready, pin=pin)
+    model_id = llm.resolve(chosen)
+    # The route badge keys off local vs cloud of what the turn ACTUALLY used.
+    _info = llm.get_model_info(model_id)
+    route = "local" if (_info is not None and _info.is_local) else "default"
+    # A local pin that didn't get this turn (tool guardrail or Ollama down)
+    # escalated to Claude — OSA mentions it in persona below.
+    escalated = bool(pin) and chosen != pin
 
     # Phase 14b: destructive-action confirmation. Decide THIS turn's approval
     # policy up-front (the sync route can't block on a human):
@@ -259,12 +279,19 @@ def osa_chat(body: OSAChat) -> dict:
     messages = result.get("messages", []) if isinstance(result, dict) else []
     reply = _extract_text(getattr(messages[-1], "content", "")) if messages else ""
 
+    # Escalation mention (locked decision #1): one short spoken clause, only
+    # when the model didn't already own up to it itself.
+    if escalated and reply and "claude" not in reply.lower():
+        reply = f"{reply.rstrip()} Took Claude for that one."
+
     awaiting = turn_state["awaiting"]
     return {
         "reply": reply,
         "thread_id": thread_id,
         "model": model_id,
-        "route": alias,
+        "route": route,
+        "pinned_model": pin,
+        "escalated": escalated,
         "ollama_ready": ollama_ready,
         "tool_trace": _tool_trace(messages),
         "awaiting_confirm": awaiting is not None,
@@ -290,12 +317,17 @@ def osa_state() -> dict:
     except Exception:  # noqa: BLE001
         up = False
 
+    from gui.sidecar import osa_settings
+
     active = llm.active_model()
     info = llm.get_model_info(active)
     return {
         "ready": True,
         "active_model": active,
         "active_label": info.label if info else active,
+        # Brain pin (2026-07-07): null = automatic per-turn routing. Cached
+        # read — existing pollers get the pin without a second endpoint.
+        "pinned_model": osa_settings.get_model_pin(),
         "ollama_up": up,
         "ollama_warmed": osa_agent._warm_done,
         "soul": osa_agent.OSA_SOUL_NAME,
@@ -321,6 +353,79 @@ def osa_events(after: int | None = None) -> dict:
     from gui.sidecar import osa_proactive
 
     return osa_proactive.get_messages(after=after)
+
+
+class OSAModelPin(BaseModel):
+    """Request body for pinning OSA's brain."""
+
+    model: str
+
+
+def _model_payload() -> dict:
+    """Shared GET/POST response: the pin + valid choices from the registry.
+
+    Availability comes from ``llm.list_models`` WITHOUT the ensure-Ollama
+    spawn (this must stay cheap — the rail fetches it on mount); choices are
+    limited to the curated registry (discovered-but-uncurated Ollama pulls are
+    not pinnable — same rule ``set_model_pin`` enforces).
+    """
+    from core import llm
+    from gui.sidecar import osa_settings
+
+    pin = osa_settings.get_model_pin()
+    listing = llm.list_models(ensure_ollama=False)
+    registry_ids = {m.id for m in llm.registry()}
+    choices = [
+        {
+            "id": row["id"],
+            "label": row["label"],
+            "is_local": row["is_local"],
+            "available": row["available"],
+            "reason": row["reason"],
+        }
+        for row in listing.get("models", [])
+        if row["id"] in registry_ids
+    ]
+    return {
+        "pinned_model": pin,
+        "mode": "pinned" if pin else "auto",
+        "ollama_up": bool(listing.get("ollama_up")),
+        "choices": choices,
+    }
+
+
+@router.get("/api/osa/model")
+def osa_model_get() -> dict:
+    """Return OSA's brain pin state + the valid pin choices.
+
+    ``pinned_model`` is null when routing is automatic; ``choices`` lists the
+    registry models with per-model ``available`` + ``reason`` so a picker can
+    disable dead brains with an explanation.
+    """
+    return _model_payload()
+
+
+@router.post("/api/osa/model")
+def osa_model_set(body: OSAModelPin) -> dict:
+    """Pin OSA's brain to a registry model id, or ``"auto"`` to clear.
+
+    The pin is durable (MySQL ``osa_settings``) and takes effect on the next
+    turn — no restart. Returns the same payload as GET after the change.
+
+    Raises:
+        HTTPException: 422 when the id isn't 'auto' or a registry model
+            (detail lists the valid brains); 409 when the model exists but
+            can't run right now (detail carries the reason).
+    """
+    from gui.sidecar import osa_settings
+
+    try:
+        osa_settings.set_model_pin(body.model)
+    except osa_settings.UnknownBrainError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except osa_settings.UnavailableBrainError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return _model_payload()
 
 
 @router.post("/api/osa/briefing")

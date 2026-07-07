@@ -224,6 +224,33 @@ class PortCollisionLog(Base):
 # schema (``agenticos_test``) without dialect-specific ENUM DDL.
 
 
+class OsaSetting(Base):
+    """Small key-value settings store for OSA (brain switching, 2026-07-07).
+
+    One row per setting key. First occupant: ``model_pin`` — the model id OSA's
+    turns are pinned to (row absent or ``value`` NULL ⇒ automatic per-turn
+    routing). Values are short strings; anything structured belongs in its own
+    table, not here. The table is materialised by ``Base.metadata.create_all``
+    on startup (new tables need no ALTER — see ``migrations.py``); reads are
+    cached in-process by ``gui.sidecar.osa_settings`` so per-turn lookups never
+    hit MySQL.
+    """
+
+    __tablename__ = "osa_settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(String(255), nullable=True)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        onupdate=_utcnow,
+    )
+
+    def __repr__(self) -> str:
+        return f"<OsaSetting key={self.key!r} value={self.value!r}>"
+
+
 class NewsCategory(Base):
     """A news feed category (Web News view)."""
 

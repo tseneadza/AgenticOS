@@ -6,7 +6,13 @@
  * old absolutely-positioned OSAOrb overlay. Contents, top to bottom:
  *
  *   1. Presence block — the 14c reactor orb (OSAOrb, now static-flow) with its
- *      caption (lastLine) + status sub-caption.
+ *      caption (lastLine) + status sub-caption, the "Brief me" pill, and the
+ *      Brain picker (OSA brain switching, 2026-07-07): a compact "Brain" line
+ *      with a native select showing the effective brain (the pin, or Auto).
+ *      Backed by ONE lightweight GET /api/osa/model on mount (+ after each
+ *      change) — NOT the 12s events poll; unavailable models render disabled
+ *      with the reason as their title; hidden entirely if the fetch fails
+ *      (sidecar down ⇒ degrade silently).
  *   2. Proactive feed — recent messages from GET /api/osa/events (downs,
  *      recoveries, briefings) with relative timestamps, newest first.
  *      Announced messages get a state-hue accent bar; silent ones stay muted.
@@ -30,7 +36,8 @@
  *              /api/osa/briefing upstream); button hidden if omitted
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { get, post } from "../api";
 import OSAOrb from "./OSAOrb";
 
 // Keep the feed bounded — the sidecar ring buffer holds ~50; we show the
@@ -108,6 +115,36 @@ const styles = `
 .osa-rail .rail-brief:disabled {
   opacity: .5;
   cursor: default;
+}
+/* Brain picker: a quiet readout-with-control — same register as the brief pill. */
+.osa-rail .rail-brain {
+  margin-top: 10px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.osa-rail .rail-brain-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.osa-rail .rail-brain-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.osa-rail .rail-brain-select:hover {
+  border-color: var(--osa-idle);
 }
 /* Feed section: the rail is fixed; only this list scrolls. */
 .osa-rail .rail-feed-section {
@@ -189,6 +226,30 @@ export default function OSARail({
       setBriefing(false);
     }
   };
+  // Brain picker (OSA brain switching): one lightweight GET /api/osa/model on
+  // mount + after each change. Sidecar down / endpoint failing ⇒ brain stays
+  // null and the whole line hides — silent degrade, like the rest of the rail.
+  const [brain, setBrain] = useState(null); // GET /api/osa/model payload
+  const loadBrain = useCallback(async () => {
+    try {
+      setBrain(await get("/api/osa/model"));
+    } catch {
+      setBrain(null);
+    }
+  }, []);
+  useEffect(() => {
+    loadBrain();
+  }, [loadBrain]);
+  const handleBrainChange = async (e) => {
+    const model = e.target.value;
+    try {
+      setBrain(await post("/api/osa/model", { model }));
+    } catch {
+      // Degrade silently — the controlled select snaps back to the last
+      // known-good state on re-render.
+    }
+  };
+
   // Re-render every 30s so relative timestamps ("2m ago") stay honest without
   // the caller having to push new props.
   const [now, setNow] = useState(() => Date.now());
@@ -219,6 +280,33 @@ export default function OSARail({
           >
             {briefing ? "One moment…" : "Brief me"}
           </button>
+        )}
+        {brain && (
+          <div className="rail-brain" data-testid="rail-brain">
+            <label className="rail-brain-label" htmlFor="rail-brain-select">
+              Brain
+            </label>
+            <select
+              id="rail-brain-select"
+              className="rail-brain-select"
+              data-testid="rail-brain-select"
+              value={brain.pinned_model || "auto"}
+              onChange={handleBrainChange}
+              aria-label="OSA brain — pinned model or automatic routing"
+            >
+              <option value="auto">Auto</option>
+              {(brain.choices || []).map((c) => (
+                <option
+                  key={c.id}
+                  value={c.id}
+                  disabled={!c.available}
+                  title={c.reason || ""}
+                >
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
       </section>
 

@@ -16,6 +16,10 @@ predate Phase 13, so their new columns/constraints must be added explicitly.
      one app), the failure is logged as a warning — never raised — so sidecar
      startup is never blocked.
 
+Later brand-new tables (e.g. ``osa_settings`` — OSA brain pin, 2026-07-07)
+ride step 1: ``create_all`` materialises them with no ALTERs needed, so they
+need no entry in the lists below.
+
 Everything is inspected first (``sqlalchemy.inspect``), so re-running is a
 no-op. Dialect-neutral SQL only (works on MySQL and SQLite, which both
 support ``ALTER TABLE ... ADD COLUMN`` and ``CREATE UNIQUE INDEX``).

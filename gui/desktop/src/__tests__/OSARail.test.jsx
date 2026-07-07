@@ -164,3 +164,99 @@ describe("OSARail brief-me-now", () => {
     await waitFor(() => expect(btn.disabled).toBe(false));
   });
 });
+
+// ── Brain picker (OSA brain switching, 2026-07-07) ─────────────────────────
+// The rail's one lightweight GET /api/osa/model on mount feeds a compact
+// native select: Auto + the registry models (unavailable ⇒ disabled with the
+// reason as title). Changing it POSTs {model}; a failed fetch hides the line.
+
+const MODEL = {
+  pinned_model: null,
+  mode: "auto",
+  ollama_up: true,
+  choices: [
+    { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (cloud)", is_local: false, available: true, reason: null },
+    { id: "qwen2.5:7b-instruct", label: "Qwen2.5 7B Instruct (local)", is_local: true, available: false, reason: "ollama_off" },
+  ],
+};
+
+// Like stubFetch, plus /api/osa/model: GET serves `model`; POST echoes the
+// pinned_model back the way the sidecar does.
+function stubFetchWithBrain(model = MODEL) {
+  global.fetch = vi.fn((url, opts = {}) => {
+    if (url.includes("/api/osa/model")) {
+      if ((opts.method || "GET") === "POST") {
+        const body = JSON.parse(opts.body);
+        const pinned = body.model === "auto" ? null : body.model;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            ...model,
+            pinned_model: pinned,
+            mode: pinned ? "pinned" : "auto",
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(model) });
+    }
+    if (url.includes("/api/osa/state"))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(STATE) });
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+  });
+}
+
+describe("OSARail brain picker", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete global.fetch;
+  });
+
+  it("renders Auto + the registry choices after the /api/osa/model fetch", async () => {
+    stubFetchWithBrain();
+    render(<OSARail events={[]} />);
+    const select = await screen.findByTestId("rail-brain-select");
+    expect(select.value).toBe("auto");
+    const options = Array.from(select.querySelectorAll("option"));
+    expect(options.map((o) => o.value)).toEqual([
+      "auto", "claude-sonnet-4-6", "qwen2.5:7b-instruct",
+    ]);
+  });
+
+  it("disables unavailable models with the reason as their title", async () => {
+    stubFetchWithBrain();
+    render(<OSARail events={[]} />);
+    const select = await screen.findByTestId("rail-brain-select");
+    const qwen = select.querySelector('option[value="qwen2.5:7b-instruct"]');
+    expect(qwen.disabled).toBe(true);
+    expect(qwen.title).toBe("ollama_off");
+    const sonnet = select.querySelector('option[value="claude-sonnet-4-6"]');
+    expect(sonnet.disabled).toBe(false);
+  });
+
+  it("shows the pinned model as the selected value", async () => {
+    stubFetchWithBrain({ ...MODEL, pinned_model: "claude-sonnet-4-6", mode: "pinned" });
+    render(<OSARail events={[]} />);
+    const select = await screen.findByTestId("rail-brain-select");
+    expect(select.value).toBe("claude-sonnet-4-6");
+  });
+
+  it("POSTs the chosen model on change and reflects the response", async () => {
+    stubFetchWithBrain();
+    render(<OSARail events={[]} />);
+    const select = await screen.findByTestId("rail-brain-select");
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "claude-sonnet-4-6" } });
+    });
+    const postCall = global.fetch.mock.calls.find(([, opts]) => opts?.method === "POST");
+    expect(postCall[0]).toContain("/api/osa/model");
+    expect(JSON.parse(postCall[1].body)).toEqual({ model: "claude-sonnet-4-6" });
+    await waitFor(() => expect(select.value).toBe("claude-sonnet-4-6"));
+  });
+
+  it("hides the Brain line when the model fetch fails (silent degrade)", async () => {
+    stubFetch(); // /api/osa/model 404s in this stub → get() rejects → hidden
+    render(<OSARail events={[]} />);
+    await act(async () => {}); // flush the rejected fetch
+    expect(screen.queryByTestId("rail-brain")).toBeNull();
+  });
+});

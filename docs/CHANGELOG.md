@@ -1,3 +1,48 @@
+## 2026-07-07 — OSA brain switching: durable model pin over the per-turn router
+
+Tony can now pin OSA's brain — "switch to Sonnet", "use your local brain",
+"back to auto" — instead of always riding the automatic per-turn router.
+A pin covers ALL conversational turns; a *local* pin keeps the tool guardrail
+(tool-worthy turns still escalate to Claude — 7B local models are unreliable
+tool-callers — and OSA says so in one short spoken clause: "Took Claude for
+that one."). Pin cleared ⇒ today's router, untouched.
+
+- **Pin store** (`gui/sidecar/osa_settings.py`, new): single source of truth —
+  `get_model_pin()` / `set_model_pin()` over a new MySQL `osa_settings`
+  key-value table (`models.OsaSetting`, key `model_pin`; materialised by
+  `create_all`, no ALTERs — noted in `migrations.py`). Read-once in-process
+  cache so per-turn reads never hit MySQL; DB down ⇒ auto + in-memory writes,
+  never raises. Validation at the door: unknown id ⇒ `UnknownBrainError`
+  listing the valid brains; known-but-unrunnable (no_api_key / ollama_off /
+  not_installed / too_large from `llm.list_models`) ⇒ `UnavailableBrainError`
+  with the reason — a dead brain is never pinned. `resolve_brain()` maps
+  spoken names ("sonnet", "haiku", "local", "qwen", "fast", "auto") to
+  registry ids; ambiguous ("claude") comes back as a question.
+- **Routing** (`agents/osa_agent.py`): `pick_model` gains `pin=` — cloud pin
+  ⇒ that id every turn; local pin ⇒ pin for chit-chat, `default` for
+  tool-worthy turns and when Ollama is down; no pin ⇒ heuristic unchanged.
+- **`switch_model` chat tool** (`OSAToolbox`, registered in `build_tools` +
+  the OSA_SYSTEM tool map): fuzzy target, persona confirmations, unknown /
+  ambiguous / unavailable replies conversational. Same `_guarded` plumbing as
+  every tool; not approval-gated (not destructive).
+- **API** (`routes/api_osa.py`): `GET /api/osa/model` (pin + mode + registry
+  choices with availability/reason — no ensure-Ollama spawn, stays cheap) and
+  `POST /api/osa/model` (`{model: "<id>"|"auto"}`; 422 unknown, 409
+  unavailable-with-reason). Both registered in `HubApiExplorer.jsx`.
+  `/api/osa/state` now carries `pinned_model` (null = auto); the chat
+  response adds `pinned_model` + `escalated`, and `route` now reflects what
+  the turn ACTUALLY used so the Agent view's badge stays honest under a pin.
+- **Rail Brain picker** (`OSARail.jsx`, presence block under "Brief me"):
+  compact "Brain" line + native select — Auto + registry models, unavailable
+  entries disabled with the reason as title. ONE lightweight GET on mount +
+  after changes (not the 12s events poll); POST on change; sidecar down ⇒ the
+  line hides (silent degrade). Theme tokens only.
+- **Tests**: pytest 386 (+58 — `test_osa_brain_switch.py`: pin CRUD +
+  persistence on `agenticos_test`, cache, DB-down degrade, validation,
+  resolve_brain, pick_model matrix, switch_model tool, model routes, state
+  field, pin-aware chat + escalation clause); vitest 603 (+5 — brain picker
+  render/disabled/pinned/POST/degrade).
+
 ## 2026-07-07 — Brief-me-now: on-demand OSA briefing (endpoint + rail button)
 
 Tony's first live look at the rail found OSA silent — correctly (zero apps
