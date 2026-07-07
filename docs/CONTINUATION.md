@@ -1,3 +1,57 @@
+# ⏹ SESSION CLOSED 2026-07-07 — PHASE 14c SHIPPED ✅ (OSA reactor orb — ambient presence)
+
+Built via subagent from a Tony-approved interactive mockup; supervisor-verified.
+Shipped + pushed (`1884b69`). **On-device `npm run tauri dev` visual check by
+Tony pending.**
+
+## What shipped (14c)
+
+- **`gui/desktop/src/components/OSAOrb.jsx`** — a JARVIS-style reactor orb pinned
+  to the **upper-right of every view EXCEPT the Agent view** (Tony types in the
+  Agent view; the orb would be redundant there). Ports the approved visual in
+  **`gui/mockups/osa_reactor.html`** (source-of-truth mockup, committed). Four
+  `data-state` animations: **idle** (calm cyan), **thinking** (amber sweep +
+  fast spin), **speaking** (core pulse + emanating waves), **listening** (green
+  equalizer — the VOICE state, reachable but DORMANT until 14d). Named state
+  hues (`--osa-idle/think/listen`); `prefers-reduced-motion` guard; accessible
+  (`role=img` + button aria-label). Caption shows OSA's last line + a light
+  `/api/osa/state` status (mount + 15s poll, degrades silently).
+- **App shell** — new `OSAContext` `{state, lastLine, setOsaState, speak(line)}`
+  at the root (no-op default so AgentView still renders provider-less in tests).
+  `AgentView` drives it: `thinking` on send → `speak(reply)` (=`speaking` +
+  lastLine, ~3s → `idle`) on success → `idle` on error. Orb `onOpen` uses the
+  existing `setView("agent")` nav. Only shell changes: wrap in the provider +
+  `.main{position:relative}`; no other views touched.
+- **Tests:** `OSAOrb.test.jsx` (10) + extended `AgentView.test.jsx`; frontend
+  suite **570 passed** (+12), re-run by supervisor.
+
+## Design notes
+
+- Orb sits at `top:56px` to clear the topbar. On non-Agent views it's mostly
+  **idle** today — it animates when OSA is working (a chat turn is in flight) and
+  will get more to do once 14e (proactive) + 14d (voice) land. State machine is
+  ready for both. This matches the §6.0 presence model.
+
+## ▶ RESUME HERE
+
+1. **Tony: on-device visual check** — `npm run tauri dev`; navigate a non-Agent
+   view (e.g. Dashboard) and watch the orb; fire a chat turn from the Agent view
+   then flip to another view to see thinking/speaking; click the orb to jump
+   back to Agent. Tweak look if desired (colors are named CSS vars in OSAOrb).
+2. **14d** voice (openWakeWord → faster-whisper → Piper; activates the listening
+   state) OR **14e** proactive (health-transition messages surfaced in the orb
+   caption on non-Agent views). Either is the natural next build.
+3. Optional: real-time inline Allow/Deny for destructive confirm (needs
+   streaming/interrupt); `web_news` if a fetch helper appears.
+
+## Still open / housekeeping
+
+- `.env.local` still holds the `sk-admin-` key under `ANTHROPIC_API_KEY` —
+  relabel to `ANTHROPIC_ADMIN_KEY`.
+- OSA chat remains synchronous (no token streaming yet).
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 — PHASE 14b SHIPPED ✅ (OSA tools + destructive confirm)
 
 Follow-on to the Agent-view repoint (same day). Built via subagent, verified +
