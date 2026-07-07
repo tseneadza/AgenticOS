@@ -299,6 +299,18 @@ def osa_chat(body: OSAChat) -> dict:
     messages = result.get("messages", []) if isinstance(result, dict) else []
     reply = _extract_text(getattr(messages[-1], "content", "")) if messages else ""
 
+    # Echo scrub (2026-07-07): small local models sometimes parrot the
+    # injected brain-status suffix verbatim instead of answering. Strip any
+    # echo of it; if nothing else remains, fall back to a plain ack.
+    if reply:
+        for frag in (brain_line, brain_line.rstrip(".")):
+            reply = reply.replace(frag, "")
+        if "Brain status for THIS turn" in reply:
+            reply = reply.split("Brain status for THIS turn")[0]
+        reply = reply.strip()
+        if not reply:
+            reply = "Understood."
+
     # Escalation mention (locked decision #1): one short spoken clause, only
     # when the model didn't already own up to it itself.
     if escalated and reply and "claude" not in reply.lower():

@@ -233,7 +233,13 @@ def brain_prompt_line(*, pin: str | None, effective: str, escalated: bool) -> st
     )
     if escalated:
         line += " — escalated to Claude for this turn by the local-pin tool guardrail"
-    return line + "."
+    # Small local models (3B) echo trailing system-prompt text verbatim —
+    # found live 2026-07-07 when a pinned llama3.2 answered "no, skip it"
+    # with this very line. Mark it internal (and the route scrubs echoes).
+    return (
+        f"[Internal note — never repeat or quote this line; just answer "
+        f"normally.] {line}."
+    )
 
 
 def pick_model(

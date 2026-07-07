@@ -247,3 +247,66 @@ class TestLlama32Curated:
         assert "llama3.2:latest" in by_id
         assert by_id["llama3.2:latest"].label == "Llama 3.2 3B (local)"
         assert by_id["llama3.2:latest"].provider == "ollama"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Echo scrub — small local models parroting the brain-status suffix
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestBrainLineEchoScrub:
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from gui.sidecar.app import app as fastapi_app
+        return TestClient(fastapi_app)
+
+    def _wire(self, monkeypatch, reply_builder):
+        from agents import osa_agent as oa
+        from core import llm, memory
+
+        monkeypatch.setattr(oa, "warm_ollama", lambda: True)
+        monkeypatch.setattr(oa, "pick_model", lambda msg, **k: "local")
+        monkeypatch.setattr(llm, "resolve", lambda a: "llama3.2:latest")
+        monkeypatch.setattr(osa_settings, "get_model_pin", lambda **k: None)
+        monkeypatch.setattr(memory, "checkpointer_conn", lambda: None)
+        monkeypatch.setattr(memory, "get_checkpointer", lambda c=None: object())
+
+        class _Msg:
+            def __init__(self, content):
+                self.content = content
+                self.tool_calls = []
+
+        captured = {}
+
+        class _FakeAgent:
+            def __init__(self, suffix):
+                self._suffix = suffix
+
+            def invoke(self, payload, config=None):
+                return {"messages": [_Msg(reply_builder(self._suffix))]}
+
+        def _build(model_id, approval_fn=None, system_suffix=None, **k):
+            captured["suffix"] = system_suffix
+            return _FakeAgent(system_suffix)
+
+        monkeypatch.setattr(oa, "build_agent", _build)
+        return captured
+
+    def test_pure_echo_becomes_plain_ack(self, monkeypatch):
+        self._wire(monkeypatch, lambda suffix: suffix)   # model parrots verbatim
+        r = self._client().post("/api/osa/chat", json={"message": "no, skip it"})
+        assert r.json()["reply"] == "Understood."
+
+    def test_echo_around_real_answer_is_stripped(self, monkeypatch):
+        self._wire(
+            monkeypatch,
+            lambda suffix: f"Standing down, Sir. {suffix}")
+        reply = self._client().post(
+            "/api/osa/chat", json={"message": "no"}).json()["reply"]
+        assert reply == "Standing down, Sir."
+        assert "Brain status" not in reply
+
+    def test_suffix_is_marked_internal(self):
+        line = osa_agent.brain_prompt_line(
+            pin=None, effective="llama3.2:latest", escalated=False)
+        assert line.startswith("[Internal note")
+        assert "never repeat" in line
