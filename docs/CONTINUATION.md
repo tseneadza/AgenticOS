@@ -1,3 +1,55 @@
+# ⏹ SESSION CLOSED 2026-07-07 (late) — OSA BRAIN SWITCHING SHIPPED ✅
+
+Follow-on to the 14e/rail/14d-scaffold session (same day, see next block).
+Built via subagent, supervisor-verified (suites re-run, diffs reviewed),
+committed + pushed (`554ee23`). Sidecar restarted; live-verified: pin Haiku →
+`/api/osa/state.pinned_model` shows it → back to **auto (current setting)**.
+Tony went to sleep after this — pick up from ▶ RESUME HERE below.
+
+## What shipped (brain switching — Tony's locked decisions)
+
+- **Pin + tool guardrail, durable, three surfaces.** New MySQL `osa_settings`
+  KV table (`model_pin`, via `gui/sidecar/osa_settings.py`; read-once cache,
+  DB-down → auto + in-memory, never raises; table materializes via
+  `create_all` on boot). `pick_model` matrix: auto → old heuristic; cloud
+  pin → that model ALWAYS; local pin → local for chat but **Claude for tool
+  turns** (7B tool-calling guardrail) and ollama-down fallback — both marked
+  `escalated`, reply gets "Took Claude for that one."
+- **Surfaces:** `switch_model` OSA chat tool (fuzzy: sonnet/haiku/local/qwen/
+  auto; "default" deliberately unresolved — say "auto"); `GET+POST
+  /api/osa/model` (422 unknown w/ valid list, 409 unavailable w/ reason,
+  e.g. llama3.1:8b `not_installed`); rail **Brain picker** in the presence
+  block (disabled-with-reason options, silent degrade). `pinned_model` on
+  `/api/osa/state`; routes in HubApiExplorer. Chat response now carries
+  `pinned_model` + `escalated`; route badge reflects actual model used.
+- **Tests:** pytest **386** (+58, `test_osa_brain_switch.py`), vitest **603**
+  (+5). Pinnable set = curated `llm.registry()` only.
+
+## ▶ RESUME HERE (next session)
+
+1. **Tony: on-device visual check (accumulated, still pending):** right rail
+   on several views (orb, caption, proactive feed, **Brief me** button,
+   **Brain picker**), Agent view with rail + typed chat ("switch to sonnet" →
+   confirm in persona; check the escalation clause under a local pin), HUD
+   orb + caption. Proactive demo: freeze a managed app (`kill -STOP <pid>`)
+   → down announcement; `kill -CONT` → recovery.
+2. **14d real implementation** — the four osa_voice stage stubs (see
+   `osa_voice/README.md` + previous block's item 2). Then **14f hardening**.
+3. Backlog: rail vitals block, collapsible rail, token streaming, inline
+   Allow/Deny confirm, launch Tony's daily apps under management so OSA has
+   things to watch.
+
+## Housekeeping
+
+- `.env.local` still holds `sk-admin-` under `ANTHROPIC_API_KEY` — relabel.
+- Sidecar restart quirk: kill ALL `pgrep -f gui.sidecar` PIDs first; a stale
+  child holding :5130 makes the new boot exit ("already running") and old
+  code keeps serving.
+- Current live state: sidecar fresh (all routes live), brain = auto,
+  briefing timer 08:30, quiet hours 22:00–08:00 activity-aware.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 — PHASE 14e SHIPPED ✅ + ORB RIGHT RAIL + 14d SCAFFOLD
 
 Three pushed commits, all built via subagents and supervisor-verified (diffs
