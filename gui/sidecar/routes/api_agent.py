@@ -12,28 +12,24 @@ router = APIRouter()
 
 
 @router.get("/api/agent/models")
-async def list_models():
-    """List all available LLM models (cloud + local Ollama).
+async def list_models(
+    start: bool = Query(True, description="Ensure Ollama is running before listing"),
+):
+    """Full model-picker payload for the Agent view (FR-53).
 
-    Returns list of {id, provider, label, context_window, supports_tools, cost_per_mtok}.
-    Cloud models priced, local models free ($0).
+    Delegates to ``core.llm.list_models`` — the single source of truth — so the
+    response carries not just the model list but ``active`` (the current model
+    id), ``ollama_up``, and per-model ``available`` / ``installed`` / ``is_local``
+    / ``fits`` flags. The frontend needs those fields to know which model is
+    active and which are actually usable; without them it treats the active
+    model as unavailable and DISABLES the chat input. Cloud ``available`` keys
+    on the API key; local on install + RAM fit. ``start`` (default true) warms
+    Ollama first, matching the picker's ensure-on-open behavior.
     """
     try:
         from core import llm
-        models = llm.registry()
 
-        result = []
-        for model in models:
-            result.append({
-                "id": model.id,
-                "provider": model.provider,
-                "label": model.label,
-                "context_window": model.context_window,
-                "supports_tools": model.supports_tools,
-                "cost_per_mtok": model.cost_per_mtok.get("input", 0.0)  # use input cost
-            })
-
-        return {"models": result}
+        return llm.list_models(ensure_ollama=start)
 
     except Exception as e:
         logger.error(f"Error listing models: {e}")
