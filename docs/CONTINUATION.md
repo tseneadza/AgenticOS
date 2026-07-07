@@ -1,3 +1,57 @@
+# ⏹ SESSION CLOSED 2026-07-07 (night) — OSA'S PUNCH LIST SHIPPED ✅ (4/4 + echo fix)
+
+OSA listed four to-dos during Tony's live session; all shipped inline
+(subagent spend limit still in effect), supervisor-verified, live-tested.
+Commits: `28d5547` (punch list) + echo-scrub fix on top.
+
+## What shipped
+
+1. **Orb brain display** — `/api/osa/state` gains `pinned_label` +
+   `last_turn_{model,label,escalated}` (`_LAST_TURN` per chat turn); orb
+   shows "Pinned: Qwen (ran Claude Sonnet) · Ollama up" after guardrail
+   escalations. Runtime truth, not just the pin.
+2. **Confirm surfacing** — instructive DENIED in `_guarded` ("ask Tony,
+   do NOT retry" — Sonnet had retried pull_model 3×) + route safety net:
+   pending confirm not asked in the reply ⇒ route appends "Needs your OK,
+   Sir: <description>. Just say yes." Never invisible again.
+3. **Hardware-aware pulls (Tony's reframe)** — `llm.estimate_pull_size`
+   (registry manifest → llama3.3 = 42.5GB; name heuristic fallback);
+   pull_model folds size + RAM verdict into the confirm description via
+   `_guarded(describe=)`. Informs, never blocks. LIVE-VERIFIED: "pull
+   llama3.3" → "about 42.5 gigs... only 17 gigs of RAM... sure?" →
+   declined → nothing pulled. (OSA had claimed ~5GB — hallucination;
+   llama3.3 is 70B-only.)
+4. **llama3.2 curated** — settings.yaml "Llama 3.2 3B (local)"; "llama"
+   alone is now honestly ambiguous (3.1 vs 3.2).
+5. **Echo-scrub fix (found live)** — pinned llama3.2 3B parroted the
+   injected brain-status line as its whole reply. Suffix now marked
+   "[Internal note — never repeat]" + route strips echoes (pure echo →
+   "Understood."). Re-verified live: decline answers properly.
+
+Tests: pytest **434** (+15 tonight, `test_osa_tonight_fixes.py`), vitest
+**606** (+3 orb display). Two outdated assertions updated for the curation.
+
+## ▶ RESUME HERE
+
+1. **Tony on-device visual pass (accumulated):** orb brain line (pin +
+   "ran X" after escalation), rail (feed/Brief me/Brain picker incl.
+   discovered + curated llama3.2), chat: "what's your brain?", "pull
+   llama3.3" (informed confirm) → "no". HUD. Freeze/CONT a managed app.
+2. **14d real voice implementation** → 14f hardening.
+3. Backlog: rail vitals, streaming, apps under management, maybe an
+   Approvals-view surface for pending OSA confirms (currently
+   conversational-only).
+
+## Housekeeping
+
+- Current pin: **llama3.2:latest** (Tony's own switch — left untouched).
+- `.env.local` sk-admin- relabel still pending. Subagent spend limit —
+  build inline. Sidecar restart: kill ALL gui.sidecar PIDs first.
+- Note: local 3B replies can drift off-persona ("Carry on!") — acceptable
+  for now; Soul tuning or a persona-check pass is a future nicety.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 — BRAIN SWITCHING v2 SHIPPED ✅ (introspection · discovery · pull_model · cloud hatch)
 
 Follow-on to Tony's live test of brain switching (transcript showed: OSA
