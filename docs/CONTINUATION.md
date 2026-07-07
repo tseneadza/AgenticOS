@@ -44,7 +44,8 @@ Tests: pytest **434** (+15 tonight, `test_osa_tonight_fixes.py`), vitest
 
 ## Housekeeping
 
-- Current pin: **llama3.2:latest** (Tony's own switch — left untouched).
+- Current pin: **auto** (cleared during Tony's live testing after the
+  punch-list verify; DB row confirmed — durable state behaving correctly).
 - `.env.local` sk-admin- relabel still pending. Subagent spend limit —
   build inline. Sidecar restart: kill ALL gui.sidecar PIDs first.
 - Note: local 3B replies can drift off-persona ("Carry on!") — acceptable
