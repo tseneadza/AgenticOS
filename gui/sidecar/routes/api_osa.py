@@ -60,14 +60,52 @@ def _normalize(message: str) -> str:
     return (message or "").strip().lower().rstrip("!.?,").strip()
 
 
+_AFFIRM_FIRST_WORDS = frozenset({
+    "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm",
+    "confirmed", "proceed", "affirmative", "absolutely",
+})
+_NEG_FIRST_WORDS = frozenset({
+    "no", "n", "nope", "nah", "cancel", "abort", "negative", "dont",
+})
+
+
+def _first_word(message: str) -> str:
+    """First word of the normalized message, internal punctuation dropped."""
+    parts = _normalize(message).replace(",", " ").replace(";", " ").split()
+    return parts[0] if parts else ""
+
+
 def is_affirmative(message: str) -> bool:
-    """Whether a turn is a plain 'yes/confirm/go ahead' style affirmation."""
-    return _normalize(message) in _AFFIRMATIVES
+    """Whether a turn is a 'yes / confirm / go ahead' style affirmation.
+
+    Matches an exact affirmative phrase, a leading affirmative word (so compound
+    replies like 'yes, do it' or 'yeah go ahead' count), or a known affirmative
+    phrase prefix. Word-boundary based, so 'yesterday' does NOT match.
+    """
+    norm = _normalize(message)
+    if not norm:
+        return False
+    if norm in _AFFIRMATIVES:
+        return True
+    if _first_word(norm) in _AFFIRM_FIRST_WORDS:
+        return True
+    return any(norm.startswith(p) for p in (
+        "do it", "go ahead", "go for it", "please do", "of course",
+    ))
 
 
 def is_negative(message: str) -> bool:
-    """Whether a turn is a plain 'no/cancel' style refusal."""
-    return _normalize(message) in _NEGATIVES
+    """Whether a turn is a 'no / cancel' style refusal (leading-word aware)."""
+    norm = _normalize(message)
+    if not norm:
+        return False
+    if norm in _NEGATIVES:
+        return True
+    if _first_word(norm) in _NEG_FIRST_WORDS:
+        return True
+    return any(norm.startswith(p) for p in (
+        "never mind", "nevermind", "forget it", "do not", "don't",
+    ))
 
 
 def record_pending(thread_id: str, action: str, description: str) -> None:

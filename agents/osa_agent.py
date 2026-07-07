@@ -71,8 +71,11 @@ OSA_SYSTEM = (
     "have' / 'list my projects' -> list_projects; 'launch X' / 'start X' -> "
     "start_app; 'stop X' / 'shut down X' -> stop_app; 'remember that ...' -> "
     "remember.\n"
-    "- Side-effectful actions pass a safety guard. If a tool returns 'DENIED' "
-    "or 'BLOCKED', respect it and tell the user plainly rather than retrying.\n"
+    "- Side-effectful actions pass a safety guard. If a destructive action comes "
+    "back 'DENIED', it just needs Tony's OK first — don't treat it as a hard "
+    "failure or tell him to authorize it elsewhere. Say what you're about to do "
+    "and ask him to confirm; he can simply reply 'yes' and you'll proceed. If a "
+    "tool returns 'BLOCKED', respect it and explain rather than retrying.\n"
     "- For pure chit-chat, a greeting, or an acknowledgement, just answer — no "
     "tool needed."
 )

@@ -183,9 +183,16 @@ class TestConfirmHelpers:
     @pytest.mark.parametrize("msg", [
         "yes", "Yes", "yes sir", "confirm", "do it", "go ahead", "yep",
         "sure", "proceed", "Confirmed!",
+        # compound / natural phrasings (regression: exact-match used to fail)
+        "yes, do it", "yes do it", "yeah go ahead", "absolutely, stop it",
+        "ok go for it", "yes please",
     ])
     def test_affirmatives(self, msg):
         assert api_osa.is_affirmative(msg)
+
+    @pytest.mark.parametrize("msg", ["yesterday", "yellowstone report", "yes-man"])
+    def test_affirmative_no_false_positive(self, msg):
+        assert not api_osa.is_affirmative(msg)
 
     @pytest.mark.parametrize("msg", [
         "no", "cancel", "nope", "never mind", "abort", "No thanks",
