@@ -1,3 +1,38 @@
+## 2026-07-07 — Phase 14b: OSA more tools + destructive-action confirmation
+
+Extends OSA (14a) with two read-only tools and a conversational confirm flow
+for destructive actions.
+
+- **New OSA tools** (`agents/osa_agent.py`, `OSAToolbox`, registered in
+  `build_tools` + named in `OSA_SYSTEM`): `apps_health()` summarizes
+  `gui/sidecar/launch_config.list_all_health()` (per-app healthy flag + an
+  `unhealthy` list; same source as `GET /api/apps/health`) and
+  `list_projects()` wraps the same ledger query that backs `GET /api/projects`
+  (compact name/template/subfolder/port; degrades to empty if the DB is down).
+  Both are read-only (`self._run`, no guard). `web_news` was **deferred** — the
+  news routes only expose feed/category CRUD (`news_db`), with no trivial
+  synchronous callable to fetch/list current news items, so no fetcher was
+  invented.
+- **Destructive-action confirmation:** `config/constitution.yaml` gained
+  `app_stop` ("Stopping a running app") in `approval_required` (`app_start` left
+  out — starting isn't destructive), so `OSAToolbox.stop_app` (which guards with
+  `app_stop`) now raises `ApprovalRequired`. The sync `/api/osa/chat` route
+  (`gui/sidecar/routes/api_osa.py`) confirms across two turns without blocking:
+  a small in-process, thread-keyed, TTL-bounded pending store
+  (`_PENDING_CONFIRM`, 5-min TTL) plus pure helpers (`is_affirmative`,
+  `is_negative`, `record_pending`/`get_pending`/`clear_pending`). On a normal
+  turn the agent's `approval_fn` **denies** + records a pending entry (response
+  carries `awaiting_confirm: true` + `pending_action`); on the next turn, an
+  affirmative WITH a live pending builds an **approving** `approval_fn`, clears
+  the pending, and returns `confirmed: true` (the checkpointed history replays
+  the request so the model re-issues `stop_app` and it proceeds). A negative
+  clears the pending; a bare affirmative with no live pending never approves.
+- **Tests**: `gui/sidecar/tests/test_phase14b_osa.py` (31 tests) — new tools
+  (patched `launch_config`/`db.SessionLocal`), `app_stop` guard (denied vs
+  approved against the live constitution), the confirm helpers + pending store
+  (incl. TTL expiry), and the two-turn route confirm via TestClient (agent +
+  checkpointer patched, no live LLM/MySQL). **Suite green: `230 passed`.**
+
 ## 2026-07-07 — Phase 14a: OSA assistant — text MVP (agent + routes)
 
 First slice of Phase 14 (OSA, the JARVIS-style assistant): type to OSA, it

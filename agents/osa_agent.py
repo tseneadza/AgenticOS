@@ -66,9 +66,11 @@ OSA_SYSTEM = (
     "any question about app status, system health, or to control an app, call "
     "the matching tool FIRST and answer from its result.\n"
     "- Map requests to tools, e.g.: 'is X running' / 'status of X' -> "
-    "app_status; 'how's my memory' / 'system health' -> system_health; 'launch "
-    "X' / 'start X' -> start_app; 'stop X' / 'shut down X' -> stop_app; "
-    "'remember that ...' -> remember.\n"
+    "app_status; 'how's my memory' / 'system health' -> system_health; 'which "
+    "apps are up' / 'are my apps healthy' -> apps_health; 'what projects do I "
+    "have' / 'list my projects' -> list_projects; 'launch X' / 'start X' -> "
+    "start_app; 'stop X' / 'shut down X' -> stop_app; 'remember that ...' -> "
+    "remember.\n"
     "- Side-effectful actions pass a safety guard. If a tool returns 'DENIED' "
     "or 'BLOCKED', respect it and tell the user plainly rather than retrying.\n"
     "- For pure chit-chat, a greeting, or an acknowledgement, just answer — no "
@@ -360,6 +362,76 @@ class OSAToolbox:
 
         return self._guarded("app_stop", app_id, _do)
 
+    # ---------------------------------------------------- monitoring (14b)
+    def apps_health(self) -> str:
+        """Report which apps are up and healthy right now. Read-only.
+
+        Use for 'how are my apps', 'which apps are up', 'is everything
+        healthy'. Wraps the same aggregation that backs GET /api/apps/health:
+        only running apps that have a health signal appear. Returns a compact
+        JSON snapshot (per-app healthy flag + a total) the model summarizes
+        aloud, status-first.
+        """
+        from gui.sidecar import launch_config
+
+        def _do() -> dict:
+            """Aggregate per-app health into a spoken-friendly summary."""
+            h = launch_config.list_all_health()
+            apps = h.get("apps", {}) or {}
+            summary = {
+                app_id: {
+                    "healthy": bool(entry.get("healthy")),
+                    "ports": len(entry.get("ports", []) or []),
+                }
+                for app_id, entry in apps.items()
+            }
+            unhealthy = [a for a, e in summary.items() if not e["healthy"]]
+            return {
+                "total": h.get("total", len(summary)),
+                "apps": summary,
+                "unhealthy": unhealthy,
+            }
+
+        return self._run("apps_health", "", _do)
+
+    def list_projects(self) -> str:
+        """List scaffolded projects from the ledger. Read-only.
+
+        Use for 'what projects do I have', 'list my projects'. Wraps the same
+        ledger query that backs GET /api/projects; returns a compact JSON list
+        (name/template/subfolder/port) the model summarizes aloud. Degrades to
+        an empty list if the ledger is unreachable rather than failing.
+        """
+        def _do() -> dict:
+            """Query the projects ledger (same source as /api/projects)."""
+            from gui.sidecar.db import SessionLocal
+            from gui.sidecar.models import Project
+
+            try:
+                session = SessionLocal()
+            except Exception:  # noqa: BLE001 — degrade like the route
+                return {"projects": [], "total": 0, "available": False}
+            try:
+                rows = (
+                    session.query(Project)
+                    .order_by(Project.created_at.desc())
+                    .all()
+                )
+                projects = [
+                    {
+                        "name": p.name,
+                        "template": p.template,
+                        "subfolder": p.subfolder,
+                        "port": p.port,
+                    }
+                    for p in rows
+                ]
+                return {"projects": projects, "total": len(projects)}
+            finally:
+                session.close()
+
+        return self._run("list_projects", "", _do)
+
     # -------------------------------------------------------------- memory
     def remember(self, note: str) -> str:
         """Save a durable fact, preference, or context to long-term memory.
@@ -437,6 +509,8 @@ def build_tools(toolbox: OSAToolbox) -> list:
     specs = [
         (toolbox.system_health, "system_health"),
         (toolbox.app_status, "app_status"),
+        (toolbox.apps_health, "apps_health"),
+        (toolbox.list_projects, "list_projects"),
         (toolbox.start_app, "start_app"),
         (toolbox.stop_app, "stop_app"),
         (toolbox.remember, "remember"),

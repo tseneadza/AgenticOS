@@ -18,6 +18,7 @@ turns fall back to Claude so the route never hard-fails.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 
 from fastapi import APIRouter, HTTPException
@@ -25,6 +26,77 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# --------------------------------------------------------------------------- #
+# Destructive-action confirmation (Phase 14b) — conversational two-turn confirm.
+#
+# The sync chat route can't block waiting on a human, so a guarded destructive
+# action (e.g. stop_app -> app_stop) is confirmed across two turns:
+#   turn 1 (the request): the agent's approval_fn DENIES and records a pending
+#           entry for this thread_id -> OSA asks Tony to confirm.
+#   turn 2 (an affirmative WITH a live pending): the approval_fn APPROVES for
+#           that turn and clears the pending entry -> the checkpointed history
+#           replays the request so the model re-issues the tool and it proceeds.
+# A negative clears the pending entry. A bare affirmative with no pending never
+# approves anything. The store is in-process, thread-keyed, and TTL-bounded.
+# --------------------------------------------------------------------------- #
+_PENDING_CONFIRM: dict[str, dict] = {}
+_CONFIRM_TTL_SECONDS = 5 * 60
+
+_AFFIRMATIVES = frozenset({
+    "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm",
+    "confirmed", "do it", "go ahead", "go for it", "proceed", "affirmative",
+    "yes sir", "yes please", "please do", "absolutely", "of course",
+})
+_NEGATIVES = frozenset({
+    "no", "n", "nope", "nah", "cancel", "stop", "don't", "dont",
+    "never mind", "nevermind", "forget it", "abort", "negative", "no thanks",
+})
+
+
+def _normalize(message: str) -> str:
+    """Lowercase + strip surrounding whitespace and trailing punctuation."""
+    return (message or "").strip().lower().rstrip("!.?,").strip()
+
+
+def is_affirmative(message: str) -> bool:
+    """Whether a turn is a plain 'yes/confirm/go ahead' style affirmation."""
+    return _normalize(message) in _AFFIRMATIVES
+
+
+def is_negative(message: str) -> bool:
+    """Whether a turn is a plain 'no/cancel' style refusal."""
+    return _normalize(message) in _NEGATIVES
+
+
+def record_pending(thread_id: str, action: str, description: str) -> None:
+    """Record a pending destructive action awaiting confirmation for a thread."""
+    _PENDING_CONFIRM[thread_id] = {
+        "action": action,
+        "description": description,
+        "ts": time.time(),
+    }
+
+
+def get_pending(thread_id: str) -> dict | None:
+    """Return the live pending-confirm for a thread, or None if absent/expired.
+
+    Expired entries (older than the TTL) are pruned and treated as absent so a
+    stale 'yes' can never approve a destructive action.
+    """
+    entry = _PENDING_CONFIRM.get(thread_id)
+    if entry is None:
+        return None
+    if time.time() - entry.get("ts", 0) > _CONFIRM_TTL_SECONDS:
+        _PENDING_CONFIRM.pop(thread_id, None)
+        return None
+    return entry
+
+
+def clear_pending(thread_id: str) -> None:
+    """Drop any pending-confirm for a thread (no-op if none)."""
+    _PENDING_CONFIRM.pop(thread_id, None)
 
 
 class OSAChat(BaseModel):
@@ -90,11 +162,42 @@ def osa_chat(body: OSAChat) -> dict:
     alias = osa_agent.pick_model(message, ollama_ready=ollama_ready)
     model_id = llm.resolve(alias)
 
+    # Phase 14b: destructive-action confirmation. Decide THIS turn's approval
+    # policy up-front (the sync route can't block on a human):
+    #   * A live pending-confirm + an affirmative turn => approve this turn.
+    #   * A live pending-confirm + a negative turn      => clear + never approve.
+    #   * Otherwise a guarded destructive action DENIES and records a pending
+    #     entry so OSA asks Tony to confirm on the next turn.
+    pending = get_pending(thread_id)
+    confirmed = False
+    turn_state = {"awaiting": None}  # captured by approval_fn on a fresh deny
+
+    if pending is not None and is_affirmative(message):
+        confirmed = True
+        clear_pending(thread_id)
+
+        def approval_fn(action_type: str, description: str) -> str:
+            """Approve the confirmed destructive action for this turn only."""
+            return "approve"
+    else:
+        if pending is not None and is_negative(message):
+            clear_pending(thread_id)
+
+        def approval_fn(action_type: str, description: str) -> str:
+            """Deny + record a pending-confirm so OSA asks Tony to confirm."""
+            record_pending(thread_id, action_type, description)
+            turn_state["awaiting"] = {
+                "action": action_type, "description": description,
+            }
+            return "deny"
+
     conn = None
     try:
         conn = memory.checkpointer_conn()
         checkpointer = memory.get_checkpointer(conn)
-        agent = osa_agent.build_agent(model_id, checkpointer=checkpointer)
+        agent = osa_agent.build_agent(
+            model_id, approval_fn=approval_fn, checkpointer=checkpointer
+        )
         config = {"configurable": {"thread_id": thread_id}}
         result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=config)
     except Exception as exc:  # noqa: BLE001 — surface as a 502, never crash the route
@@ -107,6 +210,7 @@ def osa_chat(body: OSAChat) -> dict:
     messages = result.get("messages", []) if isinstance(result, dict) else []
     reply = _extract_text(getattr(messages[-1], "content", "")) if messages else ""
 
+    awaiting = turn_state["awaiting"]
     return {
         "reply": reply,
         "thread_id": thread_id,
@@ -114,6 +218,9 @@ def osa_chat(body: OSAChat) -> dict:
         "route": alias,
         "ollama_ready": ollama_ready,
         "tool_trace": _tool_trace(messages),
+        "awaiting_confirm": awaiting is not None,
+        "pending_action": awaiting,
+        "confirmed": confirmed,
     }
 
 

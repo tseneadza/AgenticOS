@@ -17,6 +17,8 @@ constitution:
       description: "Pushing code to a remote"
     - action: hub_stop_all
       description: "Stopping all Codehome apps"
+    - action: app_stop
+      description: "Stopping a running app"
 
   # Hard limits
   limits:
