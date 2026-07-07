@@ -29,6 +29,20 @@ DEFAULT_NOTIFICATIONS: dict = {
 }
 
 
+# Phase 14d — defaults for the optional ``voice:`` block (OSA voice-pipeline
+# knobs). Merged under any values present in the YAML so configs written
+# before 14d keep loading unchanged. ``enabled`` is a HARD default of False:
+# the voice service never runs unless Tony opts in on-device.
+DEFAULT_VOICE: dict = {
+    "enabled": False,            # hard default — opt-in on-device only
+    "wake_word": "osa",         # openWakeWord phrase (custom model TBD)
+    "stt_model": "small",       # faster-whisper size (latency/quality knob)
+    "piper_voice": "",          # Piper voice model — TBD, Tony auditions later
+    "push_to_talk_only": True,   # §9 Q3 unresolved => no always-listening yet
+    "mute": False,               # global output mute (runtime-flippable)
+}
+
+
 class ConstitutionViolation(Exception):
     """Raised when a tool call violates a hard constraint. Halts the run."""
 
@@ -66,6 +80,9 @@ class Constitution:
     notifications: dict = field(
         default_factory=lambda: dict(DEFAULT_NOTIFICATIONS)
     )
+    voice: dict = field(
+        default_factory=lambda: dict(DEFAULT_VOICE)
+    )
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Constitution":
@@ -93,6 +110,12 @@ class Constitution:
             notifications={
                 **DEFAULT_NOTIFICATIONS,
                 **(raw.get("notifications") or {}),
+            },
+            # 14d: absent block (pre-14d configs) => pure defaults; a partial
+            # block only overrides the keys it names.
+            voice={
+                **DEFAULT_VOICE,
+                **(raw.get("voice") or {}),
             },
         )
 

@@ -131,6 +131,9 @@ const ENDPOINTS_HARDCODED = [
   { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/chat",  desc:"Run one OSA turn — spoken-style reply + tool trace (routes local/cloud per turn)", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"message":"how\'s my memory?","thread_id":"osa-abc123"}'}] },
   { group:"OSA (Sidecar)", server:"sidecar", method:"GET",  path:"/api/osa/state", desc:"OSA readiness: active model, Ollama up/warmed, ready flag + latest proactive event id (14e)", params:[] },
   { group:"OSA (Sidecar)", server:"sidecar", method:"GET",  path:"/api/osa/events", desc:"Proactive ring buffer (14e): health up/down + briefings; cursor via ?after=<id>", params:[{name:"after",_in:"query",type:"number",required:false,hint:"only messages with id > after"}] },
+  { group:"OSA (Sidecar)", server:"sidecar", method:"GET",  path:"/api/osa/voice/state", desc:"Voice pipeline snapshot (14d scaffold): state machine, mute, deps_ok + missing, last error, latency stamps", params:[] },
+  { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/voice/ptt",   desc:"Push-to-talk trigger (14d): one capture->chat->speak turn; 409 while disabled / deps missing / skeleton", params:[] },
+  { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/voice/mute",  desc:"Flip the global voice output mute (works even while disabled); returns post-flip state", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"mute":true}'}] },
 
   // ─── Keno (Georgia Lottery) (Flask @ :5000) ──────────────────────────
   { group:"Keno (Flask)", method:"GET",  path:"/api/status",        desc:"API health check", params:[] },

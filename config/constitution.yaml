@@ -52,4 +52,17 @@ constitution:
     briefing_time: "08:30"         # daily spoken briefing (in-sidecar timer)
     briefing_enabled: true
 
+  # Phase 14d — OSA voice pipeline (openWakeWord -> faster-whisper -> Piper).
+  # enabled stays FALSE until Tony verifies mic/speaker on-device and installs
+  # the optional extras (pip install -r requirements-voice.txt). push_to_talk
+  # is the default interaction (design §9 Q3 unresolved — no always-listening
+  # until Tony opts in). piper_voice is TBD pending a voice audition.
+  voice:
+    enabled: false                  # HARD default — opt-in on-device only
+    wake_word: "osa"
+    stt_model: "small"             # faster-whisper model size
+    piper_voice: ""                # TBD — audition Piper voices later
+    push_to_talk_only: true
+    mute: false
+
 

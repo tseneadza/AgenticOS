@@ -1,3 +1,54 @@
+## 2026-07-07 — Phase 14d SCAFFOLD: OSA voice pipeline skeleton (no live audio)
+
+The voice subsystem's skeleton lands: package, feature flag, sidecar wiring,
+API stubs, tests. NO live audio this change — the openWakeWord /
+faster-whisper / Piper stages are documented stubs (`NotImplementedError`,
+always caught) until the on-device implementation pass; Tony verifies
+mic/speaker on his Mac. The sidecar remains fully functional with zero voice
+deps installed and the flag off (the default).
+
+- **`osa_voice/`** (new package, repo root per design doc §2):
+  `voice_available()` probes the optional deps via `find_spec` (no import
+  side effects, never raises, reports missing pip names); `get_service()`
+  singleton; `config.py` reads the new `voice:` Constitution block (cached,
+  mirrors 14e `notifications_config`); `pipeline.py` `VoiceService` state
+  machine — `disabled / idle / listening / transcribing / speaking / error`,
+  `start/stop/push_to_talk/set_mute/state()`, `mark()` monotonic latency
+  stamps (§3.4 budget in the docstring). Stage stubs `_wake_loop`,
+  `_capture_utterance`, `_transcribe`, `_synthesize` carry the full §3 design
+  (rolling wake buffer, webrtcvad end-of-speech, whisper worker thread, Piper
+  + barge-in) and the utterance→agent contract: transcripts POST through the
+  SAME `/api/osa/chat` turn as typed input, then the reply is synthesized.
+  Failures park the service in `error` with a reason — never an exception out.
+- **Constitution**: new `voice:` block in `config/constitution.yaml` +
+  `DEFAULT_VOICE` merge in `core/constitution.py` (exact 14e notifications
+  pattern — pre-14d YAMLs keep loading). Knobs: `enabled` (**hard default
+  false**), `wake_word: "osa"`, `stt_model: "small"`, `piper_voice: ""`
+  (TBD — audition later), `push_to_talk_only: true` (§9 Q3 unresolved — no
+  always-listening until Tony opts in), `mute: false`.
+- **Sidecar** (`app.py`): `_start_osa_voice` startup hook (briefing-hook
+  pattern) — flag off ⇒ debug log, no task; enabled + deps missing ⇒ warning
+  with the missing list, service in `error`, sidecar unaffected; enabled +
+  deps ok ⇒ `service.start()` off-loop via `asyncio.to_thread`, handle on
+  `app.state.osa_voice_task` (also added to the shutdown cancel list).
+- **Routes** (`routes/api_osa_voice.py`, new — voice kept out of the
+  chat-focused `api_osa.py`): `GET /api/osa/voice/state` (snapshot +
+  Constitution `enabled` flag), `POST /api/osa/voice/ptt` (409 with reason
+  while disabled / deps missing / skeleton), `POST /api/osa/voice/mute`
+  (`{mute: bool}` — works even while disabled, runtime-only). All three
+  registered in `HubApiExplorer.jsx`.
+- **Deps declared, NOT installed**: `requirements-voice.txt` (openwakeword,
+  faster-whisper, piper-tts, sounddevice, webrtcvad) — optional extras for
+  the existing `.venv`, on-device only (§10); base `requirements.txt`
+  untouched. `osa_voice/README.md` has Tony's on-device setup steps + the
+  latency budget table.
+- **Tests**: `test_phase14d_voice_scaffold.py` — flag-off default (fresh +
+  pre-14d YAML merge), `voice_available()` with deps absent, service
+  lifecycle (disabled stays disabled; enabled-but-missing ⇒ `error` with
+  reason; PTT stub ⇒ caught `not_implemented`; mute flip; `state()` shape;
+  `mark()` stamps), routes via TestClient (state shape, ptt 409, mute flip),
+  startup hook (flag off ⇒ no task; deps-missing ⇒ logs, no raise).
+
 ## 2026-07-07 — OSA right rail (14e follow-on): orb + proactive feed panel
 
 The OSA orb moves out of its floating overlay into a dedicated right rail — a

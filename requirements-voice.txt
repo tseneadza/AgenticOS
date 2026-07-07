@@ -1,0 +1,18 @@
+# OSA voice pipeline — OPTIONAL extras (Phase 14d). NOT part of the base
+# requirements: the sidecar runs fully without these; `osa_voice` imports them
+# lazily and reports what's missing via voice_available().
+#
+# Install on-device into the existing venv:
+#     .venv/bin/pip install -r requirements-voice.txt
+#
+# Notes:
+#   * macOS will prompt for microphone permission on first live run (grant it
+#     to the terminal/sidecar host process).
+#   * On-device only (design doc §10) — the assistant sandbox can't run
+#     mic/audio; Tony verifies the pipeline on his Mac.
+#   * All processing is local/offline (decision #3): no cloud STT/TTS.
+openwakeword          # wake word ("osa") — rolling buffer detection (§3.1)
+faster-whisper        # local STT, model size via constitution voice.stt_model (§3.2)
+piper-tts             # local TTS; voice model via voice.piper_voice (§3.3)
+sounddevice           # mic capture + speaker playback (PortAudio)
+webrtcvad             # end-of-speech / silence detection

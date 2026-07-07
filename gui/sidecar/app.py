@@ -27,6 +27,7 @@ from gui.sidecar.routes import api_agent  # Phase 10: agent model registry
 from gui.sidecar.routes import api_projects  # Phase 11c: project creation
 from gui.sidecar.routes import api_diagnostics  # Phase 12: self-diagnostics dashboard
 from gui.sidecar.routes import api_osa  # Phase 14a: OSA assistant (text MVP)
+from gui.sidecar.routes import api_osa_voice  # Phase 14d: OSA voice pipeline (scaffold)
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -59,6 +60,7 @@ app.include_router(api_agent.router)  # Phase 10: agent LLM model registry + swi
 app.include_router(api_projects.router)  # Phase 11c: project scaffolding
 app.include_router(api_diagnostics.router)  # Phase 12: self-diagnostics dashboard
 app.include_router(api_osa.router)  # Phase 14a: OSA assistant chat + state
+app.include_router(api_osa_voice.router)  # Phase 14d: OSA voice state/ptt/mute
 
 
 @app.on_event("startup")
@@ -189,6 +191,52 @@ async def _start_osa_briefing() -> None:
 
 
 @app.on_event("startup")
+async def _start_osa_voice() -> None:
+    """Phase 14d: bring up the OSA voice service when the flag is on.
+
+    Same pattern as the briefing hook. Three paths, none of which can hurt
+    the sidecar:
+
+    * ``voice.enabled`` false (the HARD default) — log debug, no task.
+    * enabled but the optional deps (requirements-voice.txt) are missing —
+      log a warning with the missing list; the service parks in ``error``
+      (visible via GET /api/osa/voice/state); sidecar unaffected.
+    * enabled + deps present — ``service.start()`` in a background thread
+      (audio/model init must never block the event loop). The task handle
+      lives on app.state so it isn't garbage-collected.
+    """
+    import logging
+    _log = logging.getLogger("agenticos.osa.voice")
+
+    app.state.osa_voice_task = None
+    try:
+        from osa_voice import get_service, voice_available
+        from osa_voice.config import voice_config
+
+        if not voice_config().get("enabled", False):
+            _log.debug("OSA voice disabled (voice.enabled=false) — no task started.")
+            return
+
+        service = get_service()
+        ok, missing = voice_available()
+        if not ok:
+            service.start()  # records the error state + reason on the service
+            _log.warning(
+                "OSA voice enabled but deps missing (%s) — service in error "
+                "state; install with .venv/bin/pip install -r requirements-voice.txt",
+                ", ".join(missing),
+            )
+            return
+
+        app.state.osa_voice_task = asyncio.create_task(
+            asyncio.to_thread(service.start)
+        )
+        _log.info("OSA voice service starting in background.")
+    except Exception:  # noqa: BLE001 — voice must never break sidecar startup
+        _log.warning("OSA voice startup skipped", exc_info=True)
+
+
+@app.on_event("startup")
 async def _attach_loop() -> None:
     """Bind the running asyncio event loop to the AG-UI event bus."""
     bus.attach_loop(asyncio.get_running_loop())
@@ -277,7 +325,8 @@ async def _on_shutdown() -> None:
     _log = logging.getLogger("agentcos.shutdown")
 
     # Cancel every long-running background task we own.
-    for attr in ("shell_socket_task", "hub_autostart_task", "apscheduler"):
+    for attr in ("shell_socket_task", "hub_autostart_task", "apscheduler",
+                 "osa_voice_task"):
         task = getattr(app.state, attr, None)
         if task is None:
             continue
