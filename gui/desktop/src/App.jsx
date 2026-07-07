@@ -1043,14 +1043,15 @@ function ComingSoon({ dashboard }) {
   );
 }
 
-// ================================================================ Agent (FR-56/58)
-// Conversational governing-agent dashboard. New interaction paradigm → its own
-// nav link (GUI principle #7), never an always-on panel. The transcript is
-// reconstructed from the shared AG-UI feed (every agent turn has a run_id that
-// starts with "agt-"); messages are sent via POST /api/agent/chat, whose output
-// streams back over that same feed. Inline approvals reuse the shared approval
-// queue (ctx.approvals + ctx.decide); the model selector + escalate toggle drive
-// GET/POST /api/agent/model[s].
+// ================================================================ Agent → OSA
+// The "Agent" nav view is now an OSA chat (POST /api/osa/chat, synchronous
+// request/response; see AgentView below). New interaction paradigm → its own
+// nav link (GUI principle #7), never an always-on panel.
+//
+// The governor still exists and stays reachable via its own API
+// (POST /api/agent/chat, streamed over the AG-UI feed with run_ids starting
+// "agt-"). foldAgentEvent + AGENT_SESSION below remain the governor's plumbing;
+// they are intentionally left intact even though AgentView no longer drives it.
 const AGENT_SESSION = "gui";
 
 // Fold a single AG-UI event into a *persistent* agent-turn accumulator.
@@ -1105,125 +1106,61 @@ function foldAgentEvent(acc, e) {
   }
 }
 
-function ModelBadge({ isLocal }) {
-  return (
-    <span className={`agent-badge ${isLocal ? "local" : "cloud"}`}>
-      {isLocal ? "● local" : "☁ cloud"}
-    </span>
-  );
-}
-
-// Format a model's RAM/disk footprint (bytes → "4.7 GB").
-const gb = (bytes) => (bytes ? `${(bytes / 1e9).toFixed(1)} GB` : "");
-
-// Dropdown suffix: show size for runnable locals, or why one is unavailable.
-function modelSuffix(m) {
-  if (m.available) return m.is_local && m.size_bytes ? ` · ${gb(m.size_bytes)}` : "";
-  switch (m.reason) {
-    case "ollama_off": return " (Ollama offline)";
-    case "not_installed": return " (not installed)";
-    case "too_large": return ` (too large${m.size_bytes ? ` · ${gb(m.size_bytes)}` : ""})`;
-    case "no_api_key": return " (no API key)";
-    default: return m.is_local ? " (unavailable)" : " (no API key)";
-  }
-}
-
-// Inline hint explaining why the active model can't be used, and the fix.
-function modelHint(m) {
-  if (!m) return "The selected model is unavailable — pick another above.";
-  switch (m.reason) {
-    case "ollama_off":
-      return `Ollama isn’t running, so ${m.label} can’t be used — it should start automatically; press Reload, or start Ollama manually.`;
-    case "not_installed":
-      return `${m.label} isn’t installed — pull it with Ollama (\`ollama pull ${m.id}\`), or pick an available model above.`;
-    case "too_large":
-      return `${m.label} needs ${m.size_bytes ? `~${gb(m.size_bytes)}` : "more than half your RAM"} and may not run comfortably on this machine — pick a smaller model, or escalate to cloud.`;
-    case "no_api_key":
-      return `No API key for ${m.label} — set ANTHROPIC_API_KEY, or pick a local model above.`;
-    default:
-      return `${m.label} is unavailable — pick another model above.`;
-  }
-}
-
-function AgentView({ ctx }) {
-  const { agentTurns, approvals, decide } = ctx;
-  const [models, setModels] = useState(null);
-  const [active, setActive] = useState(null);
+// OSA chat view. Unlike the governor (streamed over AG-UI), OSA's
+// POST /api/osa/chat is synchronous request/response, so the transcript lives
+// in *local* component state — we append the user message, show a thinking
+// placeholder, then append OSA's reply. thread_id is captured from the first
+// reply and reused so the conversation is continuous/durable for the session.
+// OSA auto-routes each turn (local vs. cloud), so there is no manual model
+// picker; a read-only status strip reflects GET /api/osa/state instead.
+export function AgentView() {
+  const [osa, setOsa] = useState(null); // GET /api/osa/state
+  const [turns, setTurns] = useState([]); // [{ id, user, text, tools, route, model, status, error }]
+  const [threadId, setThreadId] = useState(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef(null);
+  const idRef = useRef(0);
 
-  const loadModels = useCallback(() => {
-    get("/api/agent/models")
-      .then((d) => { setModels(d); setActive(d.active); })
-      .catch(() => setModels({ models: [], active: null, ollama_up: false }));
+  const loadState = useCallback(() => {
+    get("/api/osa/state")
+      .then(setOsa)
+      .catch(() => setOsa({ ready: false, ollama_up: false, active_label: "OSA", soul: null }));
   }, []);
-  useEffect(() => { loadModels(); }, [loadModels]);
-
-  // Persistent, session-long chat log (accumulated in App, immune to the capped
-  // feed) — never re-derived from the sliced event buffer.
-  const transcript = agentTurns;
-  // Pending approvals raised by an agent turn (workflow tag "agent:<session>").
-  const agentApprovals = approvals.filter(
-    (a) => String(a.workflow || "").startsWith("agent:")
-  );
+  useEffect(() => { loadState(); }, [loadState]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [transcript, agentApprovals.length]);
+  }, [turns, sending]);
 
-  // RUN_STARTED echoes the user message, so clear the "sending" flag once the
-  // turn shows up in the transcript.
-  const lastTurn = transcript[transcript.length - 1];
-  useEffect(() => {
-    if (sending && lastTurn && lastTurn.status === "running") setSending(false);
-  }, [sending, lastTurn]);
-
-  const activeInfo = models?.models?.find((m) => m.id === active);
-  const activeIsLocal = !!activeInfo?.is_local;
-  // Issue 1: the active model can be unavailable (e.g. the default local model
-  // isn't installed, or a cloud model has no API key). Until models load,
-  // activeInfo is undefined — treat that as "not yet sendable" too.
-  const activeAvailable = !!activeInfo?.available;
-
-  const selectModel = (id) => {
-    setActive(id); // optimistic
-    post("/api/agent/model", { id }).then(loadModels).catch(loadModels);
-  };
-
-  // Issue 1: if the active model is unavailable, fall back once to the first
-  // available LOCAL model. We never auto-jump to a cloud model — that could
-  // incur cost silently; instead Send is disabled with a hint and the user can
-  // escalate to cloud explicitly.
-  const fellBackRef = useRef(false);
-  useEffect(() => {
-    if (!models?.models?.length || !active) return;
-    if (activeAvailable) { fellBackRef.current = false; return; }
-    if (fellBackRef.current) return;
-    const fallback = models.models.find((m) => m.is_local && m.available);
-    if (fallback) {
-      fellBackRef.current = true;
-      selectModel(fallback.id);
-    }
-  }, [models, active, activeAvailable]);
-
-  // FR-58: per-conversation escalate-to-cloud. On → switch to the first
-  // available cloud model; off → back to the first available local model.
-  const toggleEscalate = () => {
-    const list = models?.models || [];
-    const target = activeIsLocal
-      ? list.find((m) => !m.is_local && m.available) || list.find((m) => !m.is_local)
-      : list.find((m) => m.is_local && m.available) || list.find((m) => m.is_local);
-    if (target) selectModel(target.id);
-  };
+  // OSA is reachable whenever the sidecar reports ready. Until state loads we
+  // optimistically allow sending (the sidecar is up if this view rendered).
+  const ready = osa ? osa.ready !== false : true;
 
   const send = () => {
     const text = input.trim();
-    if (!text || sending || !activeAvailable) return;
-    setSending(true);
+    if (!text || sending || !ready) return;
+    const id = ++idRef.current;
+    setTurns((prev) => [
+      ...prev,
+      { id, user: text, text: "", tools: [], route: null, model: null, status: "running" },
+    ]);
     setInput("");
-    post("/api/agent/chat", { message: text, session_id: AGENT_SESSION })
-      .catch(() => setSending(false));
+    setSending(true);
+    post("/api/osa/chat", { message: text, thread_id: threadId })
+      .then((d) => {
+        if (d.thread_id) setThreadId(d.thread_id);
+        setTurns((prev) => prev.map((t) => (t.id === id
+          ? { ...t, text: d.reply || "", tools: d.tool_trace || [],
+              route: d.route || null, model: d.model || null, status: "completed" }
+          : t)));
+      })
+      .catch((e) => {
+        setTurns((prev) => prev.map((t) => (t.id === id
+          ? { ...t, status: "failed", error: String(e.message || e) }
+          : t)));
+      })
+      .finally(() => setSending(false));
   };
   const onKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
@@ -1233,33 +1170,32 @@ function AgentView({ ctx }) {
     <div className="agent-view">
       <div className="agent-bar">
         <div className="agent-model">
-          <label>Model</label>
-          <select value={active || ""} onChange={(e) => selectModel(e.target.value)}>
-            {(models?.models || []).map((m) => (
-              <option key={m.id} value={m.id} disabled={!m.available}>
-                {m.label}{modelSuffix(m)}
-              </option>
-            ))}
-          </select>
-          {activeInfo && <ModelBadge isLocal={activeIsLocal} />}
+          <label>OSA</label>
+          <span className="agent-badge local" title="Active OSA brain">
+            {osa?.active_label || "loading…"}
+          </span>
+          <span className={`agent-badge ${osa?.ollama_up ? "local" : "cloud"}`}
+            title="Local Ollama runtime status">
+            {osa?.ollama_up ? "● Ollama up" : "○ Ollama down"}
+          </span>
         </div>
-        <label className="agent-escalate" title="Switch this conversation between a local and a cloud model">
-          <input type="checkbox" checked={!activeIsLocal} onChange={toggleEscalate} />
-          Escalate to cloud
-        </label>
+        {osa?.soul && (
+          <span className="agent-escalate" title="Active soul / persona file">soul: {osa.soul}</span>
+        )}
       </div>
 
       <div className="agent-scroll" ref={scrollRef}>
-        {transcript.length === 0 && (
-          <Empty msg="Ask the governing agent to operate the OS — e.g. “list my workflows”." />
+        {turns.length === 0 && (
+          <Empty msg="Ask OSA to run the machine — e.g. “how’s my memory?”" />
         )}
-        {transcript.map((t) => (
+        {turns.map((t) => (
           <div className="agent-turn" key={t.id}>
             {t.user && <div className="agent-msg user"><div className="bubble">{t.user}</div></div>}
             {t.tools.length > 0 && (
               <div className="agent-trace">
                 {t.tools.map((tc, i) => (
-                  <span className={`trace-chip ${tc.status}`} key={i} title={tc.payload}>
+                  <span className="trace-chip done" key={i}
+                    title={tc.args ? JSON.stringify(tc.args) : undefined}>
                     <span className="trace-dot" />{tc.tool}
                   </span>
                 ))}
@@ -1267,50 +1203,34 @@ function AgentView({ ctx }) {
             )}
             <div className="agent-msg assistant">
               <div className="bubble">
-                {t.text || (t.status === "running" ? <span className="typing">…</span> : "")}
+                {t.text || (t.status === "running" ? <span className="typing">thinking…</span> : "")}
                 {t.status === "failed" && <span className="agent-err">error: {t.error}</span>}
               </div>
-              {t.status === "completed" && (
+              {t.status === "completed" && t.route && (
                 <div className="agent-meta">
-                  {t.tokens ? `${t.tokens.toLocaleString()} tok` : "0 tok"}
-                  {t.cost > 0 ? ` · $${t.cost.toFixed(4)}` : " · $0"}
+                  <span className={`agent-badge ${t.route === "local" ? "local" : "cloud"}`}>
+                    {t.route === "local" ? "● local" : "☁ cloud"}
+                  </span>
+                  {t.model ? ` ${t.model}` : ""}
                 </div>
               )}
             </div>
           </div>
         ))}
-
-        {agentApprovals.map((a) => (
-          <div className="agent-approval" key={a.approval_id}>
-            <div className="q">{a.question}</div>
-            <div className="agent-approval-actions">
-              <button className="btn approve" onClick={() => decide(a.approval_id, "approve")}>✓ Allow</button>
-              <button className="btn deny" onClick={() => decide(a.approval_id, "deny")}>✕ Deny</button>
-            </div>
-          </div>
-        ))}
-        {sending && <div className="agent-sending">sending…</div>}
       </div>
-
-      {models && active && !activeAvailable && (
-        <div className="agent-hint">{modelHint(activeInfo)}</div>
-      )}
 
       <div className="agent-input">
         <textarea
           rows={2}
-          placeholder={activeAvailable
-            ? "Message the governing agent…  (Enter to send, Shift+Enter for newline)"
-            : "Select an available model to start chatting…"}
+          placeholder="Message OSA…  (Enter to send, Shift+Enter for newline)"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKey}
-          disabled={!activeAvailable}
+          disabled={!ready}
         />
         <button
           className="btn approve send-btn"
-          disabled={!input.trim() || sending || !activeAvailable}
-          title={!activeAvailable ? "The selected model is unavailable" : undefined}
+          disabled={!input.trim() || sending || !ready}
           onClick={send}
         >
           Send
