@@ -19,6 +19,18 @@ repo must follow this cycle:
 5. Prefer cheap verification (targeted greps, single builds) over broad
    re-exploration to conserve budget.
 
+## Glossary rule
+
+**Read `docs/GLOSSARY.md` early in any session** (mirrored at
+`~/Brain2/08 - Systems/Agentic OS/GLOSSARY.md`) — it defines the
+acronyms and project-specific terms used across the docs and codebase
+(Sidecar, Hub, Constitution, HITL, OSA, AGUI, FR/TR, checkpointer,
+HUD, and so on). **Keep it current.** Any change that introduces a new
+acronym or non-obvious term to the docs or code must also add an entry
+to the glossary in the *same change* — same rule as `CHANGELOG.md` /
+`roadmap.md`. Both copies (docs + Brain2) must stay in sync; the
+`docs/` copy is authoritative.
+
 ## Project conventions
 
 - Phase numbering follows the **renumbered PRD** (`Brain2/01 - Projects/
