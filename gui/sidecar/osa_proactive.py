@@ -359,14 +359,20 @@ def compose_briefing() -> str:
     return f"{first} The ledger holds {count} {plural}."
 
 
-def post_briefing(*, now: datetime | None = None) -> dict:
+def post_briefing(*, force_announce: bool = False, now: datetime | None = None) -> dict:
     """Compose + record the daily briefing (kind="briefing").
 
     Announced by default; the quiet-hours/activity check still applies, so an
     early briefing while Tony's asleep lands silently in the buffer instead.
+
+    ``force_announce=True`` bypasses that check — used by the on-demand
+    ``POST /api/osa/briefing`` route: an explicit ask is its own proof of
+    activity, so quiet hours never silence it. Forced announcements still
+    stamp the rate-limit window (an on-demand brief defers the next
+    scheduled one's announce window like any other).
     """
     text = compose_briefing()
-    announced = should_announce("osa-briefing", "briefing", now=now)
+    announced = force_announce or should_announce("osa-briefing", "briefing", now=now)
     if announced:
         mark_announced("osa-briefing", now=now)
     return _append("osa", "briefing", text, announced, now=now)

@@ -412,3 +412,45 @@ class TestNotificationsConfig:
 
         monkeypatch.setattr(Constitution, "load", classmethod(_boom))
         assert pro.notifications_config() == DEFAULT_NOTIFICATIONS
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Brief-me-now (14e follow-on) — force_announce + POST /api/osa/briefing
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestBriefMeNow:
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from gui.sidecar.app import app as fastapi_app
+        return TestClient(fastapi_app)
+
+    def test_force_announce_beats_quiet_and_asleep(self, monkeypatch):
+        monkeypatch.setattr(pro, "compose_briefing", lambda: "All systems nominal.")
+        _active(monkeypatch, False)                    # 23:30 and idle …
+        msg = pro.post_briefing(force_announce=True, now=NIGHT)
+        assert msg["announced"] is True                # … but he ASKED
+        assert msg["kind"] == "briefing"
+
+    def test_force_announce_stamps_rate_limit_window(self, monkeypatch):
+        monkeypatch.setattr(pro, "compose_briefing", lambda: "Nominal.")
+        pro.post_briefing(force_announce=True, now=DAY)
+        # A scheduled briefing straight after is rate-limited → silent.
+        assert pro.post_briefing(now=DAY)["announced"] is False
+
+    def test_route_always_announces_and_records(self, monkeypatch):
+        monkeypatch.setattr(pro, "compose_briefing", lambda: "All quiet, Tony.")
+        _active(monkeypatch, False)   # policy would silence — the route must not
+        body = self._client().post("/api/osa/briefing").json()
+        assert body["announced"] is True
+        assert body["kind"] == "briefing"
+        assert body["text"] == "All quiet, Tony."
+        got = self._client().get("/api/osa/events").json()
+        assert got["messages"][-1]["id"] == body["id"]
+        assert got["latest_id"] == body["id"]
+
+    def test_route_notes_activity(self, monkeypatch):
+        monkeypatch.setattr(pro, "compose_briefing", lambda: "Nominal.")
+        called = []
+        monkeypatch.setattr(pro, "note_chat_turn", lambda: called.append(True))
+        self._client().post("/api/osa/briefing")
+        assert called == [True]

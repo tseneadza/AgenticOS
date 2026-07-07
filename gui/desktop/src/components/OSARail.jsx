@@ -26,6 +26,8 @@
  *   lastLine — OSA's most recent line (caption inside the orb block)
  *   events   — proactive messages [{ id, ts, app_id, kind, text, announced }]
  *   onOpen   — click handler for the orb (jump to the Agent view)
+ *   onBrief  — async handler for the "Brief me" button (POSTs
+ *              /api/osa/briefing upstream); button hidden if omitted
  */
 
 import { useEffect, useState } from "react";
@@ -84,6 +86,28 @@ const styles = `
   text-transform: uppercase;
   color: var(--text-dim);
   margin-bottom: 8px;
+}
+/* Brief-me-now: quiet, terse — a request, not a command center. */
+.osa-rail .rail-brief {
+  margin-top: 10px;
+  padding: 3px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.osa-rail .rail-brief:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--osa-idle);
+}
+.osa-rail .rail-brief:disabled {
+  opacity: .5;
+  cursor: default;
 }
 /* Feed section: the rail is fixed; only this list scrolls. */
 .osa-rail .rail-feed-section {
@@ -149,7 +173,22 @@ export default function OSARail({
   lastLine = "",
   events = [],
   onOpen,
+  onBrief,
 }) {
+  // Brief-me-now in-flight guard — one request at a time; errors release the
+  // button and stay otherwise silent (sidecar down ≡ the bridge's behavior).
+  const [briefing, setBriefing] = useState(false);
+  const handleBrief = async () => {
+    if (briefing || !onBrief) return;
+    setBriefing(true);
+    try {
+      await onBrief();
+    } catch {
+      /* degrade silently */
+    } finally {
+      setBriefing(false);
+    }
+  };
   // Re-render every 30s so relative timestamps ("2m ago") stay honest without
   // the caller having to push new props.
   const [now, setNow] = useState(() => Date.now());
@@ -169,6 +208,18 @@ export default function OSARail({
             caption + /api/osa/state sub-status itself). — */}
       <section className="rail-section rail-presence" data-testid="rail-presence">
         <OSAOrb state={state} lastLine={lastLine} onOpen={onOpen} />
+        {onBrief && (
+          <button
+            type="button"
+            className="rail-brief"
+            data-testid="rail-brief"
+            onClick={handleBrief}
+            disabled={briefing}
+            aria-label="Ask OSA for a status briefing now"
+          >
+            {briefing ? "One moment…" : "Brief me"}
+          </button>
+        )}
       </section>
 
       {/* — Future blocks (e.g. vitals) drop in here as more rail-sections. — */}

@@ -123,3 +123,44 @@ describe("fmtRel (relative timestamps)", () => {
     expect(fmtRel("not-a-date", NOW)).toBe("");
   });
 });
+
+// ── Brief-me-now button (14e follow-on) ─────────────────────────────────────
+import { act, waitFor } from "@testing-library/react";
+
+describe("OSARail brief-me-now", () => {
+  it("renders the button only when onBrief is provided", () => {
+    stubFetch();
+    const { rerender } = render(<OSARail events={[]} />);
+    expect(screen.queryByTestId("rail-brief")).toBeNull();
+    rerender(<OSARail events={[]} onBrief={() => {}} />);
+    expect(screen.getByTestId("rail-brief")).toBeTruthy();
+    expect(screen.getByTestId("rail-brief").textContent).toBe("Brief me");
+  });
+
+  it("click calls onBrief and disables the button while in flight", async () => {
+    stubFetch();
+    let release;
+    const onBrief = vi.fn(() => new Promise((res) => { release = res; }));
+    render(<OSARail events={[]} onBrief={onBrief} />);
+    const btn = screen.getByTestId("rail-brief");
+    await act(async () => { fireEvent.click(btn); });
+    expect(onBrief).toHaveBeenCalledTimes(1);
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toBe("One moment…");
+    // Second click while pending is a no-op.
+    await act(async () => { fireEvent.click(btn); });
+    expect(onBrief).toHaveBeenCalledTimes(1);
+    await act(async () => { release(); });
+    await waitFor(() => expect(btn.disabled).toBe(false));
+    expect(btn.textContent).toBe("Brief me");
+  });
+
+  it("a rejecting onBrief releases the button (silent degrade)", async () => {
+    stubFetch();
+    const onBrief = vi.fn(() => Promise.reject(new Error("sidecar down")));
+    render(<OSARail events={[]} onBrief={onBrief} />);
+    const btn = screen.getByTestId("rail-brief");
+    await act(async () => { fireEvent.click(btn); });
+    await waitFor(() => expect(btn.disabled).toBe(false));
+  });
+});

@@ -7,6 +7,8 @@ GET  /api/osa/state   — lightweight OSA readiness: active model, Ollama up/dow
                         latest proactive event id (cheap news detection, 14e).
 GET  /api/osa/events  — proactive ring-buffer messages (health transitions +
                         briefings) newer than an optional ``after`` cursor.
+POST /api/osa/briefing — compose + announce a status briefing on demand
+                        (always announced — an explicit ask beats quiet hours).
 
 The OSA graph is a dedicated LangGraph ReAct agent (``agents/osa_agent.py``)
 compiled with the MySQL checkpointer (``core.memory.get_checkpointer``) so a
@@ -319,3 +321,22 @@ def osa_events(after: int | None = None) -> dict:
     from gui.sidecar import osa_proactive
 
     return osa_proactive.get_messages(after=after)
+
+
+@router.post("/api/osa/briefing")
+def osa_briefing() -> dict:
+    """Compose + record a status briefing on demand (14e follow-on).
+
+    User-initiated (the rail's "Brief me" button), so it is ALWAYS announced —
+    the quiet-hours/activity policy is for unsolicited speech, and an explicit
+    ask is its own proof of activity. Also counts as an activity signal for
+    the proactive monitor's chat-recency fallback.
+
+    Returns:
+        The recorded ring-buffer entry:
+        ``{id, ts, app_id, kind: "briefing", text, announced: true}``.
+    """
+    from gui.sidecar import osa_proactive
+
+    osa_proactive.note_chat_turn()
+    return osa_proactive.post_briefing(force_announce=True)

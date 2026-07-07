@@ -1139,8 +1139,14 @@ export const OSAContext = createContext({
 // callback rather than double-polling. onMessages receives EVERY batch,
 // including the priming one (the feed should show buffered history even
 // though history is never spoken).
-export function OSAEventsBridge({ speak, onLine, onMessages, busyRef, intervalMs = 12_000 }) {
-  const lastSeenRef = useRef(null);
+//
+// Brief-me-now: the optional `cursorRef` shares the `after` cursor with the
+// owner — after an on-demand POST /api/osa/briefing the app speaks the reply
+// itself and advances the cursor past the new entry so the next poll doesn't
+// speak it a second time.
+export function OSAEventsBridge({ speak, onLine, onMessages, busyRef, cursorRef, intervalMs = 12_000 }) {
+  const internalCursorRef = useRef(null);
+  const lastSeenRef = cursorRef ?? internalCursorRef;
   const primedRef = useRef(false);
   useEffect(() => {
     let alive = true;
@@ -1405,8 +1411,27 @@ export default function App() {
   // re-bounds/re-orders for display.
   const [osaEvents, setOsaEvents] = useState([]);
   const recordOsaEvents = useCallback((msgs) => {
-    setOsaEvents((prev) => [...prev, ...msgs].slice(-20));
+    // Dedupe by id — an on-demand briefing is recorded directly AND could
+    // race the bridge poll; ids are the ring buffer's monotonic ints.
+    setOsaEvents((prev) => {
+      const seen = new Set(prev.map((m) => m.id));
+      const fresh = msgs.filter((m) => !seen.has(m.id));
+      return fresh.length ? [...prev, ...fresh].slice(-20) : prev;
+    });
   }, []);
+  // Brief-me-now (rail button): POST /api/osa/briefing, speak the reply
+  // immediately, and advance the shared bridge cursor past the new entry so
+  // the 12s poll doesn't re-speak it.
+  const osaCursorRef = useRef(null);
+  const requestBriefing = useCallback(async () => {
+    const d = await post("/api/osa/briefing", {});
+    if (!d || !d.text) return;
+    recordOsaEvents([d]);
+    if (typeof d.id === "number" && (osaCursorRef.current == null || d.id > osaCursorRef.current)) {
+      osaCursorRef.current = d.id;
+    }
+    speak(d.text);
+  }, [recordOsaEvents, speak]);
   const osaCtx = useMemo(
     () => ({ state: osaState, lastLine: osaLastLine, events: osaEvents, setOsaState, speak }),
     [osaState, osaLastLine, osaEvents, setOsaState, speak]
@@ -1520,7 +1545,7 @@ export default function App() {
     <OSAContext.Provider value={osaCtx}>
     {/* Phase 14e: proactive events → orb speech/caption + rail feed — ONE
         shared poll (renders nothing) */}
-    <OSAEventsBridge speak={speak} onLine={setOsaCaption} onMessages={recordOsaEvents} busyRef={osaBusyRef} />
+    <OSAEventsBridge speak={speak} onLine={setOsaCaption} onMessages={recordOsaEvents} busyRef={osaBusyRef} cursorRef={osaCursorRef} />
     <div className="shell">
       {/* FR-36: sidebar is navigation only */}
       <aside className="sidebar">
@@ -1580,6 +1605,7 @@ export default function App() {
         lastLine={osaLastLine}
         events={osaEvents}
         onOpen={() => setView("agent")}
+        onBrief={requestBriefing}
       />
 
       {/* Phase 12: hidden self-diagnostics — corner gesture reveal + overlay */}

@@ -1,3 +1,27 @@
+## 2026-07-07 — Brief-me-now: on-demand OSA briefing (endpoint + rail button)
+
+Tony's first live look at the rail found OSA silent — correctly (zero apps
+under health monitoring ⇒ the proactive pipeline had no input), but with no
+way to make it speak on demand. This adds one.
+
+- **`POST /api/osa/briefing`** (`routes/api_osa.py`): compose + record a
+  status briefing NOW. Always announced — `post_briefing()` gained
+  `force_announce=True`, bypassing the quiet-hours/activity check (an
+  explicit ask is its own proof of activity; unsolicited speech keeps the
+  policy). Forced briefs still stamp the rate-limit window. Also fires
+  `note_chat_turn()` (activity signal). Registered in `HubApiExplorer.jsx`.
+- **Rail "Brief me" button** (`OSARail.jsx`, presence block under the orb):
+  quiet pill button, in-flight guard ("One moment…", disabled), silent
+  degrade on error, hidden when no `onBrief` handler.
+- **Shared-cursor plumbing** (`App.jsx`): `requestBriefing` POSTs, records
+  the entry into the feed, advances the events-bridge `after` cursor past it
+  (new optional `cursorRef` prop on `OSAEventsBridge`), then `speak()`s the
+  text immediately — no double-speak when the 12s poll comes around;
+  `recordOsaEvents` now dedupes by id.
+- **Tests**: pytest 328 (+4 — force beats quiet+asleep, rate-limit stamp,
+  route always-announces + records, activity note); vitest 598 (+3 — button
+  render/hide, in-flight disable + single-call, reject releases).
+
 ## 2026-07-07 — Phase 14d SCAFFOLD: OSA voice pipeline skeleton (no live audio)
 
 The voice subsystem's skeleton lands: package, feature flag, sidecar wiring,
