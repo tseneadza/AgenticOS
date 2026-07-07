@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>OSA Reactor Orb — approved mockup (Phase 14c reference)</title>
+<!--
+  APPROVED 2026-07-07 by Tony. Source-of-truth VISUAL for the OSA presence orb.
+  Port this SVG + the idle/thinking/speaking/listening animations into
+  gui/desktop/src/components/OSAOrb.jsx (theme tokens where possible; keep the
+  cyan/amber/green state hues as defined CSS vars). Placement: fixed upper-right
+  on every NON-Agent view. Click => jump to the Agent view. Listening is the
+  voice state (14d) — defined here but dormant until then.
+-->
+<style>
+  body{margin:0;background:#0b1017;display:flex;justify-content:center;padding:32px;
+    font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;color:#e7edf2}
+  .wrap{display:flex;flex-direction:column;gap:14px;align-items:center}
+  .frame{width:100%;max-width:640px;border:1px solid #2a3644;border-radius:14px;overflow:hidden;background:#0e1620}
+  .chrome{display:flex;align-items:center;gap:7px;padding:9px 13px;background:#131e2a;border-bottom:1px solid #2a3644}
+  .chrome .dot{width:10px;height:10px;border-radius:50%;background:#3a4a5c}
+  .chrome .ttl{margin-left:8px;font-size:12px;color:#8fa2b5}
+  .body{position:relative;display:flex;gap:14px;padding:16px;min-height:250px}
+  .rail{width:52px;border-radius:9px;background:#131e2a;flex:none}
+  .content{flex:1;display:flex;flex-direction:column;gap:11px;padding-top:6px}
+  .ph{height:15px;border-radius:6px;background:#16222f}
+  .ph1{width:55%}.ph2{width:78%}.ph3{width:40%}
+
+  /* ---- OSA reactor ---- */
+  .osa{position:absolute;top:12px;right:12px;width:118px;height:118px;cursor:pointer;user-select:none}
+  .osa .reactor{width:118px;height:118px;display:block;position:relative;z-index:2;overflow:visible}
+  .osa .glow{position:absolute;inset:8px;border-radius:50%;z-index:1;
+    background:radial-gradient(circle,#35d0e0 0%,transparent 68%);
+    opacity:.22;filter:blur(6px);transition:opacity .4s, background .4s}
+  .stroke{fill:none;stroke:#35d0e0;stroke-width:2;opacity:.85}
+  .dash-a{stroke-dasharray:6 10;opacity:.7}
+  .dash-b{stroke-dasharray:34 20;opacity:.6}
+  .thin{stroke-width:1.3;opacity:.55}
+  .core{fill:rgba(10,26,34,.55);stroke:#35d0e0;stroke-width:1.4}
+  .label{fill:#eaf6f9;font-size:26px;font-weight:700;letter-spacing:2px;text-anchor:middle;font-family:ui-sans-serif,system-ui,sans-serif}
+  .sweep{opacity:0;transform-origin:100px 100px}
+  .sweep-arc{fill:none;stroke:#ffb454;stroke-width:3;stroke-linecap:round;filter:drop-shadow(0 0 4px #ffb454)}
+  .waves .wave{fill:none;stroke:#4ff0ff;stroke-width:2;opacity:0}
+  .eq rect{fill:#49e08b;opacity:0;transform-origin:center}
+  .cap{position:absolute;top:122px;right:2px;width:150px;text-align:right;font-size:11px;line-height:1.35;color:#9fb2c4;z-index:2}
+
+  .ring{transform-origin:100px 100px}
+  .ring-out{animation:spin 26s linear infinite}
+  .ring-mid{animation:spin 18s linear infinite reverse}
+  .ring-in{animation:spin 12s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .osa[data-state="idle"] .glow{opacity:.16}
+
+  .osa[data-state="thinking"] .ring-out{animation-duration:7s}
+  .osa[data-state="thinking"] .ring-mid{animation-duration:5s}
+  .osa[data-state="thinking"] .ring-in{animation-duration:3.5s}
+  .osa[data-state="thinking"] .glow{opacity:.3;background:radial-gradient(circle,#ffb454 0%,transparent 68%)}
+  .osa[data-state="thinking"] .sweep{opacity:1;animation:spin 1.15s linear infinite}
+  .osa[data-state="thinking"] .stroke{stroke:#ffcf8f}
+
+  .osa[data-state="speaking"] .glow{animation:pulseGlow 1s ease-in-out infinite}
+  .osa[data-state="speaking"] .core{animation:pulseCore 1s ease-in-out infinite}
+  .osa[data-state="speaking"] .label{animation:pulseCore 1s ease-in-out infinite}
+  .osa[data-state="speaking"] .wave{animation:emanate 1.6s ease-out infinite}
+  .osa[data-state="speaking"] .wave.w2{animation-delay:.8s}
+  @keyframes pulseGlow{0%,100%{opacity:.2}50%{opacity:.5}}
+  @keyframes pulseCore{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+  .core,.label{transform-origin:100px 100px}
+  @keyframes emanate{0%{opacity:.55;transform:scale(1)}100%{opacity:0;transform:scale(1.9);transform-origin:100px 100px}}
+
+  .osa[data-state="listening"] .glow{opacity:.28;background:radial-gradient(circle,#49e08b 0%,transparent 68%)}
+  .osa[data-state="listening"] .stroke{stroke:#49e08b}
+  .osa[data-state="listening"] .core{stroke:#49e08b}
+  .osa[data-state="listening"] .ring-out{animation-duration:40s}
+  .osa[data-state="listening"] .ring-mid{animation-duration:30s}
+  .osa[data-state="listening"] .eq rect{opacity:.95;animation:bounce 1s ease-in-out infinite}
+  .osa[data-state="listening"] .eq rect:nth-child(1){animation-delay:0s}
+  .osa[data-state="listening"] .eq rect:nth-child(2){animation-delay:.15s}
+  .osa[data-state="listening"] .eq rect:nth-child(3){animation-delay:.3s}
+  .osa[data-state="listening"] .eq rect:nth-child(4){animation-delay:.15s}
+  .osa[data-state="listening"] .eq rect:nth-child(5){animation-delay:0s}
+  .osa[data-state="listening"] .label{opacity:.25}
+  @keyframes bounce{0%,100%{transform:scaleY(.5);opacity:.6}50%{transform:scaleY(2.4);opacity:1}}
+
+  .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .controls button{background:#131e2a;color:#dbe6f0;border:1px solid #2f3d4d;border-radius:8px;padding:8px 13px;font-size:13px;cursor:pointer}
+  .controls button em{font-style:normal;opacity:.5;font-size:11px}
+  .controls button.on{border-color:#35d0e0;box-shadow:0 0 0 1px #35d0e0 inset;color:#fff}
+  .hint{max-width:560px;text-align:center;font-size:12.5px;line-height:1.5;color:#8fa2b5;margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="ttl">AgenticOS — a non-Agent dashboard</span></div>
+    <div class="body">
+      <div class="rail"></div>
+      <div class="content"><div class="ph ph1"></div><div class="ph ph2"></div><div class="ph ph3"></div></div>
+      <div class="osa" id="osa" data-state="idle" title="Click to open the OSA chat">
+        <div class="glow"></div>
+        <svg viewBox="0 0 200 200" class="reactor" role="img" aria-label="OSA reactor">
+          <g class="ring ring-out"><circle cx="100" cy="100" r="92" class="stroke dash-a"/></g>
+          <g class="ring ring-mid"><circle cx="100" cy="100" r="74" class="stroke dash-b"/></g>
+          <g class="ring ring-in"><circle cx="100" cy="100" r="58" class="stroke thin"/></g>
+          <g class="sweep"><path d="M100 22 A78 78 0 0 1 178 100" class="sweep-arc"/></g>
+          <circle cx="100" cy="100" r="42" class="core"/>
+          <g class="waves"><circle cx="100" cy="100" r="46" class="wave"/><circle cx="100" cy="100" r="46" class="wave w2"/></g>
+          <g class="eq">
+            <rect x="72" y="96" width="5" height="8" rx="2"/><rect x="84" y="96" width="5" height="8" rx="2"/>
+            <rect x="96" y="96" width="5" height="8" rx="2"/><rect x="108" y="96" width="5" height="8" rx="2"/>
+            <rect x="120" y="96" width="5" height="8" rx="2"/>
+          </g>
+          <text x="100" y="107" class="label">OSA</text>
+        </svg>
+        <div class="cap" id="cap">Standing by.</div>
+      </div>
+    </div>
+  </div>
+  <div class="controls">
+    <button data-s="idle" class="on">Idle</button>
+    <button data-s="thinking">Thinking</button>
+    <button data-s="speaking">Speaking</button>
+    <button data-s="listening">Listening <em>(voice · 14d)</em></button>
+  </div>
+  <p class="hint">Pinned top-right on every non-Agent view. Click the orb to open the Agent view and type. Below it: OSA's latest line + a live status callout.</p>
+</div>
+<script>
+  (function(){
+    var osa=document.getElementById('osa'), cap=document.getElementById('cap');
+    var caps={idle:"Standing by.",thinking:"Working on it…",speaking:"“RAM's at 73%. You're fine.”",listening:"Listening…"};
+    document.querySelectorAll('.controls button').forEach(function(b){
+      b.addEventListener('click',function(){
+        var s=b.getAttribute('data-s');
+        osa.setAttribute('data-state',s); cap.textContent=caps[s];
+        document.querySelectorAll('.controls button').forEach(function(x){x.classList.remove('on')});
+        b.classList.add('on');
+      });
+    });
+  })();
+</script>
+</body>
+</html>

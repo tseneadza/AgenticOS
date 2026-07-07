@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { AgentView } from "../App";
+import { AgentView, OSAContext } from "../App";
 
 // AgentView is now an OSA chat: it loads GET /api/osa/state once and posts each
 // message to POST /api/osa/chat (synchronous request/response). We stub global
@@ -133,5 +133,72 @@ describe("AgentView (OSA chat)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Send/ }));
 
     await waitFor(() => expect(screen.getByText(/error:/)).toBeInTheDocument());
+  });
+});
+
+// Phase 14c: AgentView drives the shared OSA reactor orb via OSAContext.
+// Inject spy setters through a provider and assert the state transitions.
+describe("AgentView drives OSA presence (Phase 14c)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete global.fetch;
+  });
+
+  function renderWithPresence(overrides) {
+    const presence = {
+      state: "idle",
+      lastLine: "",
+      setOsaState: vi.fn(),
+      speak: vi.fn(),
+    };
+    render(
+      <OSAContext.Provider value={presence}>
+        <AgentView />
+      </OSAContext.Provider>
+    );
+    return presence;
+  }
+
+  it("sets 'thinking' on send and 'speaking' with the reply on success", async () => {
+    stubFetch();
+    const presence = renderWithPresence();
+    await waitFor(() =>
+      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+    );
+
+    const box = screen.getByPlaceholderText(/Message OSA/);
+    fireEvent.change(box, { target: { value: "how's my memory?" } });
+    fireEvent.click(screen.getByRole("button", { name: /Send/ }));
+
+    // "thinking" fires synchronously on send.
+    expect(presence.setOsaState).toHaveBeenCalledWith("thinking");
+
+    // On the resolved reply, speak() is called with OSA's line.
+    await waitFor(() =>
+      expect(presence.speak).toHaveBeenCalledWith(
+        "Your memory looks healthy — 62% free."
+      )
+    );
+  });
+
+  it("returns to 'idle' when the chat request fails", async () => {
+    global.fetch = vi.fn((url) => {
+      if (url.includes("/api/osa/state"))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(STATE) });
+      return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    });
+    const presence = renderWithPresence();
+    await waitFor(() =>
+      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+    );
+    const box = screen.getByPlaceholderText(/Message OSA/);
+    fireEvent.change(box, { target: { value: "boom" } });
+    fireEvent.click(screen.getByRole("button", { name: /Send/ }));
+
+    expect(presence.setOsaState).toHaveBeenCalledWith("thinking");
+    await waitFor(() =>
+      expect(presence.setOsaState).toHaveBeenCalledWith("idle")
+    );
+    expect(presence.speak).not.toHaveBeenCalled();
   });
 });

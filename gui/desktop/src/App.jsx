@@ -1,5 +1,5 @@
 // Agentic OS dashboard — Phase 7 (FR-40–44): expandable panels over Phase 3 nav shell
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./api";
 import { applyTheme, loadTheme } from "./theme";
 import pkg from "../package.json"; // single source of truth for the version (scripts/sync_version.py)
@@ -19,6 +19,7 @@ import WorkflowsWorkspace from "./components/WorkflowsWorkspace";
 import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
 import ProjectsView from "./components/ProjectsView";  // Phase 13d
+import OSAOrb from "./components/OSAOrb";  // Phase 14c — JARVIS reactor orb
 
 // Phase 9 Views
 import SettingsView from "./views/SettingsView";
@@ -1113,7 +1114,19 @@ function foldAgentEvent(acc, e) {
 // reply and reused so the conversation is continuous/durable for the session.
 // OSA auto-routes each turn (local vs. cloud), so there is no manual model
 // picker; a read-only status strip reflects GET /api/osa/state instead.
+// Phase 14c — app-level shared OSA presence state. The reactor orb (rendered at
+// the shell level on every non-Agent view) reflects OSA chat activity via this
+// context. A no-op default keeps AgentView renderable standalone (e.g. in unit
+// tests) without a provider.
+export const OSAContext = createContext({
+  state: "idle",
+  lastLine: "",
+  setOsaState: () => {},
+  speak: () => {},
+});
+
 export function AgentView() {
+  const osaPresence = useContext(OSAContext);
   const [osa, setOsa] = useState(null); // GET /api/osa/state
   const [turns, setTurns] = useState([]); // [{ id, user, text, tools, route, model, status, error }]
   const [threadId, setThreadId] = useState(null);
@@ -1147,6 +1160,10 @@ export function AgentView() {
     ]);
     setInput("");
     setSending(true);
+    // Phase 14c: drive the shared reactor orb. "thinking" while OSA works;
+    // "speaking" (with the reply as lastLine) on success — speak() falls back
+    // to "idle" after ~3s; "idle" again on error.
+    osaPresence.setOsaState("thinking");
     post("/api/osa/chat", { message: text, thread_id: threadId })
       .then((d) => {
         if (d.thread_id) setThreadId(d.thread_id);
@@ -1154,11 +1171,13 @@ export function AgentView() {
           ? { ...t, text: d.reply || "", tools: d.tool_trace || [],
               route: d.route || null, model: d.model || null, status: "completed" }
           : t)));
+        osaPresence.speak(d.reply || "");
       })
       .catch((e) => {
         setTurns((prev) => prev.map((t) => (t.id === id
           ? { ...t, status: "failed", error: String(e.message || e) }
           : t)));
+        osaPresence.setOsaState("idle");
       })
       .finally(() => setSending(false));
   };
@@ -1303,6 +1322,33 @@ export default function App() {
     return VIEWS.some((v) => v.id === saved) ? saved : "sysops";
   });
 
+  // Phase 14c: shared OSA presence state for the reactor orb. AgentView drives
+  // it via OSAContext (thinking on send, speaking on reply). speak() shows the
+  // reply (trimmed to ~90 chars) then falls back to idle after ~3s.
+  const [osaState, setOsaStateRaw] = useState("idle");
+  const [osaLastLine, setOsaLastLine] = useState("");
+  const osaSpeakTimer = useRef(null);
+  const setOsaState = useCallback((s) => {
+    if (osaSpeakTimer.current) { clearTimeout(osaSpeakTimer.current); osaSpeakTimer.current = null; }
+    setOsaStateRaw(s);
+  }, []);
+  const speak = useCallback((line) => {
+    const trimmed = (line || "").trim();
+    const shown = trimmed.length > 90 ? `${trimmed.slice(0, 89)}…` : trimmed;
+    if (osaSpeakTimer.current) clearTimeout(osaSpeakTimer.current);
+    setOsaLastLine(shown);
+    setOsaStateRaw("speaking");
+    osaSpeakTimer.current = setTimeout(() => {
+      setOsaStateRaw("idle");
+      osaSpeakTimer.current = null;
+    }, 3000);
+  }, []);
+  useEffect(() => () => { if (osaSpeakTimer.current) clearTimeout(osaSpeakTimer.current); }, []);
+  const osaCtx = useMemo(
+    () => ({ state: osaState, lastLine: osaLastLine, setOsaState, speak }),
+    [osaState, osaLastLine, setOsaState, speak]
+  );
+
   // Phase 12: hidden self-diagnostics overlay. Revealed by the corner gesture
   // (CornerReveal) or the `#diag` URL-hash escape hatch when the gesture misfires.
   const [showDiag, setShowDiag] = useState(false);
@@ -1408,6 +1454,7 @@ export default function App() {
   const ctx = { workflows, approvals, feed, agentTurns, refreshKey, runWorkflow, decide };
 
   return (
+    <OSAContext.Provider value={osaCtx}>
     <div className="shell">
       {/* FR-36: sidebar is navigation only */}
       <aside className="sidebar">
@@ -1452,6 +1499,15 @@ export default function App() {
           : <ErrorBoundary key={active.id} label={active.label}>
               <ActiveView ctx={ctx} />
             </ErrorBoundary>}
+        {/* Phase 14c: JARVIS reactor orb, pinned top-right on every non-Agent
+            view (the Agent view already shows OSA status + the full chat). */}
+        {active.id !== "agent" && (
+          <OSAOrb
+            state={osaState}
+            lastLine={osaLastLine}
+            onOpen={() => setView("agent")}
+          />
+        )}
         <div className="statusbar">
           <span>AG-UI {connected ? "● live" : "○ reconnecting"}</span>
           <span>events {feed.length}</span>
@@ -1462,5 +1518,6 @@ export default function App() {
       <CornerReveal onReveal={() => setShowDiag(true)} />
       {showDiag && <SelfDiagnosticsView onClose={closeDiag} />}
     </div>
+    </OSAContext.Provider>
   );
 }
