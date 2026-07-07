@@ -42,6 +42,22 @@ read, both suites re-run independently). Sidecar restarted — new routes live.
    installed**. `osa_voice/README.md` = Tony's on-device setup guide.
    pytest 324 (+27).
 
+## Late addition (same session): brief-me-now (`3d46ea0`)
+
+Tony's first live look found OSA silent — correctly (ZERO apps under health
+monitoring ⇒ the proactive pipeline had no input; also killing a managed app
+marks the row stopped and never fires a "down" — downs need a live pid with a
+dead port). Fix: **`POST /api/osa/briefing`** — on-demand briefing, ALWAYS
+announced (`post_briefing(force_announce=True)`; an explicit ask beats quiet
+hours; still stamps the rate-limit window) + a **"Brief me" pill button** in
+the rail's presence block. `App.jsx` `requestBriefing` speaks immediately and
+advances the shared bridge cursor (`cursorRef` prop) so the 12s poll doesn't
+re-speak; feed dedupes by id. pytest 328 (+4), vitest 598 (+3). Sidecar
+restarted (watch out: `python -m gui.sidecar` refuses to start while an old
+PID holds :5130 — kill ALL `pgrep -f gui.sidecar` PIDs first). Live-verified:
+curl POST → "Morning, Tony. Nothing's under health watch right now. The
+ledger holds 27 projects." Name locked: OSA stays OSA (Jarvis in role only).
+
 ## ▶ RESUME HERE
 
 1. **Tony: on-device visual check** — still pending from 14c, now bigger:
