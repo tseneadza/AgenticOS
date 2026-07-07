@@ -1,3 +1,59 @@
+# ⏹ SESSION CLOSED 2026-07-07 — BRAIN SWITCHING v2 SHIPPED ✅ (introspection · discovery · pull_model · cloud hatch)
+
+Follow-on to Tony's live test of brain switching (transcript showed: OSA
+guessed its brain, llama3.2:latest refused though installed, "add the model"
+impossible). Plus Tony's follow-up: cloud switching must be easy too.
+NOTE: the build subagent DIED mid-task (monthly spend limit) leaving good
+partial work; supervisor reviewed it line-by-line, finished it inline
+(cloud hatch, tests, fixes), and shipped. Also: an uncommitted GLOSSARY
+session's work was found in the tree and committed separately (`e029b8f`).
+
+## What shipped (`862d548`)
+
+- **Introspection:** chat route injects a per-turn "Brain status" line via
+  `build_agent(system_suffix=brain_prompt_line(...))` — mode, pin label,
+  effective model, escalation. "What's your brain?" = factual, zero tools.
+  `switch_model("status")` reports without changing.
+- **Discovery:** pinnable = curated ∪ installed Ollama (`discover_ollama`).
+  All 6 of Tony's uncurated models now pinnable; `too_large`+installed ⇒
+  `may_not_fit_ram` WARNING not block ("She'll be slow, Sir"); fuzzy
+  "llama" → installed llama3.2 over unpulled curated llama3.1.
+- **pull_model:** Constitution `model_pull` gate (14b two-turn confirm) →
+  background thread → completion posted to proactive buffer (new "model"
+  kind, orb/rail/HUD announce). Duplicate/installed/garbage answered first.
+- **Cloud escape hatch (Tony):** any explicit `claude-*` id pins when the
+  key is live ("switch to claude-opus-4-8" just works); family names never
+  guessed — OSA asks for the full id; uncurated pin shows as "(custom)" in
+  the rail picker; `escalated` tightened to local pins only.
+- **Test isolation fixes** (real bugs Tony's live pin exposed): 14a chat
+  test read the LIVE DB pin; TestResolveBrain saw the host's real Ollama
+  models. Both pinned down. pytest **419** (+33), vitest **603**.
+- Live-verified after sidecar restart: pinned llama3.2:latest ✓, pinned
+  claude-opus-4-8 (custom choice appears) ✓, **restored Tony's
+  qwen2.5:7b-instruct pin** (current state) ✓.
+
+## ▶ RESUME HERE
+
+1. **Tony: on-device visual check (accumulated):** rail (orb, feed, Brief
+   me, Brain picker now incl. discovered models + (custom) pins), Agent
+   view chat: "what's your brain?" (factual now), "switch to mistral",
+   "pull llama3.3" (two-turn confirm → background → orb announces landing),
+   HUD. Freeze/CONT a managed app for down/up announcements.
+2. **14d real implementation** (osa_voice stage stubs; see README) → 14f.
+3. Backlog: rail vitals block, streaming, launch daily apps under
+   management, curate favorite discovered models into settings.yaml labels.
+
+## Housekeeping
+
+- `.env.local` sk-admin- relabel still pending.
+- Subagent spend limit: prefer INLINE builds until the limit resets.
+- Sidecar restart quirk: kill ALL gui.sidecar PIDs first (stale child holds
+  :5130 and the new boot exits "already running").
+- Current live: sidecar fresh, pin = qwen2.5:7b-instruct (Tony's choice),
+  briefing 08:30, quiet hours 22–08 activity-aware.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 (morning) — GLOSSARY SHIPPED ✅
 
 Orthogonal to the OSA/Phase-14 thread. Tony asked whether the previously
