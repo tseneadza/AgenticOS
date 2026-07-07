@@ -1,3 +1,77 @@
+# ⏹ SESSION CLOSED 2026-07-07 — PHASE 14e SHIPPED ✅ + ORB RIGHT RAIL + 14d SCAFFOLD
+
+Three pushed commits, all built via subagents and supervisor-verified (diffs
+read, both suites re-run independently). Sidecar restarted — new routes live.
+
+## What shipped
+
+1. **14e — proactive monitoring + daily briefing + HUD presence** (`0396844`).
+   `gui/sidecar/osa_proactive.py`: health-poller transitions → OSA-voiced
+   messages; **Balanced policy (Tony locked):** down AND up (recovery)
+   announce, all else silent. **Quiet hours 22:00–08:00, activity-aware
+   (Tony is a night owl):** during quiet hours announce only if Tony is
+   active — HID idle probe (`ioreg`, <10 min) → last-OSA-chat fallback
+   (<30 min) → fail-open active. 5-min per-app rate limit (silenced msgs
+   don't consume the window). ~50-entry in-memory ring buffer. **Daily
+   briefing (Tony: in scope)** — in-sidecar asyncio timer (NOT launchd),
+   default 08:30, `compose_briefing()` over `list_all_health()` + projects.
+   All knobs in a new `constitution.yaml` `notifications:` block with
+   defaults-merge (pre-14e configs load unchanged). API: `GET
+   /api/osa/events?after=<id>`; `latest_event_id` on `/api/osa/state`;
+   registered in HubApiExplorer. Frontend: `OSAEventsBridge` in App.jsx
+   (12s poll, priming batch never spoken; announced→`speak()`,
+   silent→caption); `HudOsaPresence` in Hud.jsx (slim orb + caption, own
+   poll — separate window). Tests: pytest 297 (+58), vitest 581 (+11).
+2. **OSA orb → dedicated 220px right rail** (`6a1a3b2`, Tony mid-session
+   request). New `components/OSARail.jsx` on **every view INCLUDING Agent**
+   (hide-rule removed): orb (de-floated, static 118px stage) → caption/
+   status → proactive feed (newest-first, 20 max, relative timestamps,
+   announced = state-hue accent bar; empty state "Nothing to report.").
+   Sectioned for future drop-in blocks (Tony flagged vitals as a likely
+   add). One shared events poll (`onMessages` → `context.events`). Rail
+   hides below 900px window width. vitest 595 (+14).
+3. **14d SCAFFOLD — voice pipeline skeleton, hard-off flag** (`625ac39`).
+   `osa_voice/` package: side-effect-free dep probe, `VoiceService` state
+   machine (disabled|idle|listening|…|error, never crashes the sidecar),
+   stage stubs with full §3 design docstrings, `mark()` latency stamps.
+   `constitution.yaml` `voice:` block — `enabled: false`,
+   `push_to_talk_only: true` (§9 Q3 unresolved → PTT default). Routes:
+   `GET /api/osa/voice/state`, `POST .../ptt` (409 in skeleton),
+   `POST .../mute`; registered. `requirements-voice.txt` (openwakeword,
+   faster-whisper, piper-tts, sounddevice, webrtcvad) **declared, NOT
+   installed**. `osa_voice/README.md` = Tony's on-device setup guide.
+   pytest 324 (+27).
+
+## ▶ RESUME HERE
+
+1. **Tony: on-device visual check** — still pending from 14c, now bigger:
+   `npm run tauri dev` → check the new right rail on several views (orb,
+   caption, proactive feed), the Agent view with the rail present, and the
+   HUD orb + caption. Stop/start an app to see a down/up announcement flow
+   through orb + rail + HUD.
+2. **14d real implementation** (next build): implement the four stage stubs
+   (openWakeWord rolling buffer → sounddevice+webrtcvad capture →
+   faster-whisper worker STT → Piper TTS + barge-in), wire utterance →
+   `POST /api/osa/chat` (sticky voice thread) → speak reply, call
+   `ensure_ollama_running()` on service start (decision #9), drive the
+   orb's dormant `listening` state from `/api/osa/voice/state`. Then Tony
+   on-device: `pip install -r requirements-voice.txt`, flip
+   `voice.enabled`, mic permission, audition `piper_voice`, verify §3.4
+   latency budget. See `osa_voice/README.md`.
+3. Then **14f hardening** (design doc §8). Optional backlog: rail vitals
+   block, collapsible rail, streaming, inline Allow/Deny confirm.
+
+## Still open / housekeeping
+
+- `.env.local` still holds the `sk-admin-` key under `ANTHROPIC_API_KEY` —
+  relabel to `ANTHROPIC_ADMIN_KEY`.
+- OSA chat remains synchronous (no token streaming).
+- Sidecar restarted this session (`pgrep -f gui.sidecar`); live checks:
+  `/api/osa/events` → `{"messages":[],"latest_id":0}`, voice/state →
+  disabled + 5 missing deps (correct skeleton behavior).
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 — PHASE 14c SHIPPED ✅ (OSA reactor orb — ambient presence)
 
 Built via subagent from a Tony-approved interactive mockup; supervisor-verified.
