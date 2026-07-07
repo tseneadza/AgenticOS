@@ -1,3 +1,50 @@
+## 2026-07-07 — OSA right rail (14e follow-on): orb + proactive feed panel
+
+The OSA orb moves out of its floating overlay into a dedicated right rail — a
+fixed 220px column on EVERY view, including Agent (previously the orb hid
+there). Frontend-only; backend untouched.
+
+- **`OSARail.jsx`** (new, `gui/desktop/src/components/`): sectioned column —
+  (1) presence block: the 14c reactor orb + caption/status; (2) **proactive
+  feed**: recent `GET /api/osa/events` messages (downs / recoveries /
+  briefings), newest first, bounded to the freshest 20, relative timestamps
+  ("2m ago", 30s refresh tick), announced messages visually distinct via a
+  state-hue accent bar (downs amber `--osa-think`, recoveries green
+  `--osa-listen`, briefings cyan `--osa-idle`) on a `--bg-panel` chip; empty
+  state "Nothing to report." in OSA's voice. Rail is fixed, only the feed list
+  scrolls. Structure is deliberately `rail-section` blocks so future blocks
+  (Tony mentioned vitals) drop in between presence and feed. Scoped `<style>`
+  (conventions rule 3), theme tokens only, `prefers-reduced-motion` guard.
+  **Responsive floor: below 900px the rail hides entirely** (media query in
+  the component) rather than crushing the views.
+- **Shared poll, no double-polling**: `OSAEventsBridge` gained an optional
+  `onMessages(msgs)` callback — the ONE `/api/osa/events` poll now feeds both
+  the speak/caption logic (unchanged: announced → speak, silent → caption,
+  priming never speaks) AND the rail feed. `onMessages` receives every batch
+  *including* the priming one, so buffered history shows in the feed without
+  ever being spoken. App.jsx accumulates the batches (bounded slice(-20)) and
+  exposes them as `events` on `OSAContext` (backward-compatible — default
+  `[]`; `setOsaState`/`speak` API untouched, AgentView unmodified).
+- **`OSAOrb.jsx`**: converted from absolute pinning (top 56px / right 16px /
+  z-50) to static flow — flex column, reactor in a fixed 118px `orb-stage`
+  (keeps the glow inset tracking the reactor, not the caption), caption
+  centered below. Animations, data-state machine, `/api/osa/state` status
+  poll, and the public props are unchanged — all 10 existing orb tests pass
+  unmodified.
+- **Shell (`App.jsx` / `App.css`)**: the floating `<OSAOrb>` mount and its
+  `active.id !== "agent"` hide-rule are gone; `.shell`'s flex row is now
+  sidebar · `.main` · `<OSARail>` (`.main` keeps `min-width: 0` so existing
+  views shrink cleanly at the reduced width). Orb click still jumps to the
+  Agent view. The HUD window (`HudOsaPresence`) is untouched — separate
+  window, keeps its own slim orb + poll.
+- **Tests**: new `OSARail.test.jsx` (12 — orb + caption render, state
+  pass-through, empty state, newest-first ordering + relative timestamps,
+  announced styling, feed bound, onOpen click, `fmtRel` table incl. bad-ts
+  fallback); `OSAEventsBridge.test.jsx` +2 (priming batch reaches
+  `onMessages` while still never spoken + announced still speaks from the one
+  shared poll; empty polls skip `onMessages`, prop optional). **Suites green:
+  `595 passed` (vitest, was 581), `297 passed` (pytest, untouched).**
+
 ## 2026-07-07 — Phase 14e: OSA HUD presence + proactive monitoring
 
 OSA now speaks up unprompted — health transitions and a daily briefing surface

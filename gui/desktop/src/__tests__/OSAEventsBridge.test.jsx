@@ -116,4 +116,44 @@ describe("OSAEventsBridge (proactive events polling)", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(speak).not.toHaveBeenCalled(); // no crash, no speech
   });
+
+  // ---- 14e follow-on: the rail's feed shares this single poll (onMessages) ----
+
+  it("delivers every batch to onMessages, including buffered history on the priming poll", async () => {
+    const speak = vi.fn();
+    const onMessages = vi.fn();
+    const history = [
+      { id: 1, app_id: "keno", kind: "down", announced: true, text: "Tony — keno just went down (port 5000)." },
+      { id: 2, app_id: "keno", kind: "up", announced: false, text: "keno is back up." },
+    ];
+    const fresh = [
+      { id: 3, app_id: "worldwise", kind: "down", announced: true, text: "Tony — worldwise just went down (port 5150)." },
+    ];
+    stubFetchSequence([
+      { messages: history, latest_id: 2 },
+      { messages: fresh, latest_id: 3 },
+      { messages: [], latest_id: 3 },
+    ]);
+    render(
+      <OSAEventsBridge speak={speak} onLine={vi.fn()} onMessages={onMessages} intervalMs={30} />
+    );
+    // Priming batch reaches the feed even though it is never spoken…
+    await waitFor(() => expect(onMessages).toHaveBeenCalledWith(history));
+    // …and the post-priming batch reaches BOTH consumers of the one poll:
+    await waitFor(() => expect(onMessages).toHaveBeenCalledWith(fresh));
+    await waitFor(() =>
+      expect(speak).toHaveBeenCalledWith("Tony — worldwise just went down (port 5150).")
+    );
+    expect(speak).toHaveBeenCalledTimes(1); // history still never spoken
+  });
+
+  it("does not call onMessages for empty polls and works without it (optional prop)", async () => {
+    const onMessages = vi.fn();
+    const calls = stubFetchSequence([EMPTY, EMPTY]);
+    render(
+      <OSAEventsBridge speak={vi.fn()} onLine={vi.fn()} onMessages={onMessages} intervalMs={30} />
+    );
+    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(2));
+    expect(onMessages).not.toHaveBeenCalled();
+  });
 });

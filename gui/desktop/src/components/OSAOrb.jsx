@@ -1,8 +1,11 @@
 /**
  * OSAOrb — Phase 14c JARVIS-style OSA reactor orb.
  *
- * A presentational reactor pinned to the upper-right corner of every non-Agent
- * view. Ported faithfully from the approved mockup
+ * A presentational reactor. Originally pinned absolutely to the upper-right of
+ * every non-Agent view; since the OSA right-rail change (14e follow-on,
+ * 2026-07-07) it renders in normal static flow, centered by its container —
+ * its one mount point is the rail (components/OSARail.jsx), shown on EVERY
+ * view including Agent. Ported faithfully from the approved mockup
  * (gui/mockups/osa_reactor.html — signed off by Tony 2026-07-07): concentric
  * rotating rings, amber "thinking" sweep, "OSA" core, emanating "speaking"
  * waves, and a green "listening" equalizer (voice state — dormant until 14d).
@@ -30,19 +33,26 @@ const styles = `
   --osa-idle: #35d0e0;   /* cyan — calm presence */
   --osa-think: #ffb454;  /* amber — working */
   --osa-listen: #49e08b; /* green — voice (14d) */
-  position: absolute;
-  /* Pinned to the upper-right of the main content area. The offset clears the
-     app topbar so the orb floats in the view body, matching the mockup. */
-  top: 56px;
-  right: 16px;
-  z-index: 50;
-  width: 118px;
-  height: 118px;
+  /* Static flow: the orb sits inside the OSA rail and is centered as a flex
+     column (reactor stage on top, caption below) — no absolute pinning. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
   cursor: pointer;
   user-select: none;
   background: none;
   border: none;
   padding: 0;
+}
+/* Fixed 118px stage so the glow's inset tracks the reactor, not the whole
+   button (which now also contains the caption). */
+.osa-orb .orb-stage {
+  position: relative;
+  display: block;
+  width: 118px;
+  height: 118px;
 }
 .osa-orb .orb-reactor {
   width: 118px;
@@ -86,15 +96,14 @@ const styles = `
 .osa-orb .orb-waves .orb-wave { fill: none; stroke: #4ff0ff; stroke-width: 2; opacity: 0; }
 .osa-orb .orb-eq rect { fill: var(--osa-listen); opacity: 0; transform-origin: center; }
 .osa-orb .orb-cap {
-  position: absolute;
-  top: 122px;
-  right: 2px;
-  width: 150px;
-  text-align: right;
+  display: block;
+  margin-top: 8px;
+  width: 100%;
+  max-width: 184px;
+  text-align: center;
   font-size: 11px;
   line-height: 1.35;
   color: var(--text-dim);
-  z-index: 2;
 }
 .osa-orb .orb-cap .orb-status { display: block; margin-top: 3px; color: var(--text-dim); opacity: .8; }
 
@@ -192,6 +201,7 @@ export default function OSAOrb({
       aria-label={label}
     >
       <style>{styles}</style>
+      <span className="orb-stage">
       <span className="orb-glow" aria-hidden="true" />
       <svg viewBox="0 0 200 200" className="orb-reactor" role="img" aria-label="OSA reactor">
         <g className="orb-ring orb-ring-out"><circle cx="100" cy="100" r="92" className="orb-stroke orb-dash-a" /></g>
@@ -210,6 +220,7 @@ export default function OSAOrb({
         </g>
         <text x="100" y="107" className="orb-label">OSA</text>
       </svg>
+      </span>
       <span className="orb-cap">
         {caption}
         {subStatus && <span className="orb-status">{subStatus}</span>}

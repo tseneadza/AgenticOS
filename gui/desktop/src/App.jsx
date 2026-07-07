@@ -19,7 +19,7 @@ import WorkflowsWorkspace from "./components/WorkflowsWorkspace";
 import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
 import ProjectsView from "./components/ProjectsView";  // Phase 13d
-import OSAOrb from "./components/OSAOrb";  // Phase 14c — JARVIS reactor orb
+import OSARail from "./components/OSARail";  // OSA right rail (14e follow-on) — orb + proactive feed
 
 // Phase 9 Views
 import SettingsView from "./views/SettingsView";
@@ -1121,6 +1121,7 @@ function foldAgentEvent(acc, e) {
 export const OSAContext = createContext({
   state: "idle",
   lastLine: "",
+  events: [],          // 14e follow-on: recent proactive messages (shared poll)
   setOsaState: () => {},
   speak: () => {},
 });
@@ -1132,7 +1133,13 @@ export const OSAContext = createContext({
 // (no speaking) so buffered history isn't "spoken" on app start. Polling is
 // skipped while a chat turn is in flight (busyRef) and degrades silently on
 // fetch errors. Renders nothing — mounted once inside the OSA provider.
-export function OSAEventsBridge({ speak, onLine, busyRef, intervalMs = 12_000 }) {
+//
+// 14e follow-on (OSA rail): this is the SINGLE events poll — the rail's
+// proactive feed consumes the same fetch via the optional `onMessages(msgs)`
+// callback rather than double-polling. onMessages receives EVERY batch,
+// including the priming one (the feed should show buffered history even
+// though history is never spoken).
+export function OSAEventsBridge({ speak, onLine, onMessages, busyRef, intervalMs = 12_000 }) {
   const lastSeenRef = useRef(null);
   const primedRef = useRef(false);
   useEffect(() => {
@@ -1145,6 +1152,7 @@ export function OSAEventsBridge({ speak, onLine, busyRef, intervalMs = 12_000 })
           if (!alive || !d) return;
           if (typeof d.latest_id === "number") lastSeenRef.current = d.latest_id;
           const msgs = d.messages || [];
+          if (msgs.length && onMessages) onMessages(msgs); // rail feed (shared poll)
           if (!primedRef.current) {
             primedRef.current = true; // baseline: caption only, never speak history
             if (msgs.length) onLine(msgs[msgs.length - 1].text);
@@ -1160,7 +1168,7 @@ export function OSAEventsBridge({ speak, onLine, busyRef, intervalMs = 12_000 })
     tick();
     const t = setInterval(tick, intervalMs);
     return () => { alive = false; clearInterval(t); };
-  }, [speak, onLine, busyRef, intervalMs]);
+  }, [speak, onLine, onMessages, busyRef, intervalMs]);
   return null;
 }
 
@@ -1391,9 +1399,17 @@ export default function App() {
   // (osaState "thinking" — AgentView sets it on send).
   const osaBusyRef = useRef(false);
   useEffect(() => { osaBusyRef.current = osaState === "thinking"; }, [osaState]);
+  // 14e follow-on (OSA rail): accumulate proactive messages from the SAME
+  // bridge poll (onMessages) for the rail's feed — no second /api/osa/events
+  // poll. Bounded here so app-level state can't grow without limit; the rail
+  // re-bounds/re-orders for display.
+  const [osaEvents, setOsaEvents] = useState([]);
+  const recordOsaEvents = useCallback((msgs) => {
+    setOsaEvents((prev) => [...prev, ...msgs].slice(-20));
+  }, []);
   const osaCtx = useMemo(
-    () => ({ state: osaState, lastLine: osaLastLine, setOsaState, speak }),
-    [osaState, osaLastLine, setOsaState, speak]
+    () => ({ state: osaState, lastLine: osaLastLine, events: osaEvents, setOsaState, speak }),
+    [osaState, osaLastLine, osaEvents, setOsaState, speak]
   );
 
   // Phase 12: hidden self-diagnostics overlay. Revealed by the corner gesture
@@ -1502,8 +1518,9 @@ export default function App() {
 
   return (
     <OSAContext.Provider value={osaCtx}>
-    {/* Phase 14e: proactive events → orb speech/caption (renders nothing) */}
-    <OSAEventsBridge speak={speak} onLine={setOsaCaption} busyRef={osaBusyRef} />
+    {/* Phase 14e: proactive events → orb speech/caption + rail feed — ONE
+        shared poll (renders nothing) */}
+    <OSAEventsBridge speak={speak} onLine={setOsaCaption} onMessages={recordOsaEvents} busyRef={osaBusyRef} />
     <div className="shell">
       {/* FR-36: sidebar is navigation only */}
       <aside className="sidebar">
@@ -1548,20 +1565,22 @@ export default function App() {
           : <ErrorBoundary key={active.id} label={active.label}>
               <ActiveView ctx={ctx} />
             </ErrorBoundary>}
-        {/* Phase 14c: JARVIS reactor orb, pinned top-right on every non-Agent
-            view (the Agent view already shows OSA status + the full chat). */}
-        {active.id !== "agent" && (
-          <OSAOrb
-            state={osaState}
-            lastLine={osaLastLine}
-            onOpen={() => setView("agent")}
-          />
-        )}
         <div className="statusbar">
           <span>AG-UI {connected ? "● live" : "○ reconnecting"}</span>
           <span>events {feed.length}</span>
         </div>
       </main>
+
+      {/* 14e follow-on: OSA right rail — reactor orb + caption + proactive
+          feed, on EVERY view including Agent (replaces the 14c floating orb
+          and its "hide on Agent" rule). Fixed 220px; hides itself below
+          ~900px via its own media query. */}
+      <OSARail
+        state={osaState}
+        lastLine={osaLastLine}
+        events={osaEvents}
+        onOpen={() => setView("agent")}
+      />
 
       {/* Phase 12: hidden self-diagnostics — corner gesture reveal + overlay */}
       <CornerReveal onReveal={() => setShowDiag(true)} />
