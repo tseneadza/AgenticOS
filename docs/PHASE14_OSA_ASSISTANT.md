@@ -229,6 +229,25 @@ Mark II's power levels are low" behavior — but never be annoying.
 
 ## 6. Surfaces (GUI)
 
+### 6.0 Presence model (refined by Tony, 2026-07-07) — supersedes the split below
+Tony's intent: OSA is an **ambient presence on every dashboard**, JARVIS-style,
+with one dedicated place to *type* to it.
+- **On every non-Agent view:** a persistent **OSA presence area** that DISPLAYS
+  OSA communicating with Tony — proactive notes, status callouts, and (later)
+  spoken captions. Output-focused; you read/hear OSA there, you don't type there.
+- **On the Agent view:** that same presence area shows, AND it is the **one
+  surface where Tony holds a full typed two-way conversation** with OSA. This is
+  the "text instead of talk" home. The Agent view effectively becomes OSA's chat
+  (folding the standalone ⌘9 "OSA nav view" idea into the existing Agent view
+  rather than adding a separate nav item — revisit exact nav in 14c).
+- **Open decision (Q1, unresolved 2026-07-07):** on the Agent view, does OSA
+  **replace** the governor as the brain, run **primary with the governor kept**
+  for workflow authoring, or a **toggle**? Default until decided = §4.1
+  (dedicated OSA graph coexisting with the governor). **Settle before 14c.**
+- **Sequencing (Tony):** keep the design-doc subphase order — 14b next. This
+  presence model refines **14c** (Agent-view two-way chat + presence area) and
+  **14e** (ambient presence + proactive surfaced on all non-Agent views).
+
 ### 6.1 OSA nav view — `gui/desktop/src/components/OSAView.jsx`
 - New nav link "OSA" (⌘9), appended so ⌘1–8 stay stable (per Phase 13d pattern).
 - Full conversation transcript (you + OSA), voice state (idle/listening/
