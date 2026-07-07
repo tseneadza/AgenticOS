@@ -1,3 +1,56 @@
+## 2026-07-07 — Phase 14e: OSA HUD presence + proactive monitoring
+
+OSA now speaks up unprompted — health transitions and a daily briefing surface
+through the orb caption on every non-Agent view and through a new compact HUD
+presence. Never annoying: balanced level, quiet hours, rate limit.
+
+- **Proactive monitor** (`gui/sidecar/osa_proactive.py`, new): the 13e health
+  poller's `"app:port up|down"` transitions become OSA-voiced messages
+  (down: "Tony — worldwise just went down (port 5150)."; up: "worldwise is
+  back up.") in an in-memory ~50-message ring buffer
+  (`{id, ts, app_id, kind, text, announced}` — `_PENDING_CONFIRM` precedent,
+  no new DB tables). Policy engine (pure functions, injectable clock):
+  **balanced level** — down + up (recovery) announce, everything else records
+  silently; **quiet hours 22:00–08:00 local, activity-aware** (Tony's a night
+  owl) — downgraded to silent UNLESS Tony is active per HID idle
+  (`ioreg -c IOHIDSystem`, active < 10 min idle) → last `/api/osa/chat` turn
+  within 30 min (`note_chat_turn` hook in `osa_chat`) → fail-open active;
+  **rate limit** — max 1 announced message per app per 5 min (flaps recorded
+  silently, silenced messages don't consume the window). Knobs live in
+  `config/constitution.yaml` under a new `notifications:` block;
+  `core/constitution.py` gained `DEFAULT_NOTIFICATIONS` + a `notifications`
+  field merged over defaults so pre-14e configs load unchanged.
+- **Daily briefing**: `compose_briefing()` (spoken 1–3 sentences from
+  `launch_config.list_all_health()` + the project-ledger count, both degrade
+  gracefully) + `post_briefing()` (`kind="briefing"`, announced, quiet-hours
+  check still applies). Scheduled **in-sidecar** as an asyncio task
+  (`_start_osa_briefing` in `app.py`, default 08:30, hourly re-check when
+  disabled) — deliberately the 13e poller pattern, NOT a launchd plist via
+  `core/scheduler.py` (no install step; noted in the module docstring). The
+  health poller feeds `record_transitions` off-loop via `asyncio.to_thread`.
+- **API** (`routes/api_osa.py`): new `GET /api/osa/events?after=<id>` →
+  `{messages, latest_id}` (cursor semantics; registered in
+  `HubApiExplorer.jsx`); `GET /api/osa/state` now carries `latest_event_id`
+  so the orb's existing 15s poll can cheaply detect news.
+- **Frontend**: `OSAEventsBridge` (exported from `App.jsx`, mounted inside the
+  OSA provider) polls events every ~12s with the `after` cursor, skips while a
+  chat turn is in flight (`busyRef` ← osaState "thinking"); announced →
+  `speak(text)` (14c speaking + caption → idle), silent → caption only; the
+  FIRST poll only primes the cursor/caption so buffered history is never
+  "spoken" on app start. `speak()` refactored over a shared `setOsaCaption`
+  (~90-char trim). **HUD** (`Hud.jsx`): new exported `HudOsaPresence` — a slim
+  orb + one-line caption under the brand header (the 118px reactor doesn't fit
+  the HUD column) doing its OWN events polling (separate Tauri window); same
+  state hues, data-state animation, `prefers-reduced-motion` guard, theme
+  tokens only.
+- **Tests**: `gui/sidecar/tests/test_phase14e_proactive.py` (58) — parsing/
+  phrasing, balanced policy, rate limit (incl. silenced-doesn't-consume),
+  quiet hours + activity override + fail-open, ioreg parse, ring buffer +
+  `after` cursor, routes via TestClient, briefing composition/policy, config
+  defaults/merge/fallback. Vitest: `OSAEventsBridge.test.jsx` (6) +
+  `HudOsaPresence.test.jsx` (5). **Suites green: `297 passed` (pytest),
+  `581 passed` (vitest).**
+
 ## 2026-07-07 — Phase 14b: OSA more tools + destructive-action confirmation
 
 Extends OSA (14a) with two read-only tools and a conversational confirm flow

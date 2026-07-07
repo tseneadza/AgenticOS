@@ -9,7 +9,7 @@
 // Nav clicks emit a Tauri "goto-view" event (App.jsx listens, switches view),
 // then re-show + focus the main window and hide the HUD. The same window calls
 // back the "Minimize to HUD" path in App.jsx / the native Window menu.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { get, post } from "./api";
 import { applyTheme, loadTheme } from "./theme";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -52,6 +52,125 @@ async function showMain() {
   const main = await WebviewWindow.getByLabel("main");
   if (main) { await main.show(); await main.setFocus(); }
   await getCurrentWindow().hide();
+}
+
+// Phase 14e — compact OSA presence for the HUD: a slim orb + one-line caption.
+// The HUD is a separate Tauri window, so it does its OWN /api/osa/events
+// polling (same ~12s cadence + `after` cursor as the main window's bridge).
+// An announced message pulses the orb "speaking" for ~3s and updates the
+// caption; silent messages update the caption only. The first successful poll
+// just primes the cursor/caption so buffered history isn't replayed as speech.
+// A slimmed variant of OSAOrb (the 118px reactor doesn't fit the HUD column);
+// same conventions: theme tokens + named state hues, data-state driven
+// animation, prefers-reduced-motion guard, component-scoped <style>.
+const hudOsaStyles = `
+.hud-osa {
+  --osa-idle: #35d0e0;   /* cyan — calm presence (matches OSAOrb) */
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.hud-osa .hud-osa-orb {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid var(--osa-idle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hud-osa .hud-osa-core {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--osa-idle);
+  opacity: .8;
+}
+.hud-osa[data-state="speaking"] .hud-osa-core { animation: hudOsaPulse 1s ease-in-out infinite; }
+.hud-osa[data-state="speaking"] .hud-osa-orb { animation: hudOsaRing 1s ease-in-out infinite; }
+@keyframes hudOsaPulse { 0%, 100% { transform: scale(1); opacity: .8; } 50% { transform: scale(1.5); opacity: 1; } }
+@keyframes hudOsaRing { 0%, 100% { box-shadow: 0 0 0 0 rgba(53, 208, 224, .35); } 50% { box-shadow: 0 0 6px 2px rgba(53, 208, 224, .35); } }
+.hud-osa .hud-osa-line {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-osa .hud-osa-core, .hud-osa .hud-osa-orb { animation: none !important; }
+}
+`;
+
+export function HudOsaPresence({ intervalMs = 12_000 }) {
+  const [state, setState] = useState("idle");
+  const [line, setLine] = useState("");
+  const lastSeenRef = useRef(null);
+  const primedRef = useRef(false);
+  const speakTimer = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    const trim = (t) => {
+      const s = (t || "").trim();
+      return s.length > 90 ? `${s.slice(0, 89)}…` : s;
+    };
+    const tick = () => {
+      const q = lastSeenRef.current != null ? `?after=${lastSeenRef.current}` : "";
+      get(`/api/osa/events${q}`)
+        .then((d) => {
+          if (!alive || !d) return;
+          if (typeof d.latest_id === "number") lastSeenRef.current = d.latest_id;
+          const msgs = d.messages || [];
+          if (!primedRef.current) {
+            primedRef.current = true; // baseline — never "speak" buffered history
+            if (msgs.length) setLine(trim(msgs[msgs.length - 1].text));
+            return;
+          }
+          if (!msgs.length) return;
+          const announced = msgs.filter((m) => m.announced);
+          if (announced.length) {
+            setLine(trim(announced[announced.length - 1].text));
+            setState("speaking");
+            if (speakTimer.current) clearTimeout(speakTimer.current);
+            speakTimer.current = setTimeout(() => {
+              setState("idle");
+              speakTimer.current = null;
+            }, 3000);
+          } else {
+            setLine(trim(msgs[msgs.length - 1].text));
+          }
+        })
+        .catch(() => { /* sidecar down — degrade silently */ });
+    };
+    tick();
+    const t = setInterval(tick, intervalMs);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      if (speakTimer.current) clearTimeout(speakTimer.current);
+    };
+  }, [intervalMs]);
+
+  return (
+    <div
+      className="hud-osa"
+      data-state={state}
+      data-testid="hud-osa"
+      role="status"
+      aria-label={`OSA presence — ${state}`}
+    >
+      <style>{hudOsaStyles}</style>
+      <span className="hud-osa-orb" aria-hidden="true"><span className="hud-osa-core" /></span>
+      <span className="hud-osa-line">{line || "Standing by."}</span>
+    </div>
+  );
 }
 
 export default function Hud() {
@@ -101,6 +220,9 @@ export default function Hud() {
           ⤢ Expand
         </button>
       </div>
+
+      {/* Phase 14e — ambient OSA presence (slim orb + last line) */}
+      <HudOsaPresence />
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Nav — same items as the sidebar; click jumps to that view in the app */}

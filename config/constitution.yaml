@@ -40,4 +40,16 @@ constitution:
     - "/Users/tonyseneadza/Codehome/AgenticOS/data"
     - "/Users/tonyseneadza/Codehome/"
 
+  # Phase 14e — OSA proactive-notification policy. Balanced level: down/up
+  # transitions announce; quiet hours downgrade to silent unless Tony is
+  # active (HID idle probe, then last-chat recency, then fail-open active).
+  notifications:
+    quiet_hours_start: "22:00"     # local, HH:MM
+    quiet_hours_end: "08:00"
+    rate_limit_seconds: 300         # max 1 announced message per app per window
+    activity_idle_minutes: 10       # HID idle below this => active
+    chat_activity_minutes: 30       # fallback: OSA chat within this => active
+    briefing_time: "08:30"         # daily spoken briefing (in-sidecar timer)
+    briefing_enabled: true
+
 

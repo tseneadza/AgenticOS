@@ -141,10 +141,51 @@ async def _start_health_poller() -> None:
                 summary = await asyncio.to_thread(launch_config.run_health_checks)
                 if summary.get("transitions"):
                     _log.warning("health: %s", summary["transitions"])
+                    # Phase 14e: feed transitions to the OSA proactive monitor
+                    # (off-loop — the quiet-hours activity probe may shell out).
+                    from gui.sidecar import osa_proactive
+                    await asyncio.to_thread(
+                        osa_proactive.record_transitions, summary["transitions"])
             except Exception:  # noqa: BLE001 — keep polling regardless
                 _log.debug("health poll skipped", exc_info=True)
 
     app.state.health_poller = asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _start_osa_briefing() -> None:
+    """Phase 14e: daily OSA briefing as an in-process asyncio timer.
+
+    Fires once daily at the Constitution's ``notifications.briefing_time``
+    (default 08:30 local) and posts a ``kind="briefing"`` message into the
+    proactive ring buffer (quiet-hours policy still applies inside).
+    Deliberately an in-sidecar task — same pattern as the health poller —
+    rather than a launchd plist via ``core/scheduler.py``: no install step,
+    and it lives/dies with the sidecar. Best-effort: config or DB trouble
+    never kills the loop. The task handle lives on app.state so it isn't
+    garbage-collected.
+    """
+    import logging
+    _log = logging.getLogger("agenticos.osa")
+
+    async def _loop() -> None:
+        while True:
+            try:
+                from gui.sidecar import osa_proactive
+                cfg = osa_proactive.notifications_config()
+                if not cfg.get("briefing_enabled", True):
+                    await asyncio.sleep(3600)  # disabled: re-check hourly
+                    continue
+                await asyncio.sleep(
+                    osa_proactive.seconds_until(cfg.get("briefing_time", "08:30")))
+                entry = await asyncio.to_thread(osa_proactive.post_briefing)
+                _log.info("osa briefing posted (announced=%s): %s",
+                          entry["announced"], entry["text"])
+            except Exception:  # noqa: BLE001 — keep the timer alive regardless
+                _log.debug("osa briefing skipped", exc_info=True)
+                await asyncio.sleep(60)
+
+    app.state.osa_briefing = asyncio.create_task(_loop())
 
 
 @app.on_event("startup")

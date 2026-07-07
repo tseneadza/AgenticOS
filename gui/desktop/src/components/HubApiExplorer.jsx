@@ -129,7 +129,8 @@ const ENDPOINTS_HARDCODED = [
 
   // ─── OSA Assistant (Sidecar) — Phase 14a text MVP ────────────────────
   { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/chat",  desc:"Run one OSA turn — spoken-style reply + tool trace (routes local/cloud per turn)", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"message":"how\'s my memory?","thread_id":"osa-abc123"}'}] },
-  { group:"OSA (Sidecar)", server:"sidecar", method:"GET",  path:"/api/osa/state", desc:"OSA readiness: active model, Ollama up/warmed, ready flag", params:[] },
+  { group:"OSA (Sidecar)", server:"sidecar", method:"GET",  path:"/api/osa/state", desc:"OSA readiness: active model, Ollama up/warmed, ready flag + latest proactive event id (14e)", params:[] },
+  { group:"OSA (Sidecar)", server:"sidecar", method:"GET",  path:"/api/osa/events", desc:"Proactive ring buffer (14e): health up/down + briefings; cursor via ?after=<id>", params:[{name:"after",_in:"query",type:"number",required:false,hint:"only messages with id > after"}] },
 
   // ─── Keno (Georgia Lottery) (Flask @ :5000) ──────────────────────────
   { group:"Keno (Flask)", method:"GET",  path:"/api/status",        desc:"API health check", params:[] },

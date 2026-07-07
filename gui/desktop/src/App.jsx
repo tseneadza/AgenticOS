@@ -1125,6 +1125,45 @@ export const OSAContext = createContext({
   speak: () => {},
 });
 
+// Phase 14e — proactive events bridge. Polls GET /api/osa/events (~12s) with an
+// `after` cursor and feeds the shared OSA presence: an announced message →
+// speak(text) (speaking state + caption, ~3s → idle); silent messages update
+// the caption only. The FIRST successful poll just primes the cursor + caption
+// (no speaking) so buffered history isn't "spoken" on app start. Polling is
+// skipped while a chat turn is in flight (busyRef) and degrades silently on
+// fetch errors. Renders nothing — mounted once inside the OSA provider.
+export function OSAEventsBridge({ speak, onLine, busyRef, intervalMs = 12_000 }) {
+  const lastSeenRef = useRef(null);
+  const primedRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      if (busyRef?.current) return; // a chat turn is in flight — don't compete
+      const q = lastSeenRef.current != null ? `?after=${lastSeenRef.current}` : "";
+      get(`/api/osa/events${q}`)
+        .then((d) => {
+          if (!alive || !d) return;
+          if (typeof d.latest_id === "number") lastSeenRef.current = d.latest_id;
+          const msgs = d.messages || [];
+          if (!primedRef.current) {
+            primedRef.current = true; // baseline: caption only, never speak history
+            if (msgs.length) onLine(msgs[msgs.length - 1].text);
+            return;
+          }
+          if (!msgs.length) return;
+          const announced = msgs.filter((m) => m.announced);
+          if (announced.length) speak(announced[announced.length - 1].text);
+          else onLine(msgs[msgs.length - 1].text);
+        })
+        .catch(() => { /* sidecar down — degrade silently */ });
+    };
+    tick();
+    const t = setInterval(tick, intervalMs);
+    return () => { alive = false; clearInterval(t); };
+  }, [speak, onLine, busyRef, intervalMs]);
+  return null;
+}
+
 export function AgentView() {
   const osaPresence = useContext(OSAContext);
   const [osa, setOsa] = useState(null); // GET /api/osa/state
@@ -1332,18 +1371,26 @@ export default function App() {
     if (osaSpeakTimer.current) { clearTimeout(osaSpeakTimer.current); osaSpeakTimer.current = null; }
     setOsaStateRaw(s);
   }, []);
-  const speak = useCallback((line) => {
+  // Shared caption trim (~90 chars) — used by speak() and by silent proactive
+  // messages (14e) that update the caption without the speaking animation.
+  const setOsaCaption = useCallback((line) => {
     const trimmed = (line || "").trim();
-    const shown = trimmed.length > 90 ? `${trimmed.slice(0, 89)}…` : trimmed;
+    setOsaLastLine(trimmed.length > 90 ? `${trimmed.slice(0, 89)}…` : trimmed);
+  }, []);
+  const speak = useCallback((line) => {
     if (osaSpeakTimer.current) clearTimeout(osaSpeakTimer.current);
-    setOsaLastLine(shown);
+    setOsaCaption(line);
     setOsaStateRaw("speaking");
     osaSpeakTimer.current = setTimeout(() => {
       setOsaStateRaw("idle");
       osaSpeakTimer.current = null;
     }, 3000);
-  }, []);
+  }, [setOsaCaption]);
   useEffect(() => () => { if (osaSpeakTimer.current) clearTimeout(osaSpeakTimer.current); }, []);
+  // 14e: the events bridge skips polling while a chat turn is in flight
+  // (osaState "thinking" — AgentView sets it on send).
+  const osaBusyRef = useRef(false);
+  useEffect(() => { osaBusyRef.current = osaState === "thinking"; }, [osaState]);
   const osaCtx = useMemo(
     () => ({ state: osaState, lastLine: osaLastLine, setOsaState, speak }),
     [osaState, osaLastLine, setOsaState, speak]
@@ -1455,6 +1502,8 @@ export default function App() {
 
   return (
     <OSAContext.Provider value={osaCtx}>
+    {/* Phase 14e: proactive events → orb speech/caption (renders nothing) */}
+    <OSAEventsBridge speak={speak} onLine={setOsaCaption} busyRef={osaBusyRef} />
     <div className="shell">
       {/* FR-36: sidebar is navigation only */}
       <aside className="sidebar">

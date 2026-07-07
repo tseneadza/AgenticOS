@@ -15,6 +15,19 @@ import yaml
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
+# Phase 14e — defaults for the optional ``notifications:`` block (OSA proactive
+# policy knobs). Merged under any values present in the YAML so configs written
+# before 14e keep loading unchanged.
+DEFAULT_NOTIFICATIONS: dict = {
+    "quiet_hours_start": "22:00",   # local time, HH:MM
+    "quiet_hours_end": "08:00",     # overnight wrap supported (start > end)
+    "rate_limit_seconds": 300,       # max 1 announced message per app per window
+    "activity_idle_minutes": 10,     # HID idle < this => Tony is active
+    "chat_activity_minutes": 30,     # fallback: last OSA chat within this => active
+    "briefing_time": "08:30",       # daily briefing, local time
+    "briefing_enabled": True,
+}
+
 
 class ConstitutionViolation(Exception):
     """Raised when a tool call violates a hard constraint. Halts the run."""
@@ -50,6 +63,9 @@ class Constitution:
     limits: dict = field(default_factory=dict)
     blocked: list[str] = field(default_factory=list)
     write_allowlist: list[str] = field(default_factory=list)
+    notifications: dict = field(
+        default_factory=lambda: dict(DEFAULT_NOTIFICATIONS)
+    )
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Constitution":
@@ -72,6 +88,12 @@ class Constitution:
             limits=raw.get("limits", {}),
             blocked=raw.get("blocked", []),
             write_allowlist=raw.get("write_allowlist", []),
+            # 14e: absent block (pre-14e configs) => pure defaults; a partial
+            # block only overrides the keys it names.
+            notifications={
+                **DEFAULT_NOTIFICATIONS,
+                **(raw.get("notifications") or {}),
+            },
         )
 
     # ------------------------------------------------------------------

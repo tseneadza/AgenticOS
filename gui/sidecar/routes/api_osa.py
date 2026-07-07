@@ -1,9 +1,12 @@
-"""OSA assistant API endpoints (Phase 14a — text MVP).
+"""OSA assistant API endpoints (Phase 14a — text MVP; 14e — proactive events).
 
-POST /api/osa/chat   — run one OSA conversational turn; returns a spoken-style
-                       reply + a compact tool trace. Body: {message, thread_id?}.
-GET  /api/osa/state  — lightweight OSA readiness: active model, Ollama up/down,
-                       whether Ollama has been warmed, and the ready flag.
+POST /api/osa/chat    — run one OSA conversational turn; returns a spoken-style
+                        reply + a compact tool trace. Body: {message, thread_id?}.
+GET  /api/osa/state   — lightweight OSA readiness: active model, Ollama up/down,
+                        whether Ollama has been warmed, the ready flag, and the
+                        latest proactive event id (cheap news detection, 14e).
+GET  /api/osa/events  — proactive ring-buffer messages (health transitions +
+                        briefings) newer than an optional ``after`` cursor.
 
 The OSA graph is a dedicated LangGraph ReAct agent (``agents/osa_agent.py``)
 compiled with the MySQL checkpointer (``core.memory.get_checkpointer``) so a
@@ -189,6 +192,12 @@ def osa_chat(body: OSAChat) -> dict:
 
     from agents import osa_agent
     from core import llm, memory
+    from gui.sidecar import osa_proactive
+
+    # Phase 14e: a chat turn is an activity signal — the proactive monitor's
+    # quiet-hours check falls back to "chatted recently" when the HID idle
+    # probe is unavailable.
+    osa_proactive.note_chat_turn()
 
     thread_id = body.thread_id or f"osa-{uuid.uuid4().hex[:10]}"
 
@@ -272,6 +281,7 @@ def osa_state() -> dict:
     """
     from agents import osa_agent
     from core import llm
+    from gui.sidecar import osa_proactive
 
     try:
         up = llm.ollama_up()
@@ -287,4 +297,25 @@ def osa_state() -> dict:
         "ollama_up": up,
         "ollama_warmed": osa_agent._warm_done,
         "soul": osa_agent.OSA_SOUL_NAME,
+        # 14e: newest proactive event id — lets the orb's existing state poll
+        # cheaply detect news without pulling the events list.
+        "latest_event_id": osa_proactive.latest_id(),
     }
+
+
+@router.get("/api/osa/events")
+def osa_events(after: int | None = None) -> dict:
+    """Return proactive messages from the in-memory ring buffer (Phase 14e).
+
+    Args:
+        after: Optional cursor — only messages with ``id > after`` are
+            returned. Omit it to get everything still in the buffer (~50).
+
+    Returns:
+        ``{messages: [{id, ts, app_id, kind, text, announced}, ...],
+        latest_id}`` — ``latest_id`` is the newest id ever recorded, suitable
+        as the next ``after`` cursor even when ``messages`` is empty.
+    """
+    from gui.sidecar import osa_proactive
+
+    return osa_proactive.get_messages(after=after)
