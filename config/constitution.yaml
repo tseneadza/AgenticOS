@@ -19,6 +19,8 @@ constitution:
       description: "Stopping all Codehome apps"
     - action: app_stop
       description: "Stopping a running app"
+    - action: model_pull
+      description: "Downloading a new local model (multi-GB)"
 
   # Hard limits
   limits:

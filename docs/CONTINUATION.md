@@ -1,3 +1,83 @@
+# ⏹ SESSION CLOSED 2026-07-07 (morning) — GLOSSARY SHIPPED ✅
+
+Orthogonal to the OSA/Phase-14 thread. Tony asked whether the previously
+requested glossary existed; conversation search surfaced a July 1 session
+that died mid-task on Filesystem MCP timeouts and never wrote anything.
+Confirmed on-disk (nothing in `docs/` or `Brain2/`), then Tony said "ship
+it" with defaults offered inline. Built directly (no subagent — single
+focused doc write, not worth the round-trip). Not committed yet — Tony
+can `git add` on next touch.
+
+## What shipped
+
+- **`docs/GLOSSARY.md`** (authoritative) — 461 lines, ~20KB, ~130 entries
+  across 8 sections: (1) core project vocabulary (AgenticOS, AGUI,
+  Approval Queue, Brain2, Codehome, Constitution, CONTINUATION.md,
+  Governor, Hub [marked RETIRED], HUD, OSA, Sidecar, Soul.md/Memory.md,
+  `promote-to-system`); (2) phases/planning (FR, TR, HITL, MVP, PoC,
+  PRD, sub-phase); (3) architecture (Agent, AGENT_REGISTRY, Checkpointer,
+  FastAPI, LangGraph, MCP, Orchestrator, ProcessManager, Runner,
+  StateGraph, TypedDict, Workflow, HTTP-status conventions);
+  (4) persistence (Autocommit, CRUD, Migration, MySQL, ORM,
+  PyMySQLSaver, PK, Schema, SQLAlchemy, SQLite [retired], TTL);
+  (5) frontend/GUI (ARIA, CSS tokens, DOM, HTMX, HubApiExplorer, JSX,
+  PTY, React 19, Tauri 2, Vite, WCAG, xterm.js); (6) voice/LLM/OSA
+  (Claude, faster-whisper, JARVIS, LLM, model aliases, Ollama,
+  openWakeWord, Persona, Piper, STT, TTS, tool guardrail, wake word);
+  (7) Unix/macOS (launchd, NSStatusItem + Tahoe permission gotcha, PID,
+  SIGKILL, SIGTERM, venv, zsh); (8) general web (API, ASCII, CLI, CSS,
+  HTTP verbs, GUI, HTML, HTTP/S, JSON, KV, OpenAPI, PR, REST, RSS, URL,
+  UX, WebSocket, YAML).
+- **Brain2 mirror** at `~/Brain2/08 - Systems/Agentic OS/GLOSSARY.md`
+  — byte-identical, MD5 match verified
+  (`13e9ee2b52b750057265e2ad0b18f544`). `docs/` is authoritative;
+  Brain2 mirrors.
+- **`CLAUDE.md`** — new **Glossary rule** section inserted right after
+  Session-budget rule / before Project conventions. Tells every future
+  session to read the glossary early and keep it current in the same
+  change as any new acronym/term (same policy as CHANGELOG/roadmap).
+- **`docs/CHANGELOG.md`** — dated entry at the top summarizing the above.
+
+## Housekeeping / caveats
+
+- **OSA acronym expansion is a placeholder.** Glossary lists
+  "Orchestrated System Assistant (pending Tony's final wording)" per
+  `PHASE14_OSA_ASSISTANT.md` §1.1. Swap in Tony's real expansion when
+  locked — one entry to update in both copies.
+- **Not git-committed.** Four files touched (`docs/GLOSSARY.md`,
+  `~/Brain2/.../GLOSSARY.md`, `CLAUDE.md`, `docs/CHANGELOG.md`).
+  `git status` in `~/Codehome/AgenticOS/` will show three of them
+  (Brain2 is a separate repo/vault).
+- **Scheduled-execution ask.** Tony asked to run this at 5:05 AM;
+  explained sessions are stateless and shipped immediately instead.
+  No launchd/cron artifact was created.
+
+## Verify
+
+```bash
+ls -la ~/Codehome/AgenticOS/docs/GLOSSARY.md \
+       "$HOME/Brain2/08 - Systems/Agentic OS/GLOSSARY.md"
+md5 ~/Codehome/AgenticOS/docs/GLOSSARY.md \
+    "$HOME/Brain2/08 - Systems/Agentic OS/GLOSSARY.md"   # must match
+grep -A1 "Glossary rule" ~/Codehome/AgenticOS/CLAUDE.md
+head -3 ~/Codehome/AgenticOS/docs/CHANGELOG.md
+```
+
+## ▶ RESUME HERE (next session) — glossary thread
+
+1. **Optional:** lock the real OSA acronym expansion; update entry in
+   both glossary copies + re-verify MD5.
+2. **Optional:** `git add docs/GLOSSARY.md CLAUDE.md docs/CHANGELOG.md`
+   and commit as `docs: add GLOSSARY.md + wire into CLAUDE.md/CHANGELOG`.
+3. **Standing rule now active:** any new acronym/term added to docs or
+   code must also land in `docs/GLOSSARY.md` in the same change.
+
+The pre-existing ▶ RESUME HERE below (OSA visual check, Phase 14d real
+implementation, Phase 14f hardening) is unaffected by this session and
+remains the primary next-session target.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 (late) — OSA BRAIN SWITCHING SHIPPED ✅
 
 Follow-on to the 14e/rail/14d-scaffold session (same day, see next block).

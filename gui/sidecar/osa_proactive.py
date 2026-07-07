@@ -184,14 +184,15 @@ def should_announce(
 ) -> bool:
     """Decide whether a message is announced (spoken) or recorded silently.
 
-    Balanced level: only "down", "up" and "briefing" are announce candidates.
+    Balanced level: only "down", "up", "briefing" and "model" (pull
+    completions, 2026-07-07) are announce candidates.
     Quiet hours downgrade to silent unless Tony is active (``active`` overrides
     the live probe — used by tests). The per-app rate limit is checked last and
     is only consumed by ``mark_announced`` when the caller actually announces.
     """
     cfg = cfg or notifications_config()
     now = now or datetime.now()
-    if kind not in ("down", "up", "briefing"):
+    if kind not in ("down", "up", "briefing", "model"):
         return False  # balanced level: anything else is silent
     if in_quiet_hours(now, cfg):
         if not (active if active is not None else is_tony_active(now=now, cfg=cfg)):
@@ -290,6 +291,29 @@ def record_transitions(transitions: list[str], *, now: datetime | None = None) -
         except Exception:  # noqa: BLE001 — one bad entry never kills the loop
             logger.debug("proactive: skipped transition %r", entry, exc_info=True)
     return results
+
+
+def post_model_event(
+    model: str, *, ok: bool, error: str | None = None,
+    now: datetime | None = None,
+) -> dict:
+    """Record a model-pull completion (kind="model", 2026-07-07).
+
+    Called from ``agents.osa_agent._pull_worker`` when a background
+    ``ollama pull`` finishes — success or failure — so the orb/rail/HUD
+    surface it. Same events schema as every ring-buffer message; the
+    quiet-hours/activity/rate-limit policy decides ``announced`` (keyed per
+    model so two different pulls don't rate-limit each other).
+    """
+    if ok:
+        text = f"{model} is on the shelf. Say the word."
+    else:
+        text = f"Couldn't pull {model}, Sir — {error or 'the download failed'}."
+    app_id = f"model:{model}"
+    announced = should_announce(app_id, "model", now=now)
+    if announced:
+        mark_announced(app_id, now=now)
+    return _append(app_id, "model", text, announced, now=now)
 
 
 # --------------------------------------------------------------------------- #

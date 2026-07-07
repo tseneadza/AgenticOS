@@ -381,6 +381,49 @@ def _ollama_installed_ids() -> set[str]:
     return set(discover_ollama().keys())
 
 
+def looks_like_ollama_id(model_id: str) -> bool:
+    """Heuristic: does this id look like an Ollama model ref (name:tag)?
+
+    Used as a last-resort fallback when an id is neither in the curated
+    registry nor the discovery cache (e.g. a pinned uncurated model right
+    after a cold start, before the first /api/tags probe). Ollama refs carry a
+    ':tag' ("mistral:latest", "qwen2.5:7b-instruct"); cloud ids never do.
+    """
+    return ":" in (model_id or "")
+
+
+def pull_ollama_model(name: str, timeout: float = 3600.0) -> dict:
+    """Pull a model into the local Ollama — blocking, hours-long for big ones.
+
+    Talks to the same HTTP API the rest of this module uses
+    (``POST /api/pull`` with ``stream: false`` — one response when the pull
+    finishes). Callers run this off the request path (OSA's ``pull_model``
+    tool spawns it on a background thread). A nonexistent model name errors
+    cleanly here rather than being pre-validated against a registry.
+
+    Returns:
+        ``{"ok": bool, "error": str | None}`` — never raises. On success the
+        discovery cache is force-refreshed so the new model is immediately
+        pinnable.
+    """
+    try:
+        import requests
+
+        resp = requests.post(
+            f"{ollama_base_url()}/api/pull",
+            json={"name": name, "stream": False},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        status = (resp.json() or {}).get("status")
+        if status == "success":
+            discover_ollama(force=True)
+            return {"ok": True, "error": None}
+        return {"ok": False, "error": f"unexpected pull status: {status!r}"}
+    except Exception as exc:  # noqa: BLE001 — surfaced to OSA's completion message
+        return {"ok": False, "error": str(exc)}
+
+
 # --------------------------------------------------------------------------- #
 # Machine RAM (to flag models too large to run comfortably)
 # --------------------------------------------------------------------------- #
@@ -693,7 +736,12 @@ def get_chat_model(model_id: str | None = None, **kwargs: Any):
     """
     model_id = model_id or active_model()
     info = get_model_info(model_id)
-    provider = info.provider if info else "anthropic"
+    # Sane fallback for ids outside the registry AND the discovery cache (an
+    # uncurated Ollama pin on a cold cache): a ':tag' ref builds a ChatOllama
+    # instead of being mis-sent to Anthropic.
+    provider = info.provider if info else (
+        "ollama" if looks_like_ollama_id(model_id) else "anthropic"
+    )
     adapter = get_provider(provider)
     if adapter is None:
         raise ValueError(

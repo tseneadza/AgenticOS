@@ -10,8 +10,11 @@ GET  /api/osa/events  — proactive ring-buffer messages (health transitions +
 POST /api/osa/briefing — compose + announce a status briefing on demand
                         (always announced — an explicit ask beats quiet hours).
 GET  /api/osa/model   — OSA brain pin: pinned model (null = auto), mode, and
-                        the valid registry choices with availability/reason.
-POST /api/osa/model   — pin OSA's brain ({model: "<registry id>"|"auto"});
+                        the pinnable choices — curated registry PLUS installed
+                        Ollama models (``discovered: true``, 2026-07-07) — with
+                        availability/reason (``may_not_fit_ram`` = pinnable
+                        with a warning, not disabled).
+POST /api/osa/model   — pin OSA's brain ({model: "<pinnable id>"|"auto"});
                         422 unknown, 409 unavailable-with-reason. Durable
                         (MySQL osa_settings) via gui.sidecar.osa_settings.
 
@@ -225,11 +228,16 @@ def osa_chat(body: OSAChat) -> dict:
     chosen = osa_agent.pick_model(message, ollama_ready=ollama_ready, pin=pin)
     model_id = llm.resolve(chosen)
     # The route badge keys off local vs cloud of what the turn ACTUALLY used.
+    # Discovered (uncurated) Ollama pins aren't in the registry — fall back to
+    # the discovery cache so their badge stays honest (2026-07-07).
     _info = llm.get_model_info(model_id)
+    if _info is None:
+        _info = llm.discover_ollama().get(model_id)
     route = "local" if (_info is not None and _info.is_local) else "default"
     # A local pin that didn't get this turn (tool guardrail or Ollama down)
-    # escalated to Claude — OSA mentions it in persona below.
-    escalated = bool(pin) and chosen != pin
+    # escalated to Claude — OSA mentions it in persona below. Only a LOCAL
+    # pin can escalate; a cloud pin always gets its turns.
+    escalated = bool(pin) and osa_agent._pin_is_local(pin) and chosen != pin
 
     # Phase 14b: destructive-action confirmation. Decide THIS turn's approval
     # policy up-front (the sync route can't block on a human):
@@ -260,12 +268,20 @@ def osa_chat(body: OSAChat) -> dict:
             }
             return "deny"
 
+    # Brain introspection (2026-07-07): a per-turn system-prompt line telling
+    # OSA its mode / pin / effective model, so "what's your brain?" is a
+    # zero-tool factual answer instead of a guess.
+    brain_line = osa_agent.brain_prompt_line(
+        pin=pin, effective=model_id, escalated=escalated
+    )
+
     conn = None
     try:
         conn = memory.checkpointer_conn()
         checkpointer = memory.get_checkpointer(conn)
         agent = osa_agent.build_agent(
-            model_id, approval_fn=approval_fn, checkpointer=checkpointer
+            model_id, approval_fn=approval_fn, checkpointer=checkpointer,
+            system_suffix=brain_line,
         )
         config = {"configurable": {"thread_id": thread_id}}
         result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=config)
@@ -362,12 +378,16 @@ class OSAModelPin(BaseModel):
 
 
 def _model_payload() -> dict:
-    """Shared GET/POST response: the pin + valid choices from the registry.
+    """Shared GET/POST response: the pin + every pinnable choice.
 
     Availability comes from ``llm.list_models`` WITHOUT the ensure-Ollama
-    spawn (this must stay cheap — the rail fetches it on mount); choices are
-    limited to the curated registry (discovered-but-uncurated Ollama pulls are
-    not pinnable — same rule ``set_model_pin`` enforces).
+    spawn (this must stay cheap — the rail fetches it on mount). Choices are
+    the curated registry PLUS the installed-but-uncurated Ollama models
+    (``discovered: true``, 2026-07-07) — the same pinnable set
+    ``set_model_pin`` enforces. Tony's RAM rule: an installed model flagged
+    ``too_large`` surfaces as ``available: true`` with reason
+    ``may_not_fit_ram`` — a warning the picker shows as a title, never a
+    disabled entry.
     """
     from core import llm
     from gui.sidecar import osa_settings
@@ -375,17 +395,33 @@ def _model_payload() -> dict:
     pin = osa_settings.get_model_pin()
     listing = llm.list_models(ensure_ollama=False)
     registry_ids = {m.id for m in llm.registry()}
-    choices = [
-        {
+    choices = []
+    for row in listing.get("models", []):
+        discovered = row["id"] not in registry_ids
+        if discovered and not (row.get("is_local") and row.get("installed")):
+            continue  # only installed local models join the shelf dynamically
+        available, reason = row["available"], row["reason"]
+        if row.get("is_local") and row.get("installed") and reason == "too_large":
+            available, reason = True, "may_not_fit_ram"
+        choices.append({
             "id": row["id"],
             "label": row["label"],
             "is_local": row["is_local"],
-            "available": row["available"],
-            "reason": row["reason"],
-        }
-        for row in listing.get("models", [])
-        if row["id"] in registry_ids
-    ]
+            "available": available,
+            "reason": reason,
+            "discovered": discovered,
+        })
+    # Cloud escape hatch (2026-07-07): an uncurated claude-* pin isn't in the
+    # choices — append it so the rail's <select> can still display it.
+    if pin and all(c["id"] != pin for c in choices):
+        choices.append({
+            "id": pin,
+            "label": f"{pin} (custom)",
+            "is_local": False,
+            "available": True,
+            "reason": "uncurated_cloud",
+            "discovered": False,
+        })
     return {
         "pinned_model": pin,
         "mode": "pinned" if pin else "auto",
@@ -399,15 +435,17 @@ def osa_model_get() -> dict:
     """Return OSA's brain pin state + the valid pin choices.
 
     ``pinned_model`` is null when routing is automatic; ``choices`` lists the
-    registry models with per-model ``available`` + ``reason`` so a picker can
-    disable dead brains with an explanation.
+    registry models AND the installed Ollama models (``discovered: true``)
+    with per-model ``available`` + ``reason`` so a picker can disable dead
+    brains with an explanation (``may_not_fit_ram`` stays enabled — it's a
+    warning, not a block).
     """
     return _model_payload()
 
 
 @router.post("/api/osa/model")
 def osa_model_set(body: OSAModelPin) -> dict:
-    """Pin OSA's brain to a registry model id, or ``"auto"`` to clear.
+    """Pin OSA's brain to a pinnable model id, or ``"auto"`` to clear.
 
     The pin is durable (MySQL ``osa_settings``) and takes effect on the next
     turn — no restart. Returns the same payload as GET after the change.

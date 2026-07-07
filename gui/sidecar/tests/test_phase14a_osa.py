@@ -286,6 +286,11 @@ class TestRoutes:
         monkeypatch.setattr(oa, "warm_ollama", lambda: True)
         monkeypatch.setattr(oa, "pick_model", lambda msg, **k: "local")
         monkeypatch.setattr(llm, "resolve", lambda alias: "qwen2.5:7b-instruct")
+        # Brain-pin isolation (2026-07-07): a live pin on Tony's DB must not
+        # leak into this pre-pin test (it made the route flag an escalation
+        # and append the persona clause to the reply).
+        from gui.sidecar import osa_settings as _st
+        monkeypatch.setattr(_st, "get_model_pin", lambda **k: None)
 
         # No real MySQL checkpointer.
         monkeypatch.setattr(memory, "checkpointer_conn", lambda: None)

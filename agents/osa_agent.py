@@ -71,7 +71,14 @@ OSA_SYSTEM = (
     "have' / 'list my projects' -> list_projects; 'launch X' / 'start X' -> "
     "start_app; 'stop X' / 'shut down X' -> stop_app; 'remember that ...' -> "
     "remember; 'switch to Sonnet' / 'use your local brain' / 'back to auto' "
-    "-> switch_model.\n"
+    "-> switch_model; 'pull llama3.3' / 'download a model' / 'add a new local "
+    "model' -> pull_model. Any full claude-* id (e.g. 'claude-opus-4-8') is "
+    "switchable even if not on the shelf; a bare cloud family name you don't "
+    "recognize -> ask Tony for the full id rather than guessing one.\n"
+    "- Your own brain is stated in the 'Brain status' line at the end of this "
+    "prompt. When asked what model/brain you are running on, answer from that "
+    "line directly — no tool call needed (switch_model with 'status' works "
+    "too).\n"
     "- Side-effectful actions pass a safety guard. If a destructive action comes "
     "back 'DENIED', it just needs Tony's OK first — don't treat it as a hard "
     "failure or tell him to authorize it elsewhere. Say what you're about to do "
@@ -180,16 +187,53 @@ def route_turn(message: str) -> str:
 def _pin_is_local(pin: str) -> bool:
     """Whether a pinned model id runs on a local provider (Ollama).
 
-    Registry metadata only — no network. Unknown ids (which validation should
-    have kept out) are treated as cloud so the pin is still honored verbatim.
+    Registry metadata first; a miss falls back to the Ollama discovery cache
+    (TTL-cached — a pinned *uncurated* model must still trip the local-pin
+    tool guardrail), then to the ':tag' id heuristic. Truly unknown ids are
+    treated as cloud so the pin is still honored verbatim.
     """
     try:
         from core import llm
 
         info = llm.get_model_info(pin)
-        return bool(info is not None and info.is_local)
+        if info is None:
+            info = llm.discover_ollama().get(pin)
+        if info is not None:
+            return bool(info.is_local)
+        return llm.looks_like_ollama_id(pin)
     except Exception:  # noqa: BLE001 — never let a lookup break routing
         return False
+
+
+def _model_label(model_id: str) -> str:
+    """Human label for a model id — registry, then discovery cache, then id."""
+    try:
+        from core import llm
+
+        info = llm.get_model_info(model_id)
+        if info is None:
+            info = llm.discover_ollama().get(model_id)
+        return info.label if info else model_id
+    except Exception:  # noqa: BLE001 — a label is cosmetic, never fatal
+        return model_id
+
+
+def brain_prompt_line(*, pin: str | None, effective: str, escalated: bool) -> str:
+    """The per-turn brain-introspection line for the system prompt (2026-07-07).
+
+    Injected by the chat route via ``build_agent(system_suffix=...)`` so OSA
+    KNOWS its brain instead of guessing: current mode (auto/pinned + the
+    pinned label), the effective model for THIS turn, and whether the
+    guardrail escalated it. Kept to 1-2 short lines.
+    """
+    mode = f"pinned to {_model_label(pin)}" if pin else "auto (per-turn routing)"
+    line = (
+        f"Brain status for THIS turn: mode {mode}; "
+        f"you are running on {_model_label(effective)} [{effective}]"
+    )
+    if escalated:
+        line += " — escalated to Claude for this turn by the local-pin tool guardrail"
+    return line + "."
 
 
 def pick_model(
@@ -233,6 +277,69 @@ def pick_model(
     if alias == "local" and not ready:
         return "default"
     return alias
+
+
+# --------------------------------------------------------------------------- #
+# Model pulls (2026-07-07) — approval-gated, background, announced on landing.
+# --------------------------------------------------------------------------- #
+# switch_model status-intent tokens ("what's your brain" → facts, no change).
+_BRAIN_STATUS_TOKENS = frozenset({"status", "current", "query", "which", "now"})
+
+# A plausible Ollama model ref: name[/name][:tag] — anything else is refused
+# before the approval gate so Tony is never asked to confirm garbage.
+_OLLAMA_REF_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)?"
+    r"(?::[A-Za-z0-9._-]+)?$"
+)
+
+_pull_lock = threading.Lock()
+_pulls_in_flight: set[str] = set()
+
+
+def reset_pull_state() -> None:
+    """Clear the in-flight pull registry. Test-only helper."""
+    with _pull_lock:
+        _pulls_in_flight.clear()
+
+
+def pulls_in_flight() -> list[str]:
+    """Names of the pulls currently running (sorted copy)."""
+    with _pull_lock:
+        return sorted(_pulls_in_flight)
+
+
+def _run_pull(name: str) -> dict:
+    """Run one blocking pull via ``core.llm.pull_ollama_model`` (test seam)."""
+    from core import llm
+
+    return llm.pull_ollama_model(name)
+
+
+def _pull_worker(name: str) -> None:
+    """Background body of one pull: run, deregister, announce the outcome.
+
+    Success and failure BOTH land in the proactive ring buffer
+    (``osa_proactive.post_model_event``) so the orb/rail/HUD surface the news;
+    a nonexistent model errors cleanly out of Ollama and arrives here as a
+    failure. Never raises — it's a daemon thread with nobody above it.
+    """
+    try:
+        result = _run_pull(name)
+    except Exception as exc:  # noqa: BLE001 — a crashed pull is a failed pull
+        result = {"ok": False, "error": str(exc)}
+    ok = bool(result.get("ok"))
+    # Announce BEFORE deregistering — once the name leaves the in-flight set,
+    # observers (tests, a duplicate ask) must already be able to see the
+    # outcome in the ring buffer. A duplicate ask during the announce gets an
+    # honest "already pulling"; the reverse order had a gap with neither.
+    try:
+        from gui.sidecar import osa_proactive
+
+        osa_proactive.post_model_event(name, ok=ok, error=result.get("error"))
+    except Exception:  # noqa: BLE001 — the pull already finished; stay quiet
+        pass
+    with _pull_lock:
+        _pulls_in_flight.discard(name)
 
 
 def _is_yes(decision: str | None) -> bool:
@@ -476,11 +583,13 @@ class OSAToolbox:
     def switch_model(self, target: str) -> str:
         """Switch OSA's brain — pin every turn to one model, or back to auto.
 
-        Use for 'switch to Sonnet', 'use your local brain', 'back to auto'.
-        ``target`` is the brain in the user's words ('sonnet', 'haiku',
-        'local', 'qwen', a full model id, or 'auto'). The pin is durable
-        (survives restarts); a local pin still sends tool work to Claude.
-        Not destructive — no approval needed.
+        Use for 'switch to Sonnet', 'use your local brain', 'back to auto' —
+        or to ASK about the brain: target 'status' / 'current' / '?' reports
+        the mode and pin without changing anything. ``target`` is the brain in
+        the user's words ('sonnet', 'haiku', 'local', 'qwen', an installed
+        Ollama model like 'mistral:latest', a full model id, or 'auto'). The
+        pin is durable (survives restarts); a local pin still sends tool work
+        to Claude. Not destructive — no approval needed.
         """
         target = (target or "").strip()
 
@@ -488,6 +597,22 @@ class OSAToolbox:
             """Resolve the spoken name, validate, pin, confirm in persona."""
             from core import llm
             from gui.sidecar import osa_settings
+
+            # Status/query intent — report the facts, change nothing.
+            if target.lower().rstrip("?!. ") in _BRAIN_STATUS_TOKENS or target == "?":
+                pin = osa_settings.get_model_pin()
+                if not pin:
+                    return (
+                        "Automatic routing — the local brain takes small "
+                        "talk, Claude takes reasoning and tools."
+                    )
+                label = _model_label(pin)
+                if _pin_is_local(pin):
+                    return (
+                        f"Pinned to {label}. Tool work still escalates "
+                        "to Claude."
+                    )
+                return f"Pinned to {label} for every turn."
 
             res = osa_settings.resolve_brain(target)
             status = res.get("status")
@@ -515,20 +640,100 @@ class OSAToolbox:
             except osa_settings.UnavailableBrainError as exc:
                 return f"Can't switch — {exc}. Staying where I am."
             info = llm.get_model_info(model)
+            if info is None:  # discovered (uncurated) Ollama model
+                info = next(
+                    (i for i in osa_settings._discovered_infos() if i.id == model),
+                    None,
+                )
             label = info.label if info else model
-            if info is not None and info.is_local:
+            is_local = bool(info.is_local) if info else llm.looks_like_ollama_id(model)
+            # RAM note (2026-07-07): pinnable, but warn when it may not fit.
+            warn = ""
+            try:
+                if osa_settings._availability(model)[1] == "may_not_fit_ram":
+                    warn = (
+                        " She'll be slow, Sir — that one's bigger than "
+                        "your RAM."
+                    )
+            except Exception:  # noqa: BLE001 — the warning is best-effort
+                pass
+            if is_local:
                 return (
                     f"Switched to {label}. Anything needing tools still goes "
-                    "to Claude — the local brain doesn't get the keys."
+                    f"to Claude — the local brain doesn't get the keys.{warn}"
+                )
+            # Uncurated cloud pin (escape hatch): the id shape + key were
+            # checked, but only Anthropic knows if the id is real — be honest.
+            if osa_settings.is_uncurated_cloud(model):
+                return (
+                    f"Switched to {label}. That one's not on my curated "
+                    "shelf, so if Anthropic doesn't recognize the id, "
+                    "you'll hear about it on the next turn."
                 )
             return (
                 f"Switched to {label}. Every turn goes there "
-                "until you say otherwise."
+                f"until you say otherwise.{warn}"
             )
 
         # Same _guarded plumbing as every other tool for consistency — the
         # Constitution has no switch_model approval gate, so this never blocks.
         return self._guarded("switch_model", target, _do)
+
+    def pull_model(self, name: str) -> str:
+        """Download a new local model through Ollama. Guarded — needs Tony's OK.
+
+        Use for 'pull llama3.3', 'download mistral', 'add a new local model'.
+        ``name`` is an Ollama model ref (e.g. 'llama3.3' or
+        'qwen2.5:7b-instruct'). Pulls are multi-GB, so the model_pull gate
+        asks Tony to confirm first; approved pulls run in the background and
+        OSA announces completion through the proactive feed. Asking again
+        while a pull is running reports progress instead of restarting it.
+        """
+        name = (name or "").strip()
+        if not name:
+            return "ERROR: model name required."
+        if not _OLLAMA_REF_RE.match(name):
+            return (
+                f"'{name}' doesn't look like an Ollama model name, Sir. "
+                "Give me something like llama3.3 or qwen2.5:7b-instruct."
+            )
+        # Duplicate and already-installed asks are answered up front — no
+        # point walking Tony through an approval for a no-op.
+        with _pull_lock:
+            if name in _pulls_in_flight:
+                return (
+                    f"Already pulling {name}. "
+                    "I'll let you know the moment it lands."
+                )
+        try:
+            from core import llm
+
+            if name in llm.discover_ollama():
+                return (
+                    f"{name} is already on the shelf. "
+                    f"Say 'switch to {name}' and it's yours."
+                )
+        except Exception:  # noqa: BLE001 — discovery down ⇒ just attempt the pull
+            pass
+
+        def _do() -> str:
+            """Register the pull and hand it to a background worker thread."""
+            with _pull_lock:
+                if name in _pulls_in_flight:
+                    return (
+                        f"Already pulling {name}. "
+                        "I'll let you know the moment it lands."
+                    )
+                _pulls_in_flight.add(name)
+            threading.Thread(
+                target=_pull_worker, args=(name,), daemon=True
+            ).start()
+            return (
+                f"Pulling {name} now — it runs in the background. "
+                "I'll let you know when it's on the shelf."
+            )
+
+        return self._guarded("model_pull", name, _do)
 
     # -------------------------------------------------------------- memory
     def remember(self, note: str) -> str:
@@ -613,6 +818,7 @@ def build_tools(toolbox: OSAToolbox) -> list:
         (toolbox.stop_app, "stop_app"),
         (toolbox.remember, "remember"),
         (toolbox.switch_model, "switch_model"),
+        (toolbox.pull_model, "pull_model"),
     ]
     return [
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())
@@ -648,13 +854,17 @@ def build_agent(
     approval_fn: ApprovalFn = _default_deny,
     event_fn: EventFn = _noop_event,
     checkpointer: Any | None = None,
+    system_suffix: str | None = None,
 ):
     """Build a compiled LangGraph ReAct OSA agent over the toolbox.
 
     ``model_id`` is a concrete model id (or alias-resolved id) — callers usually
     pass the result of ``pick_model`` through ``core.llm.resolve``. Pass a
     ``checkpointer`` (a ``PyMySQLSaver`` from ``core.memory.get_checkpointer``)
-    to make threads durable; omit it for a stateless agent (unit tests). All
+    to make threads durable; omit it for a stateless agent (unit tests).
+    ``system_suffix`` is a dynamic tail appended to the composed system prompt
+    — the chat route injects the per-turn brain-status line through it
+    (``brain_prompt_line``) so OSA knows its brain without a tool call. All
     heavy imports are local so the toolbox stays testable without LangChain.
     """
     from langgraph.prebuilt import create_react_agent
@@ -670,6 +880,8 @@ def build_agent(
     preamble = soul.identity_preamble(soul_name=OSA_SOUL_NAME)
     if preamble:
         prompt = f"{preamble}\n\n{prompt}"
+    if system_suffix:
+        prompt = f"{prompt}\n\n{system_suffix}"
     kwargs: dict[str, Any] = {"prompt": prompt}
     if checkpointer is not None:
         kwargs["checkpointer"] = checkpointer

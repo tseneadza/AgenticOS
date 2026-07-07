@@ -188,6 +188,16 @@ class TestValidation:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestResolveBrain:
+    @pytest.fixture(autouse=True)
+    def _no_discovery(self, monkeypatch):
+        """Pin discovery to empty — these tests define CURATED-only semantics.
+
+        Discovery (2026-07-07) widened resolve_brain's candidates to whatever
+        Ollama has pulled on the host, which made these assertions depend on
+        Tony's live machine ("qwen" became ambiguous next to qwen2.5-coder).
+        Discovery-aware resolution is covered in test_osa_brain_upgrades.py.
+        """
+        monkeypatch.setattr(osa_settings, "_discovered_infos", lambda: [])
     @pytest.mark.parametrize("text,expected", [
         ("sonnet", SONNET),
         ("switch to Sonnet", SONNET),

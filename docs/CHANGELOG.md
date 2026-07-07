@@ -1,3 +1,81 @@
+## 2026-07-07 — docs: added `GLOSSARY.md`
+
+Canonical definitions for acronyms and project-specific terms across
+AgenticOS docs and code (Sidecar, Hub, Constitution, HITL, OSA, AGUI,
+FR/TR, checkpointer, HUD, and so on). Eight sections: core vocabulary,
+phases/process, architecture, persistence, GUI, voice/LLM/OSA,
+Unix/macOS, general web. Mirrored to
+`~/Brain2/08 - Systems/Agentic OS/GLOSSARY.md`; `docs/` copy is
+authoritative. `CLAUDE.md` now carries a "Glossary rule" section so
+future sessions read it early and keep it current alongside other
+changes (same rule as CHANGELOG / roadmap).
+
+## 2026-07-07 — OSA brain switching v2: introspection, discovered Ollama brains, pull_model
+
+Tony's first live pass on brain switching found three gaps: OSA *guessed* its
+own brain ("I'm running as Claude"), installed-but-uncurated Ollama models
+(llama3.2:latest, mistral:latest, …) weren't pinnable, and OSA claimed it
+couldn't install new models. All three closed — plus Tony's follow-up ask:
+switching to a requested **cloud** model must be just as easy.
+
+- **Cloud escape hatch** (`osa_settings.py`): any explicit `claude-*` id is
+  pinnable when the Anthropic key is live, even if uncurated — "switch to
+  claude-opus-4-8" Just Works (`resolve_brain` resolves the id;
+  `set_model_pin` checks the key via curated-row availability, one source of
+  truth). Bare family names ("opus") are never guessed into ids — OSA asks
+  for the full id (system-prompt rule). `switch_model` answers an uncurated
+  pin honestly ("if Anthropic doesn't recognize the id, you'll hear about it
+  on the next turn"); `_model_payload` appends the pin as a `(custom)` choice
+  so the rail select can display it; a cloud pin can never flag `escalated`
+  (route check tightened with `_pin_is_local`).
+
+- **Brain introspection** (`agents/osa_agent.py` + `routes/api_osa.py`): the
+  chat route now injects a per-turn `Brain status` line into the system prompt
+  via `build_agent(system_suffix=...)` — mode (auto/pinned + pinned label),
+  the effective model for THIS turn, and whether the local-pin guardrail
+  escalated it (`brain_prompt_line`). "What's your brain?" is a zero-tool
+  factual answer. Belt and braces: `switch_model("status"/"current"/"?")`
+  reports the same facts without changing anything.
+- **Dynamic Ollama discovery — pinnable set widens** (`osa_settings.py`,
+  `core/llm.py`): pinnable brains = curated registry ∪ installed Ollama models
+  (the existing `discover_ollama` /api/tags TTL cache; Ollama down ⇒ degrades
+  to curated-only). `GET /api/osa/model` choices now carry the discovered
+  models (`discovered: true`, labels from name + parameter size); the rail
+  picker gets them for free. **RAM note, not a block** (Tony's call): an
+  installed model bigger than the `list_models` fit rule stays pinnable with
+  `reason: "may_not_fit_ram"` (enabled-with-title in the picker) and
+  `switch_model` warns in persona ("She'll be slow, Sir …"). `resolve_brain`
+  fuzzy-matches discovered names too ("llama" → the *installed* llama3.2 over
+  an unpulled curated llama; multi-way ties still ask). Uncurated pins run
+  end-to-end: `get_chat_model`/`_pin_is_local`/the route badge fall back to
+  the discovery cache, then a ':tag' heuristic (`looks_like_ollama_id`) so a
+  cold cache can't mis-route a local pin to Anthropic.
+- **`pull_model` tool — approval-gated installs** (`osa_agent.py`,
+  `core/llm.py` `pull_ollama_model`, `constitution.yaml`): "pull llama3.3" →
+  the new `model_pull` approval gate rides the EXISTING 14b two-turn confirm
+  (deny + pending → OSA asks → "yes" approves); the pull then runs on a
+  background thread (`POST /api/pull`, stream=false — same HTTP style as the
+  rest of `core/llm.py`) and returns immediately in persona. Completion —
+  success or failure — posts a proactive ring-buffer message
+  (`osa_proactive.post_model_event`, new announceable kind `model`:
+  "llama3.3 is on the shelf. Say the word.") so the orb/rail/HUD surface it.
+  In-flight pulls are tracked (duplicate ask → "Already pulling that one",
+  no re-approval); garbage names are refused before the gate; already-installed
+  names short-circuit. Success force-refreshes discovery so the model is
+  immediately pinnable.
+- **API surface**: `GET/POST /api/osa/model` accept/serve the widened set
+  (choices gain `discovered` + the `may_not_fit_ram` reason);
+  `/api/osa/events` now also carries `kind: "model"`. `HubApiExplorer.jsx`
+  descriptions updated to match.
+- **Tests**: `test_osa_brain_switch.py` extended — introspection line (auto /
+  pinned / escalated, prompt composition + route injection), switch_model
+  status query, discovery merge (installed pinnable, Ollama-down ⇒ curated
+  only, RAM note, fuzzy incl. installed-narrowing + ambiguity), discovered-pin
+  routing + guardrail, pull_model (garbage refused, deny/approve through the
+  gate, duplicate in-flight, worker success/failure → proactive post, 14b
+  route confirm), model routes with discovered choices; vitest — picker renders
+  discovered + may_not_fit_ram as enabled-with-title.
+
 ## 2026-07-07 — OSA brain switching: durable model pin over the per-turn router
 
 Tony can now pin OSA's brain — "switch to Sonnet", "use your local brain",
