@@ -94,3 +94,46 @@ describe("OSAOrb", () => {
     expect(screen.getByText("Standing by.")).toBeInTheDocument();
   });
 });
+
+// ── Brain display (2026-07-07): pin + runtime truth in the status line ──────
+describe("OSAOrb brain display", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals?.();
+  });
+
+  it("shows Auto and the active label when nothing is pinned", async () => {
+    stubFetch({ ready: true, active_label: "Qwen2.5 7B Instruct (local)", ollama_up: true });
+    render(<OSAOrb />);
+    await waitFor(() =>
+      expect(screen.getByText(/Auto · Qwen2\.5 7B Instruct \(local\) · Ollama up/)).toBeInTheDocument()
+    );
+  });
+
+  it("shows the pin when pinned and no escalation", async () => {
+    stubFetch({
+      ready: true, active_label: "irrelevant", ollama_up: true,
+      pinned_model: "qwen2.5:7b-instruct",
+      pinned_label: "Qwen2.5 7B Instruct (local)",
+      last_turn_escalated: false,
+    });
+    render(<OSAOrb />);
+    await waitFor(() =>
+      expect(screen.getByText(/Pinned: Qwen2\.5 7B Instruct \(local\) · Ollama up/)).toBeInTheDocument()
+    );
+  });
+
+  it("shows the actual runtime model when the last turn escalated", async () => {
+    stubFetch({
+      ready: true, active_label: "irrelevant", ollama_up: true,
+      pinned_model: "qwen2.5:7b-instruct",
+      pinned_label: "Qwen2.5 7B Instruct (local)",
+      last_turn_escalated: true,
+      last_turn_label: "Claude Sonnet 4.6 (cloud)",
+    });
+    render(<OSAOrb />);
+    await waitFor(() =>
+      expect(screen.getByText(/Pinned: Qwen2\.5 7B Instruct \(local\) \(ran Claude Sonnet 4\.6 \(cloud\)\) · Ollama up/)).toBeInTheDocument()
+    );
+  });
+});

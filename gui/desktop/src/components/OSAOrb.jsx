@@ -170,9 +170,17 @@ export default function OSAOrb({
       get("/api/osa/state")
         .then((s) => {
           if (!alive || !s) return;
-          const label = s.active_label || "OSA";
+          // Brain display (2026-07-07): show OSA's brain truthfully — the pin
+          // when pinned (with the actual runtime when the guardrail escalated
+          // the last turn), the auto route otherwise.
+          const brain = s.pinned_model
+            ? `Pinned: ${s.pinned_label || s.pinned_model}`
+            : `Auto · ${s.active_label || "OSA"}`;
+          const ran = s.last_turn_escalated && s.last_turn_label
+            ? ` (ran ${s.last_turn_label})`
+            : "";
           const ollama = s.ollama_up ? "Ollama up" : "Ollama down";
-          setFetchedStatus(`${label} · ${ollama}`);
+          setFetchedStatus(`${brain}${ran} · ${ollama}`);
         })
         .catch(() => { /* degrade silently */ });
     };

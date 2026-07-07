@@ -206,7 +206,9 @@ class TestResolveBrain:
         ("local", QWEN),                   # workflow alias
         ("use your local brain", QWEN),
         ("fast", HAIKU),                   # workflow alias
-        ("llama", LLAMA),
+        # "llama" alone went ambiguous when llama3.2:latest was curated
+        # (2026-07-07, OSA to-do #4) — the version-qualified ask is exact.
+        ("llama3.1", LLAMA),
         (SONNET, SONNET),                  # exact registry id
     ])
     def test_resolves_to_id(self, text, expected):

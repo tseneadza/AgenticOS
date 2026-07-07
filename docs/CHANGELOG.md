@@ -1,3 +1,35 @@
+## 2026-07-07 — OSA's own punch list: brain display truth, confirm surfacing, hardware-aware pulls, llama3.2 curated
+
+OSA listed four to-dos during Tony's live session; all four addressed, with
+Tony's reframe of #3: instead of blindly pulling llama3.3 (which is 70B-only,
+≈42.5GB, unusable in 16GB RAM — OSA's "~5GB" was a hallucination), OSA must
+KNOW a model's size before asking.
+
+- **#1 Orb brain display** (`api_osa.py` + `OSAOrb.jsx`): `/api/osa/state`
+  gains `pinned_label` + `last_turn_{model,label,escalated}` (module-level
+  `_LAST_TURN` updated per chat turn). The orb's status line now shows brain
+  truth: `Pinned: Qwen2.5 7B (ran Claude Sonnet 4.6) · Ollama up` after a
+  guardrail escalation; `Auto · <active>` when unpinned.
+- **#2 Confirm surfacing** (`osa_agent._guarded` + route): DENIED is now
+  instructive ("needs Tony's OK first — <description>. Ask him to confirm…
+  do NOT call this tool again") — Tony's test showed Sonnet retrying
+  pull_model 3× instead of asking. Plus a deterministic route safety net:
+  if a turn recorded a pending confirm and the reply doesn't ask, the route
+  appends "Needs your OK, Sir: <description>. Just say yes." — the confirm
+  can never be invisible again.
+- **#3 Hardware-aware pulls** (`core/llm.estimate_pull_size` +
+  `pull_model`): size estimated BEFORE the confirm — Ollama registry
+  manifest (layer sum; llama3.3 → 42.5GB) with a name-heuristic fallback
+  (≈0.6GB per B params) — and folded into the approval description with the
+  RAM verdict ("too big to run well in this machine's 16GB RAM"). Informs,
+  never blocks: Tony's yes is final. `_guarded` gained a `describe` override
+  to carry it.
+- **#4 llama3.2 curated** (`settings.yaml`): promoted from discovered to
+  curated — "Llama 3.2 3B (local)", first-class switch target. ("llama"
+  alone is now honestly ambiguous between 3.1/3.2.)
+- Tests: pytest 431 (+12, `test_osa_tonight_fixes.py`), vitest 606 (+3 orb
+  brain-display tests); two outdated assertions updated for the curation.
+
 ## 2026-07-07 — docs: added `GLOSSARY.md`
 
 Canonical definitions for acronyms and project-specific terms across

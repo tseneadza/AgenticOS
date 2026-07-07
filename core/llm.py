@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -390,6 +391,47 @@ def looks_like_ollama_id(model_id: str) -> bool:
     ':tag' ("mistral:latest", "qwen2.5:7b-instruct"); cloud ids never do.
     """
     return ":" in (model_id or "")
+
+
+def estimate_pull_size(name: str, timeout: float = 5.0) -> int | None:
+    """Estimated download size in bytes for an Ollama model BEFORE pulling.
+
+    Tony's rule (2026-07-07): OSA must know whether a requested model fits
+    this machine before asking him to confirm a pull. Two estimators, in
+    order:
+
+    1. The Ollama registry manifest (``registry.ollama.ai/v2/<repo>/
+       manifests/<tag>``) — sums the layer sizes; exact and free, one small
+       GET (e.g. llama3.3 → ~42.5GB).
+    2. Name heuristic — a ``<N>b`` parameter count in the name/tag ≈
+       ``N × 0.6GB`` (Q4 quantization rule of thumb).
+
+    Returns ``None`` when neither works — callers phrase the confirm as
+    "unknown size" rather than guessing.
+    """
+    try:
+        import requests
+
+        base, _, tag = (name or "").partition(":")
+        repo = base if "/" in base else f"library/{base}"
+        resp = requests.get(
+            f"https://registry.ollama.ai/v2/{repo}/manifests/{tag or 'latest'}",
+            timeout=timeout,
+            headers={"Accept": "application/vnd.docker.distribution.manifest.v2+json"},
+        )
+        if resp.ok:
+            total = sum(
+                int(l.get("size", 0))
+                for l in (resp.json() or {}).get("layers", [])
+            )
+            if total > 0:
+                return total
+    except Exception:  # noqa: BLE001 — offline/registry trouble ⇒ heuristic
+        pass
+    m = re.search(r"(\d+(?:\.\d+)?)b\b", (name or "").lower())
+    if m:
+        return int(float(m.group(1)) * 0.6e9)
+    return None
 
 
 def pull_ollama_model(name: str, timeout: float = 3600.0) -> dict:

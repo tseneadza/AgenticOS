@@ -135,9 +135,11 @@ class TestDiscovery:
         assert "claude-sonnet-4-6" in ids
 
     def test_discovery_down_degrades_to_curated(self, monkeypatch):
+        # mistral is discovered-only; llama3.2 no longer qualifies as the
+        # probe since it was curated (2026-07-07, OSA to-do #4).
         monkeypatch.setattr(osa_settings, "_discovered_infos", lambda: [])
         ids = osa_settings._pinnable_ids()
-        assert "llama3.2:latest" not in ids
+        assert "mistral:latest" not in ids
         assert "claude-sonnet-4-6" in ids
 
     def test_availability_maps_too_large_to_ram_warning(self, monkeypatch):

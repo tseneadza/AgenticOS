@@ -58,6 +58,10 @@ router = APIRouter()
 # approves anything. The store is in-process, thread-keyed, and TTL-bounded.
 # --------------------------------------------------------------------------- #
 _PENDING_CONFIRM: dict[str, dict] = {}
+
+# What the most recent chat turn actually ran on (2026-07-07) — the orb's
+# status line shows runtime truth (pin vs escalated turn) from this.
+_LAST_TURN: dict = {"model": None, "escalated": False}
 _CONFIRM_TTL_SECONDS = 5 * 60
 
 _AFFIRMATIVES = frozenset({
@@ -301,6 +305,18 @@ def osa_chat(body: OSAChat) -> dict:
         reply = f"{reply.rstrip()} Took Claude for that one."
 
     awaiting = turn_state["awaiting"]
+    # Confirm-surfacing safety net (2026-07-07): Tony's live test showed the
+    # model retrying a DENIED tool without ever asking him. If this turn
+    # recorded a pending confirm and the reply doesn't already ask, append
+    # the question deterministically — the confirm must never be invisible.
+    if awaiting is not None and "yes" not in reply.lower():
+        ask = f"Needs your OK, Sir: {awaiting['description']}. Just say yes."
+        reply = f"{reply.rstrip()} {ask}" if reply.strip() else ask
+
+    # Orb brain display (2026-07-07): remember what THIS turn actually ran on
+    # so /api/osa/state can show runtime truth, not just the pin.
+    _LAST_TURN.update(model=model_id, escalated=escalated)
+
     return {
         "reply": reply,
         "thread_id": thread_id,
@@ -344,6 +360,19 @@ def osa_state() -> dict:
         # Brain pin (2026-07-07): null = automatic per-turn routing. Cached
         # read — existing pollers get the pin without a second endpoint.
         "pinned_model": osa_settings.get_model_pin(),
+        "pinned_label": (
+            osa_agent._model_label(osa_settings.get_model_pin())
+            if osa_settings.get_model_pin() else None
+        ),
+        # Orb brain display (2026-07-07): what the LAST chat turn actually
+        # ran on — lets the orb show "Pinned: Qwen (ran Claude)" after a
+        # guardrail escalation instead of pretending the pin ran.
+        "last_turn_model": _LAST_TURN["model"],
+        "last_turn_label": (
+            osa_agent._model_label(_LAST_TURN["model"])
+            if _LAST_TURN["model"] else None
+        ),
+        "last_turn_escalated": bool(_LAST_TURN["escalated"]),
         "ollama_up": up,
         "ollama_warmed": osa_agent._warm_done,
         "soul": osa_agent.OSA_SOUL_NAME,

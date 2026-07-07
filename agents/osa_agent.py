@@ -386,21 +386,38 @@ class OSAToolbox:
         self.event_fn = event_fn
 
     # ------------------------------------------------------------------ guard
-    def _guarded(self, action_type: str, payload: str, do: Callable[[], Any]) -> str:
+    def _guarded(
+        self, action_type: str, payload: str, do: Callable[[], Any],
+        describe: str | None = None,
+    ) -> str:
         """Run ``do`` only after the Constitution clears ``action_type``.
 
         Blocked -> 'BLOCKED: ...'. Approval needed -> ask the human via
         approval_fn; on yes, re-guard with approved=True and proceed; on no,
         'DENIED: ...'. (Mirrors ``GovernorToolbox._guarded``.)
+
+        ``describe`` overrides the Constitution's static action description
+        for the approval ask (2026-07-07) — pull_model uses it to carry the
+        size/RAM verdict into the pending-confirm so Tony's confirm question
+        is informed ("≈42.5GB — too big for your 16GB RAM").
         """
         try:
             self.constitution.guard(action_type, payload)
         except ConstitutionViolation as cv:
             return f"BLOCKED: {cv}"
         except ApprovalRequired as ar:
-            decision = self.approval_fn(action_type, ar.description or payload)
+            description = describe or ar.description or payload
+            decision = self.approval_fn(action_type, description)
             if not _is_yes(decision):
-                return f"DENIED: human did not approve '{action_type}'."
+                # Instructive DENIED (2026-07-07): Tony's live test showed the
+                # model RETRYING a denied tool instead of asking him. Tell it
+                # exactly what to do next.
+                return (
+                    f"DENIED: '{action_type}' needs Tony's OK first — "
+                    f"{description}. Tell him what you want to do and ask him "
+                    "to confirm (a plain 'yes' works). Do NOT call this tool "
+                    "again until he answers."
+                )
             try:
                 self.constitution.guard(action_type, payload, approved=True)
             except ConstitutionViolation as cv:
@@ -733,7 +750,29 @@ class OSAToolbox:
                 "I'll let you know when it's on the shelf."
             )
 
-        return self._guarded("model_pull", name, _do)
+        # Hardware-aware confirm (Tony, 2026-07-07): estimate the download
+        # BEFORE asking, and fold the size + RAM verdict into the approval
+        # description — "pull llama3.3" must come back as "that's ≈42.5GB and
+        # too big for your 16GB RAM — sure?" rather than a blind confirm.
+        describe = f"Downloading {name}"
+        try:
+            from core import llm
+
+            size = llm.estimate_pull_size(name)
+            if size:
+                describe += f" (≈{size / 1e9:.1f}GB)"
+                ram = llm.total_ram_bytes()
+                if ram and size >= ram / 2:
+                    describe += (
+                        f" — too big to run well in this machine's "
+                        f"{ram / 1e9:.0f}GB RAM"
+                    )
+            else:
+                describe += " (size unknown)"
+        except Exception:  # noqa: BLE001 — sizing is best-effort
+            describe += " (size unknown)"
+
+        return self._guarded("model_pull", name, _do, describe=describe)
 
     # -------------------------------------------------------------- memory
     def remember(self, note: str) -> str:
