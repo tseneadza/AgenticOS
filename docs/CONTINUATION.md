@@ -1,3 +1,56 @@
+# ⏹ SESSION CLOSED 2026-07-07 — PHASE 14b SHIPPED ✅ (OSA tools + destructive confirm)
+
+Follow-on to the Agent-view repoint (same day). Built via subagent, verified +
+smoke-tested live by the supervisor. Shipped + pushed.
+
+## What shipped (14b)
+
+1. **New OSA tools** (`89995f4`) — `apps_health` (wraps
+   `launch_config.list_all_health()`) and `list_projects` (wraps the Project
+   ledger query the `/api/projects` route uses), registered + mapped in
+   `OSA_SYSTEM`. **`web_news` DEFERRED** — no synchronous news-fetch callable
+   exists (news system is RSS-feed CRUD + an LLM `/rank` endpoint only); don't
+   invent one. Revisit if/when a headline-fetch helper lands.
+2. **Destructive-action confirmation** (`89995f4`) — `app_stop` added to
+   `config/constitution.yaml` `approval_required` (start is NOT gated). Because
+   the `/api/osa/chat` route is synchronous (can't block on a human), confirm is
+   a **two-turn conversational** flow in `api_osa.py`: turn 1 the approval_fn
+   denies + records a thread-keyed pending (`_PENDING_CONFIRM`, 5-min TTL) so OSA
+   asks "Should I shut down worldwise? Just say yes"; an affirmative next turn
+   installs an approving approval_fn once, clears pending, and the checkpointed
+   thread makes the model re-issue `stop_app` — now approved. Bare 'yes' with no
+   pending never approves. Response carries `awaiting_confirm` / `pending_action`
+   / `confirmed`.
+3. **Confirm-detection + phrasing fix** (`8c0812f`, found in supervisor smoke
+   test) — `is_affirmative`/`is_negative` were exact-match only, so natural
+   "yes, do it" silently failed to confirm. Now leading-word aware
+   ('yes, do it' / 'yeah go ahead' confirm; 'yesterday'/'yes-man' don't). And
+   `OSA_SYSTEM` now frames a DENIED destructive action as "needs your OK — say
+   yes" instead of "authorize it elsewhere". **Verified live end-to-end:** 'stop
+   worldwise' → asks to confirm → 'yes, do it' → "Understood, Sir. Stopping
+   worldwise now."
+
+**Tests: 239 passed** (full suite, re-run by supervisor). Sidecar restarted to
+run live (`pgrep -f gui.sidecar`).
+
+## ▶ RESUME HERE
+
+1. **Tony: on-device visual check of the Agent view** still pending
+   (`npm run tauri dev` → Agent view → confirm typing to OSA + the two-turn
+   destructive confirm feel right).
+2. **14c** — the ambient OSA presence area on non-Agent views (design §6.0);
+   optionally upgrade the Agent-view confirm from two-turn conversational to
+   real-time inline Allow/Deny (needs LangGraph interrupt/resume + streaming).
+3. **14d** voice, **14e** proactive. `web_news` if a fetch helper appears.
+
+## Still open / housekeeping
+
+- `.env.local` still holds the `sk-admin-` key under `ANTHROPIC_API_KEY` —
+   relabel to `ANTHROPIC_ADMIN_KEY`.
+- OSA chat remains synchronous request/response (no token streaming yet).
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 — OSA WIRED INTO THE AGENT VIEW ✅ (typed chat live)
 
 Follow-on to 14a (same day). Two shipped + pushed commits make OSA actually
