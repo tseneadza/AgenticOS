@@ -2,6 +2,7 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, connectAgui, fmtAge, fmtEta, fmtUptime, fmtBytes } from "./api";
 import { applyTheme, loadTheme } from "./theme";
+import { sidecarWsUrl } from "./settings"; // OSA streaming chat WS (2026-07-07 late)
 import pkg from "../package.json"; // single source of truth for the version (scripts/sync_version.py)
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -1178,15 +1179,34 @@ export function OSAEventsBridge({ speak, onLine, onMessages, busyRef, cursorRef,
   return null;
 }
 
+// OSA chat view — streaming upgrade (2026-07-07 late).
+// Primary path: WS /api/osa/ws/chat — token deltas append live, tool chips go
+// running→done as OSA works, and a destructive action surfaces REAL Allow/Deny
+// buttons (a LangGraph interrupt parked on the MySQL checkpointer; the buttons
+// resume it — over a fresh socket if the first one died). The sync POST
+// /api/osa/chat remains as an automatic fallback when a WS can't be opened
+// (that's also what keeps the jsdom test environment on the POST path).
+// The "final" frame is AUTHORITATIVE — echo scrub + the escalation clause run
+// on the finished text server-side, so it replaces whatever streamed.
+// The thread_id persists in localStorage and GET /api/osa/history rehydrates
+// the transcript on mount, so a conversation survives app restarts; "New chat"
+// starts a fresh durable thread (the old one stays in the checkpointer).
+const OSA_THREAD_KEY = "agentic-os.osa-thread";
+
 export function AgentView() {
   const osaPresence = useContext(OSAContext);
   const [osa, setOsa] = useState(null); // GET /api/osa/state
-  const [turns, setTurns] = useState([]); // [{ id, user, text, tools, route, model, status, error }]
-  const [threadId, setThreadId] = useState(null);
+  const [turns, setTurns] = useState([]); // [{ id, user, text, tools, route, model, status, error, ts, awaiting, decided, restored }]
+  const [threadId, setThreadId] = useState(() => {
+    try { return localStorage.getItem(OSA_THREAD_KEY) || null; } catch { return null; }
+  });
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef(null);
   const idRef = useRef(0);
+  const wsRef = useRef(null);
+  const threadRef = useRef(threadId);
+  threadRef.current = threadId;
 
   const loadState = useCallback(() => {
     get("/api/osa/state")
@@ -1194,6 +1214,24 @@ export function AgentView() {
       .catch(() => setOsa({ ready: false, ollama_up: false, active_label: "OSA", soul: null }));
   }, []);
   useEffect(() => { loadState(); }, [loadState]);
+
+  // Transcript restore: rehydrate the stored thread from the checkpointer.
+  // Opportunistic — MySQL/sidecar down just means starting visually fresh
+  // (the thread_id is still reused, so durable memory is intact either way).
+  useEffect(() => {
+    const stored = threadRef.current;
+    if (!stored) return;
+    get(`/api/osa/history?thread_id=${encodeURIComponent(stored)}`)
+      .then((d) => {
+        if (!d?.exists || !d.turns?.length) return;
+        setTurns((prev) => (prev.length ? prev : d.turns.map((t) => ({
+          id: ++idRef.current, user: t.user || "", text: t.text || "",
+          tools: (t.tools || []).map((tc) => ({ ...tc, status: "done" })),
+          route: null, model: null, status: "completed", restored: true,
+        }))));
+      })
+      .catch(() => { /* degrade silently */ });
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -1203,37 +1241,153 @@ export function AgentView() {
   // optimistically allow sending (the sidecar is up if this view rendered).
   const ready = osa ? osa.ready !== false : true;
 
+  const patchTurn = (id, fn) =>
+    setTurns((prev) => prev.map((t) => (t.id === id ? fn(t) : t)));
+
+  const setThread = (tid) => {
+    setThreadId(tid);
+    try {
+      if (tid) localStorage.setItem(OSA_THREAD_KEY, tid);
+      else localStorage.removeItem(OSA_THREAD_KEY);
+    } catch { /* private mode etc. — session-only persistence */ }
+  };
+
+  const finishTurn = (id, d) => {
+    patchTurn(id, (t) => ({
+      ...t,
+      text: d.reply || "",
+      tools: (d.tool_trace || []).map((tc) => ({ ...tc, status: "done" })),
+      route: d.route || null, model: d.model || null,
+      status: "completed", awaiting: null,
+    }));
+    osaPresence.speak(d.reply || "");
+    setSending(false);
+  };
+
+  const failTurn = (id, err) => {
+    patchTurn(id, (t) => ({ ...t, status: "failed", error: String(err), awaiting: null }));
+    osaPresence.setOsaState("idle");
+    setSending(false);
+  };
+
+  // Sync-POST fallback (the original 14a path) — used when a WS can't open.
+  const sendViaPost = (id, text) => {
+    post("/api/osa/chat", { message: text, thread_id: threadRef.current })
+      .then((d) => {
+        if (d.thread_id) setThread(d.thread_id);
+        finishTurn(id, d);
+      })
+      .catch((e) => failTurn(id, e.message || e));
+  };
+
+  const handleFrame = (id, f) => {
+    switch (f.type) {
+      case "start":
+        if (f.thread_id) setThread(f.thread_id);
+        break;
+      case "token":
+        patchTurn(id, (t) => ({ ...t, text: t.text + (f.delta || "") }));
+        break;
+      case "tool_start":
+        patchTurn(id, (t) => ({
+          ...t, tools: [...t.tools, { tool: f.tool, args: f.args, status: "running" }],
+        }));
+        break;
+      case "tool_end":
+        patchTurn(id, (t) => {
+          const tools = t.tools.map((x) => ({ ...x }));
+          const tc = [...tools].reverse().find((x) => x.tool === f.tool && x.status === "running");
+          if (tc) tc.status = f.ok ? "done" : "error";
+          return { ...t, tools };
+        });
+        break;
+      case "awaiting_confirm":
+        patchTurn(id, (t) => ({
+          ...t, awaiting: { action: f.action, description: f.description }, decided: false,
+        }));
+        osaPresence.setOsaState("idle"); // parked on the human, not thinking
+        break;
+      case "final":
+        if (f.thread_id) setThread(f.thread_id); // authoritative frame reaffirms the thread
+        finishTurn(id, f);
+        break;
+      case "error":
+        failTurn(id, f.error);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Open one WS session for a turn (or a resume). Returns null when a socket
+  // can't even be constructed — the caller falls back to POST.
+  const openSocket = (id, firstFrame) => {
+    let ws;
+    try { ws = new WebSocket(sidecarWsUrl("/api/osa/ws/chat")); }
+    catch { return null; }
+    wsRef.current = ws;
+    let gotFrame = false;
+    ws.onopen = () => ws.send(JSON.stringify(firstFrame));
+    ws.onmessage = (ev) => {
+      gotFrame = true;
+      try { handleFrame(id, JSON.parse(ev.data)); } catch { /* malformed frame */ }
+    };
+    ws.onerror = () => { /* onclose decides the fallback */ };
+    ws.onclose = () => {
+      if (wsRef.current === ws) wsRef.current = null;
+      // Connection never produced a frame → sidecar WS unreachable; a NEW
+      // turn falls back to the sync POST route (a resume has no fallback —
+      // the interrupt stays parked and the buttons can be pressed again).
+      if (!gotFrame && firstFrame.message) sendViaPost(id, firstFrame.message);
+    };
+    return ws;
+  };
+
   const send = () => {
     const text = input.trim();
     if (!text || sending || !ready) return;
     const id = ++idRef.current;
-    setTurns((prev) => [
-      ...prev,
-      { id, user: text, text: "", tools: [], route: null, model: null, status: "running" },
-    ]);
+    setTurns((prev) => [...prev, {
+      id, user: text, text: "", tools: [], route: null, model: null,
+      status: "running", ts: Date.now(),
+    }]);
     setInput("");
     setSending(true);
     // Phase 14c: drive the shared reactor orb. "thinking" while OSA works;
-    // "speaking" (with the reply as lastLine) on success — speak() falls back
-    // to "idle" after ~3s; "idle" again on error.
+    // "speaking" (with the reply as lastLine) on success; "idle" on error.
     osaPresence.setOsaState("thinking");
-    post("/api/osa/chat", { message: text, thread_id: threadId })
-      .then((d) => {
-        if (d.thread_id) setThreadId(d.thread_id);
-        setTurns((prev) => prev.map((t) => (t.id === id
-          ? { ...t, text: d.reply || "", tools: d.tool_trace || [],
-              route: d.route || null, model: d.model || null, status: "completed" }
-          : t)));
-        osaPresence.speak(d.reply || "");
-      })
-      .catch((e) => {
-        setTurns((prev) => prev.map((t) => (t.id === id
-          ? { ...t, status: "failed", error: String(e.message || e) }
-          : t)));
-        osaPresence.setOsaState("idle");
-      })
-      .finally(() => setSending(false));
+    if (!openSocket(id, { message: text, thread_id: threadRef.current })) {
+      sendViaPost(id, text); // no WebSocket in this environment
+    }
   };
+
+  // Allow/Deny resume for a parked interrupt. Uses the live socket when it's
+  // still open; otherwise a fresh socket resumes the checkpointed interrupt.
+  const resume = (id, decision) => {
+    patchTurn(id, (t) => ({ ...t, decided: true }));
+    osaPresence.setOsaState("thinking");
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ resume: decision }));
+    } else {
+      openSocket(id, { resume: decision, thread_id: threadRef.current });
+    }
+  };
+
+  const newChat = () => {
+    if (sending) return;
+    try { wsRef.current?.close(); } catch { /* already closed */ }
+    setThread(null);
+    setTurns([]);
+  };
+
+  const copyText = (text) => {
+    try { navigator.clipboard?.writeText(text); } catch { /* clipboard blocked */ }
+  };
+
+  const fmtTs = (ts) =>
+    new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
   const onKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
@@ -1251,9 +1405,15 @@ export function AgentView() {
             {osa?.ollama_up ? "● Ollama up" : "○ Ollama down"}
           </span>
         </div>
-        {osa?.soul && (
-          <span className="agent-escalate" title="Active soul / persona file">soul: {osa.soul}</span>
-        )}
+        <div className="agent-bar-right">
+          {osa?.soul && (
+            <span className="agent-escalate" title="Active soul / persona file">soul: {osa.soul}</span>
+          )}
+          <button className="btn new-chat-btn" onClick={newChat} disabled={sending}
+            title="Start a fresh durable thread (the old one stays in the checkpointer)">
+            ⊕ New chat
+          </button>
+        </div>
       </div>
 
       <div className="agent-scroll" ref={scrollRef}>
@@ -1266,7 +1426,7 @@ export function AgentView() {
             {t.tools.length > 0 && (
               <div className="agent-trace">
                 {t.tools.map((tc, i) => (
-                  <span className="trace-chip done" key={i}
+                  <span className={`trace-chip ${tc.status || "done"}`} key={i}
                     title={tc.args ? JSON.stringify(tc.args) : undefined}>
                     <span className="trace-dot" />{tc.tool}
                   </span>
@@ -1275,15 +1435,32 @@ export function AgentView() {
             )}
             <div className="agent-msg assistant">
               <div className="bubble">
-                {t.text || (t.status === "running" ? <span className="typing">thinking…</span> : "")}
+                {t.text || (t.status === "running" && !t.awaiting ? <span className="typing">thinking…</span> : "")}
                 {t.status === "failed" && <span className="agent-err">error: {t.error}</span>}
               </div>
-              {t.status === "completed" && t.route && (
+              {t.awaiting && t.status === "running" && (
+                <div className="agent-confirm" data-testid="agent-confirm">
+                  <span className="confirm-desc">Needs your OK: {t.awaiting.description}</span>
+                  <button className="btn approve" disabled={t.decided}
+                    onClick={() => resume(t.id, "approve")}>✓ Allow</button>
+                  <button className="btn deny" disabled={t.decided}
+                    onClick={() => resume(t.id, "deny")}>✕ Deny</button>
+                </div>
+              )}
+              {t.status === "completed" && (
                 <div className="agent-meta">
-                  <span className={`agent-badge ${t.route === "local" ? "local" : "cloud"}`}>
-                    {t.route === "local" ? "● local" : "☁ cloud"}
-                  </span>
+                  {t.route && (
+                    <span className={`agent-badge ${t.route === "local" ? "local" : "cloud"}`}>
+                      {t.route === "local" ? "● local" : "☁ cloud"}
+                    </span>
+                  )}
                   {t.model ? ` ${t.model}` : ""}
+                  {t.ts ? <span className="agent-time">{fmtTs(t.ts)}</span> : null}
+                  {t.restored ? <span className="agent-time">restored</span> : null}
+                  {t.text && (
+                    <button className="copy-btn" title="Copy reply"
+                      onClick={() => copyText(t.text)}>⧉ copy</button>
+                  )}
                 </div>
               )}
             </div>

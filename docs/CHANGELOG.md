@@ -1,3 +1,56 @@
+## 2026-07-07 (late) — OSA Agent-view chat: WebSocket streaming + interrupt-based confirms + transcript restore
+
+Upgraded the Agent-view OSA chat from a synchronous request/response into a
+live streaming experience. Interview-locked decisions: **WebSocket** (tokens +
+live tool chips), **full LangGraph `interrupt()`** for mid-run destructive
+confirms, and polish = transcript restore + New chat + timestamps/copy. The
+sync `POST /api/osa/chat` route is unchanged — voice (14d) will use it, and its
+two-turn conversational confirm is transport-appropriate for a channel that
+can't block on a human.
+
+- **`WS /api/osa/ws/chat`** (`api_osa.py`): one socket per turn. Inbound is
+  either `{message, thread_id?}` (new turn) or `{resume, thread_id}` (resume a
+  checkpointed interrupt on a fresh socket). Outbound typed frames: `start`,
+  `token` (reply deltas, filtered to the `agent` node only), `tool_start` /
+  `tool_end`, `awaiting_confirm`, `final` (AUTHORITATIVE — echo scrub +
+  escalation clause run on the finished text, client replaces what it
+  streamed), `error`. The graph runs `agent.stream(stream_mode=["updates",
+  "messages"])` on a daemon worker thread pumping an `asyncio.Queue` (mirrors
+  the diagnostics WS), since the MySQL checkpointer is sync.
+- **Real mid-run confirms via `interrupt()`**: the WS approval bridge calls
+  `langgraph.types.interrupt({action, description})` inside the guarded tool;
+  the ToolNode re-raises `GraphInterrupt`, the graph parks on the MySQL
+  checkpointer, and `Command(resume=decision)` re-runs the tool so
+  `interrupt()` returns the decision to `_guarded`'s `_is_yes`. Because the
+  interrupt is checkpointed, it survives socket death — a fresh socket resumes
+  it. `_WS_TURN_STATE` (thread-keyed, TTL-bounded) carries the interrupted
+  turn's model/route/pin so a fresh-socket resume rebuilds an identical agent;
+  a missing entry safely falls back to Claude (interrupts only occur on tool
+  turns, which always run cloud).
+- **`GET /api/osa/history?thread_id=`** (`api_osa.py`): reads the checkpointer
+  tuple and folds LangChain messages back into UI turns (`_fold_history` —
+  HumanMessage starts a turn, last non-empty AI text wins, tool_calls become
+  the trace, stored pre-scrub text is re-scrubbed). Degrades rather than 500s:
+  MySQL down ⇒ `available:false`, unknown thread ⇒ `exists:false`.
+- **Echo-scrub + escalation extracted** into a shared `_scrub_reply()` helper
+  (also strips `[Internal note` fragments); the sync route now calls it too.
+- **`AgentView`** (`App.jsx` + `App.css`): WS-primary send with automatic POST
+  fallback (jsdom has no WebSocket, so tests ride the POST path). Tokens append
+  live; tool chips go running→done/error; `awaiting_confirm` renders inline
+  **✓ Allow / ✕ Deny** buttons that resume on the live socket or open a fresh
+  one; buttons disable after a decision. `thread_id` persists to localStorage,
+  the transcript rehydrates from `/api/osa/history` on mount (restored turns
+  labelled), and **⊕ New chat** starts a fresh durable thread. Added per-turn
+  timestamps and a **⧉ copy** button. Theme tokens only.
+- Registered `GET /api/osa/history` + a WS comment in `HubApiExplorer.jsx`
+  (api-registry rule).
+- Tests: pytest **449** (+15, `test_osa_chat_ws.py` — token streaming, tool
+  events, interrupt approve/deny, fresh-socket resume, echo scrub, escalation
+  clause, history folding + degrade paths), vitest **615** (+9,
+  `AgentViewStream.test.jsx` — MockWebSocket-driven streaming, live chips,
+  Allow/Deny + resume, fresh-socket resume, thread persistence + restore, New
+  chat, timestamp/copy, POST fallback).
+
 ## 2026-07-07 — OSA's own punch list: brain display truth, confirm surfacing, hardware-aware pulls, llama3.2 curated
 
 OSA listed four to-dos during Tony's live session; all four addressed, with

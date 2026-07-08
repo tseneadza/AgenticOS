@@ -530,6 +530,21 @@ td { padding: 3px 6px; border-bottom: 1px solid #2e2e2b; font-family: var(--mono
 .agent-msg .typing { color: var(--text-dim); }
 .agent-err { display: block; color: var(--red); margin-top: 4px; font-family: var(--mono); font-size: 11px; }
 .agent-meta { font-size: 11px; color: var(--text-dim); margin: 3px 0 0 2px; font-family: var(--mono); }
+/* OSA streaming chat upgrade (2026-07-07 late) — confirm row, copy, timestamps */
+.agent-bar-right { display: flex; align-items: center; gap: 10px; }
+.new-chat-btn { font-size: 11px; }
+.agent-confirm {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0 0 2px;
+  padding: 6px 10px; border: 1px solid var(--border-soft); border-radius: var(--radius, 6px);
+  background: var(--bg-inset);
+}
+.confirm-desc { font-size: 12px; color: var(--text); }
+.agent-time { color: var(--text-dim); margin-left: 8px; }
+.copy-btn {
+  margin-left: 10px; padding: 0 4px; font-size: 10px; font-family: var(--mono);
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+}
+.copy-btn:hover { color: var(--text); }
 
 .agent-trace { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
 .trace-chip {

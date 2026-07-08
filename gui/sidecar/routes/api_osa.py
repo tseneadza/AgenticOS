@@ -9,6 +9,16 @@ GET  /api/osa/events  — proactive ring-buffer messages (health transitions +
                         briefings) newer than an optional ``after`` cursor.
 POST /api/osa/briefing — compose + announce a status briefing on demand
                         (always announced — an explicit ask beats quiet hours).
+WS   /api/osa/ws/chat — streaming OSA turn (2026-07-07 late): token deltas +
+                        live tool events over one socket, with REAL mid-run
+                        destructive-action confirms via LangGraph interrupt()
+                        — the graph parks on the MySQL checkpointer until the
+                        client resumes with Allow/Deny. The sync POST route
+                        keeps the two-turn conversational confirm (it can't
+                        block on a human; voice will use it in 14d).
+GET  /api/osa/history — fold a checkpointed thread's messages back into UI
+                        turns so the Agent view can restore a transcript
+                        across app restarts.
 GET  /api/osa/model   — OSA brain pin: pinned model (null = auto), mode, and
                         the pinnable choices — curated registry PLUS installed
                         Ollama models (``discovered: true``, 2026-07-07) — with
@@ -37,7 +47,10 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, HTTPException
+import asyncio
+import threading
+
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -188,6 +201,30 @@ def _tool_trace(messages: list) -> list[dict]:
     return trace
 
 
+def _scrub_reply(reply: str, brain_line: str | None, *, escalated: bool) -> str:
+    """Post-process one finished OSA reply (shared by sync POST + WS routes).
+
+    Echo scrub (2026-07-07): small local models sometimes parrot the injected
+    brain-status suffix verbatim instead of answering — strip any echo of it;
+    if nothing else remains, fall back to a plain ack. Then the escalation
+    mention (locked decision #1): one short spoken clause, only when the model
+    didn't already own up to it itself.
+    """
+    if reply:
+        for frag in ((brain_line, brain_line.rstrip(".")) if brain_line else ()):
+            reply = reply.replace(frag, "")
+        if "Brain status for THIS turn" in reply:
+            reply = reply.split("Brain status for THIS turn")[0]
+        if "[Internal note" in reply:
+            reply = reply.split("[Internal note")[0]
+        reply = reply.strip()
+        if not reply:
+            reply = "Understood."
+    if escalated and reply and "claude" not in reply.lower():
+        reply = f"{reply.rstrip()} Took Claude for that one."
+    return reply
+
+
 @router.post("/api/osa/chat")
 def osa_chat(body: OSAChat) -> dict:
     """Run one OSA turn and return a spoken-style reply (+ tool trace).
@@ -299,22 +336,7 @@ def osa_chat(body: OSAChat) -> dict:
     messages = result.get("messages", []) if isinstance(result, dict) else []
     reply = _extract_text(getattr(messages[-1], "content", "")) if messages else ""
 
-    # Echo scrub (2026-07-07): small local models sometimes parrot the
-    # injected brain-status suffix verbatim instead of answering. Strip any
-    # echo of it; if nothing else remains, fall back to a plain ack.
-    if reply:
-        for frag in (brain_line, brain_line.rstrip(".")):
-            reply = reply.replace(frag, "")
-        if "Brain status for THIS turn" in reply:
-            reply = reply.split("Brain status for THIS turn")[0]
-        reply = reply.strip()
-        if not reply:
-            reply = "Understood."
-
-    # Escalation mention (locked decision #1): one short spoken clause, only
-    # when the model didn't already own up to it itself.
-    if escalated and reply and "claude" not in reply.lower():
-        reply = f"{reply.rstrip()} Took Claude for that one."
+    reply = _scrub_reply(reply, brain_line, escalated=escalated)
 
     awaiting = turn_state["awaiting"]
     # Confirm-surfacing safety net (2026-07-07): Tony's live test showed the
@@ -524,3 +546,353 @@ def osa_briefing() -> dict:
 
     osa_proactive.note_chat_turn()
     return osa_proactive.post_briefing(force_announce=True)
+
+
+# --------------------------------------------------------------------------- #
+# Streaming chat over WebSocket (2026-07-07 late) — tokens + live tool events
+# + REAL mid-run destructive confirms via LangGraph interrupt().
+#
+# Protocol (all frames carry "type"):
+#   inbound  first frame: {"message": str, "thread_id"?: str}   — a new turn
+#            OR           {"resume": "approve"|"deny", "thread_id": str}
+#                         — resume a checkpointed interrupt on a FRESH socket
+#                         (the interrupt survives socket death: it's parked on
+#                         the MySQL checkpointer).
+#   inbound  after an "awaiting_confirm" frame: {"resume": "approve"|"deny"}.
+#   outbound: start {thread_id, model, route, pinned_model, escalated}
+#             token {delta}                     — reply text as it generates
+#             tool_start {tool, args} / tool_end {tool, ok}
+#             awaiting_confirm {action, description}
+#             final {reply, thread_id, model, route, pinned_model, escalated,
+#                    tool_trace, confirmed}     — AUTHORITATIVE reply (echo
+#                    scrub + escalation clause run on the finished text, so
+#                    the client must replace what it streamed)
+#             error {error}
+#
+# The confirm mechanism is transport-appropriate: this WS path uses a real
+# interrupt() inside the guarded tool (the ToolNode re-raises GraphInterrupt;
+# on Command(resume=...) the tool re-runs from the top, the guard fires again,
+# and interrupt() returns the resume decision to _guarded's approval_fn). The
+# sync POST route keeps the two-turn conversational confirm because it cannot
+# block on a human — and voice (14d) will ride that path ("just say yes").
+# --------------------------------------------------------------------------- #
+
+# Fresh-socket resume needs the interrupted turn's model/flags to rebuild an
+# identical agent. Thread-keyed, TTL-bounded like _PENDING_CONFIRM.
+_WS_TURN_STATE: dict[str, dict] = {}
+
+
+def _ws_approval_fn(action_type: str, description: str) -> str:
+    """WS-mode approval bridge: park the graph on a real LangGraph interrupt.
+
+    First execution raises GraphInterrupt (the run checkpoints + pauses); on
+    ``Command(resume=decision)`` the tool re-runs and ``interrupt()`` RETURNS
+    the decision, which ``_guarded``'s ``_is_yes`` then evaluates. Pre-guard
+    code re-executes on the re-run — all current tools only validate/read
+    before the guard, so that replay is side-effect free.
+    """
+    from langgraph.types import interrupt
+
+    decision = interrupt({"action": action_type, "description": description})
+    return str(decision)
+
+
+def _chunk_text(msg) -> str:
+    """Streamable text of one message chunk (skips tool-call-only chunks)."""
+    content = getattr(msg, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and part.get("type") in (None, "text"):
+                parts.append(part.get("text", ""))
+        return "".join(parts)
+    return ""
+
+
+async def _pump_stream(agent, payload, config, ws: WebSocket, trace: list) -> dict:
+    """Run ONE agent.stream pass in a worker thread, forwarding frames.
+
+    The MySQL checkpointer is sync, so the graph runs via the sync ``stream``
+    iterator on a daemon thread that pumps an asyncio.Queue (same shape as the
+    diagnostics WS). Returns ``{"interrupt": dict|None, "last_text": str,
+    "error": str|None}`` — an interrupt means the graph is parked awaiting a
+    resume; ``last_text`` is the last complete agent message (authoritative
+    over accumulated tokens).
+    """
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue()
+    stop = threading.Event()
+
+    def worker() -> None:
+        """Iterate the sync graph stream; push chunks to the async side."""
+        try:
+            for mode, chunk in agent.stream(
+                payload, config=config, stream_mode=["updates", "messages"]
+            ):
+                if stop.is_set():
+                    break
+                loop.call_soon_threadsafe(q.put_nowait, ("chunk", mode, chunk))
+        except Exception as exc:  # noqa: BLE001 — surfaced as an error frame
+            loop.call_soon_threadsafe(q.put_nowait, ("error", None, exc))
+        finally:
+            loop.call_soon_threadsafe(q.put_nowait, ("done", None, None))
+
+    threading.Thread(target=worker, daemon=True).start()
+    outcome: dict = {"interrupt": None, "last_text": "", "error": None}
+    try:
+        while True:
+            kind, mode, item = await q.get()
+            if kind == "done":
+                break
+            if kind == "error":
+                outcome["error"] = str(item)
+                break
+            if mode == "messages":
+                # (message_chunk, metadata) — only the agent node's text is
+                # reply tokens; tool output rides "updates" instead.
+                msg, meta = item if isinstance(item, tuple) else (item, {})
+                if (meta or {}).get("langgraph_node") != "agent":
+                    continue
+                delta = _chunk_text(msg)
+                if delta:
+                    await ws.send_json({"type": "token", "delta": delta})
+            elif mode == "updates" and isinstance(item, dict):
+                for node, update in item.items():
+                    if node == "__interrupt__":
+                        intr = update[0] if isinstance(update, (list, tuple)) and update else update
+                        value = getattr(intr, "value", None)
+                        outcome["interrupt"] = value if isinstance(value, dict) else {}
+                        continue
+                    if not isinstance(update, dict):
+                        continue
+                    for m in update.get("messages", []) or []:
+                        calls = getattr(m, "tool_calls", None) or []
+                        for call in calls:
+                            entry = {"tool": call.get("name"), "args": call.get("args", {})}
+                            trace.append(entry)
+                            await ws.send_json({"type": "tool_start", **entry})
+                        if m.__class__.__name__ == "ToolMessage":
+                            text = _extract_text(getattr(m, "content", ""))
+                            ok = not text.startswith(("ERROR", "BLOCKED"))
+                            await ws.send_json({
+                                "type": "tool_end",
+                                "tool": getattr(m, "name", None),
+                                "ok": ok,
+                            })
+                        elif not calls:
+                            text = _extract_text(getattr(m, "content", ""))
+                            if text:
+                                outcome["last_text"] = text
+    except (WebSocketDisconnect, RuntimeError):
+        stop.set()
+        raise
+    return outcome
+
+
+@router.websocket("/api/osa/ws/chat")
+async def osa_chat_ws(ws: WebSocket) -> None:
+    """Streaming OSA turn: tokens + tool events + interrupt-based confirms."""
+    await ws.accept()
+    conn = None
+    try:
+        req = await ws.receive_json()
+        resume_val = req.get("resume")
+        thread_id = req.get("thread_id")
+        message = (req.get("message") or "").strip()
+
+        from langgraph.types import Command
+
+        from agents import osa_agent
+        from core import llm, memory
+        from gui.sidecar import osa_proactive, osa_settings
+
+        if resume_val is None and not message:
+            await ws.send_json({"type": "error", "error": "message is required"})
+            return
+        if resume_val is not None and not thread_id:
+            await ws.send_json({"type": "error", "error": "thread_id is required to resume"})
+            return
+
+        osa_proactive.note_chat_turn()
+
+        if resume_val is not None:
+            # Fresh-socket resume: rebuild the interrupted turn's agent. State
+            # missing (TTL/restart) ⇒ Claude — interrupts only happen on tool
+            # turns, and tool turns always run cloud (the local-pin guardrail).
+            st = _WS_TURN_STATE.get(thread_id) or {}
+            if st and time.time() - st.get("ts", 0) > _CONFIRM_TTL_SECONDS:
+                st = {}
+            pin = st.get("pin") if st else osa_settings.get_model_pin()
+            model_id = st.get("model_id") or llm.resolve("default")
+            route = st.get("route", "default")
+            escalated = bool(st.get("escalated", False))
+            brain_line = st.get("brain_line") or osa_agent.brain_prompt_line(
+                pin=pin, effective=model_id, escalated=escalated
+            )
+            payload = Command(resume=str(resume_val))
+            confirmed = str(resume_val).strip().lower() in ("approve", "yes", "y")
+        else:
+            thread_id = thread_id or f"osa-{uuid.uuid4().hex[:10]}"
+            ollama_ready = osa_agent.warm_ollama()
+            pin = osa_settings.get_model_pin()
+            chosen = osa_agent.pick_model(message, ollama_ready=ollama_ready, pin=pin)
+            model_id = llm.resolve(chosen)
+            _info = llm.get_model_info(model_id)
+            if _info is None:
+                _info = llm.discover_ollama().get(model_id)
+            route = "local" if (_info is not None and _info.is_local) else "default"
+            escalated = bool(pin) and osa_agent._pin_is_local(pin) and chosen != pin
+            brain_line = osa_agent.brain_prompt_line(
+                pin=pin, effective=model_id, escalated=escalated
+            )
+            payload = {"messages": [{"role": "user", "content": message}]}
+            confirmed = False
+
+        conn = memory.checkpointer_conn()
+        checkpointer = memory.get_checkpointer(conn)
+        agent = osa_agent.build_agent(
+            model_id, approval_fn=_ws_approval_fn, checkpointer=checkpointer,
+            system_suffix=brain_line,
+        )
+        config = {"configurable": {"thread_id": thread_id}}
+        await ws.send_json({
+            "type": "start", "thread_id": thread_id, "model": model_id,
+            "route": route, "pinned_model": pin, "escalated": escalated,
+        })
+
+        trace: list[dict] = []
+        while True:
+            outcome = await _pump_stream(agent, payload, config, ws, trace)
+            if outcome["error"]:
+                logger.error("OSA WS turn failed: %s", outcome["error"])
+                await ws.send_json({"type": "error", "error": outcome["error"]})
+                return
+            if outcome["interrupt"] is not None:
+                intr = outcome["interrupt"]
+                _WS_TURN_STATE[thread_id] = {
+                    "model_id": model_id, "route": route, "escalated": escalated,
+                    "pin": pin, "brain_line": brain_line, "ts": time.time(),
+                }
+                await ws.send_json({
+                    "type": "awaiting_confirm",
+                    "action": intr.get("action"),
+                    "description": intr.get("description"),
+                })
+                nxt = await ws.receive_json()
+                decision = str(nxt.get("resume") or "deny").strip().lower()
+                confirmed = confirmed or decision in ("approve", "yes", "y")
+                payload = Command(resume=decision)
+                continue
+            reply = outcome["last_text"]
+            break
+
+        _WS_TURN_STATE.pop(thread_id, None)
+        reply = _scrub_reply(reply, brain_line, escalated=escalated)
+        _LAST_TURN.update(model=model_id, escalated=escalated)
+        await ws.send_json({
+            "type": "final", "reply": reply, "thread_id": thread_id,
+            "model": model_id, "route": route, "pinned_model": pin,
+            "escalated": escalated, "tool_trace": trace, "confirmed": confirmed,
+        })
+    except WebSocketDisconnect:
+        logger.info("OSA WS: client disconnected")
+    except Exception as exc:  # noqa: BLE001 — surface as an error frame
+        logger.error("OSA WS failed: %s", exc, exc_info=True)
+        try:
+            await ws.send_json({"type": "error", "error": str(exc)})
+        except Exception:  # noqa: BLE001
+            pass
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            await ws.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+# --------------------------------------------------------------------------- #
+# Transcript restore (2026-07-07 late) — fold a checkpointed thread back into
+# UI turns so the Agent view survives an app restart.
+# --------------------------------------------------------------------------- #
+def _fold_history(messages: list) -> list[dict]:
+    """Fold LangChain messages into UI turns.
+
+    Each HumanMessage starts a turn; the AI/tool messages that follow belong
+    to it. The LAST non-empty AI text in a turn wins (matches what the chat
+    route returned at the time); tool calls become the turn's trace. Stored AI
+    text is pre-scrub, so the light echo scrub runs again here.
+    """
+    turns: list[dict] = []
+    current: dict | None = None
+    for m in messages:
+        kind = m.__class__.__name__
+        if kind == "HumanMessage":
+            current = {"user": _extract_text(getattr(m, "content", "")),
+                       "text": "", "tools": []}
+            turns.append(current)
+            continue
+        if current is None:
+            continue
+        calls = getattr(m, "tool_calls", None) or []
+        for call in calls:
+            current["tools"].append({
+                "tool": call.get("name"), "args": call.get("args", {}),
+            })
+        if kind == "ToolMessage":
+            continue
+        if not calls:
+            text = _extract_text(getattr(m, "content", ""))
+            if text:
+                current["text"] = _scrub_reply(text, None, escalated=False)
+    return turns
+
+
+@router.get("/api/osa/history")
+def osa_history(thread_id: str) -> dict:
+    """Return a checkpointed OSA thread folded into UI turns.
+
+    Degrades rather than fails: MySQL unreachable ⇒ ``available: false``;
+    an unknown thread ⇒ ``exists: false``. Both return empty ``turns`` so
+    the Agent view can hydrate opportunistically on mount.
+    """
+    thread_id = (thread_id or "").strip()
+    if not thread_id:
+        raise HTTPException(400, "thread_id is required")
+
+    from core import memory
+
+    conn = None
+    try:
+        conn = memory.checkpointer_conn()
+        saver = memory.get_checkpointer(conn)
+        tup = saver.get_tuple({"configurable": {"thread_id": thread_id}})
+    except Exception as exc:  # noqa: BLE001 — degrade, never 500 the mount path
+        logger.warning("OSA history unavailable: %s", exc)
+        return {"thread_id": thread_id, "exists": False, "available": False,
+                "turns": []}
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    if tup is None:
+        return {"thread_id": thread_id, "exists": False, "available": True,
+                "turns": []}
+    checkpoint = getattr(tup, "checkpoint", None) or {}
+    messages = (checkpoint.get("channel_values") or {}).get("messages", []) or []
+    return {
+        "thread_id": thread_id,
+        "exists": True,
+        "available": True,
+        "turns": _fold_history(messages),
+    }

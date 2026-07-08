@@ -1,3 +1,66 @@
+# ⏹ SESSION CLOSED 2026-07-07 (late) — OSA CHAT STREAMING UPGRADE SHIPPED ✅
+
+Agent-view OSA chat upgraded from sync request/response to live streaming.
+All built inline (subagent spend limit still in effect). Interview-locked
+decisions: WebSocket (tokens + live tool chips) · full LangGraph `interrupt()`
+mid-run confirms · polish = transcript restore + New chat + timestamps/copy.
+The sync `POST /api/osa/chat` route is deliberately untouched (14d voice will
+use it; its two-turn conversational confirm is transport-appropriate).
+
+## What shipped
+
+1. **`WS /api/osa/ws/chat`** (`api_osa.py`) — one socket per turn. Inbound
+   `{message, thread_id?}` (new turn) OR `{resume, thread_id}` (fresh-socket
+   resume). Outbound frames: `start`, `token` (agent-node deltas only),
+   `tool_start`/`tool_end`, `awaiting_confirm`, `final` (AUTHORITATIVE —
+   scrub + escalation run on finished text, client replaces streamed text),
+   `error`. Graph runs `agent.stream(stream_mode=["updates","messages"])` on a
+   daemon thread pumping an asyncio.Queue (sync MySQL checkpointer; mirrors
+   diagnostics WS).
+2. **Real mid-run confirms** — WS approval_fn calls `interrupt({action,
+   description})`; ToolNode re-raises GraphInterrupt, graph parks on the MySQL
+   checkpointer, `Command(resume=decision)` re-runs the tool. Survives socket
+   death (checkpointed) → fresh socket resumes. `_WS_TURN_STATE` (thread-keyed,
+   TTL) rebuilds the interrupted turn's agent; missing ⇒ Claude fallback (safe:
+   interrupts only on tool turns, which always run cloud).
+3. **`GET /api/osa/history?thread_id=`** — folds checkpointed messages into UI
+   turns for transcript restore. Degrades: MySQL down ⇒ `available:false`,
+   unknown thread ⇒ `exists:false`.
+4. **`_scrub_reply()` shared helper** — echo-scrub + escalation clause extracted
+   from the sync route; both routes call it (also strips `[Internal note`).
+5. **`AgentView`** (`App.jsx`/`App.css`) — WS-primary + auto POST fallback
+   (jsdom has no WebSocket → tests ride POST). Live token append, tool chips
+   running→done/error, inline ✓ Allow / ✕ Deny (resume on live or fresh
+   socket, disable after click), localStorage thread persistence + history
+   hydration on mount (restored label), ⊕ New chat, per-turn timestamps + ⧉
+   copy. Theme tokens only. `history` + WS registered in HubApiExplorer.
+
+Tests: pytest **449** (+15 `test_osa_chat_ws.py`), vitest **615** (+9
+`AgentViewStream.test.jsx`). Build clean.
+
+## ▶ RESUME HERE
+
+1. **Sidecar not yet restarted for the new routes** — kill ALL `gui.sidecar`
+   PIDs first (stale child holds :5130), then relaunch. Until then the WS +
+   history endpoints 404 and the chat silently rides the POST fallback.
+2. **Tony on-device visual pass (accumulated + new):** streaming chat (tokens
+   appearing, tool chips), Allow/Deny buttons on a real destructive turn (e.g.
+   "stop <app>"), New chat, transcript restore across an app restart,
+   copy/timestamps. PLUS the still-pending earlier items: orb brain line, rail
+   (feed/Brief me/Brain picker), HUD, freeze/CONT a managed app.
+3. **14d real voice implementation** → 14f hardening.
+4. Backlog: rail vitals, apps under management, maybe an Approvals-view surface
+   for pending OSA confirms.
+
+## Housekeeping
+
+- Current pin: **auto**. `.env.local` sk-admin- relabel still pending. Subagent
+  spend limit — build inline. Sidecar restart: kill ALL gui.sidecar PIDs first.
+- Local 3B persona drift acceptable for now. Streaming is now DONE (was on the
+  prior session's backlog).
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 (night) — OSA'S PUNCH LIST SHIPPED ✅ (4/4 + echo fix)
 
 OSA listed four to-dos during Tony's live session; all shipped inline
