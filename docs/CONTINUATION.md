@@ -46,6 +46,13 @@ Commits through `01839bc`, full suite 480 passed, pushed.
 3. Accumulated on-device VISUAL pass (rail/orb/brain picker); `.env.local`
    sk-admin- relabel.
 
+## New skills (060f5a8) — consult these to avoid the pitfalls we hit
+- `skills/osa-sidecar-lifecycle` — restart correctly (kill ALL PIDs,
+  port-singleton, audio-session caveat, verify new code is live).
+- `skills/osa-chat-dual-path` — reply side effects must go in BOTH the WS
+  (`/api/osa/ws/chat`, primary) AND POST (`/api/osa/chat`, fallback) routes.
+- `skills/osa-voice-troubleshooting` — Piper/afplay voice-OUT diagnosis.
+
 ## Housekeeping
 - Subagent spend limit → build INLINE. Sidecar restart: kill ALL
   `pgrep -f "python -m gui.sidecar"` first, then nohup a fresh one.
