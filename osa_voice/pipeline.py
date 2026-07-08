@@ -89,6 +89,13 @@ class VoiceService:
         self._voice = None            # cached PiperVoice (lazy)
         self._voice_key: str | None = None  # path the cache was loaded for
         self._play_proc: subprocess.Popen | None = None
+        # De-dupe guard (2026-07-08): the app can open the chat WebSocket more
+        # than once (dev StrictMode, a reconnect, two windows), so the SAME
+        # reply can arrive twice near-simultaneously. Speaking the identical
+        # text again within this window is suppressed — the fix for "double
+        # voices at the same time".
+        self._last_spoken: tuple[str, float] = ("", 0.0)
+        self._dedupe_window_s = 8.0
 
     # ------------------------------------------------------------------ #
     # Introspection
@@ -382,6 +389,12 @@ class VoiceService:
             return {"ok": False, "reason": "empty text"}
         if self._mute:
             return {"ok": False, "reason": "muted"}
+        # De-dupe identical text within the window (double-open protection).
+        with self._lock:
+            last_text, last_ts = self._last_spoken
+            if text == last_text and (time.monotonic() - last_ts) < self._dedupe_window_s:
+                return {"ok": False, "reason": "duplicate"}
+            self._last_spoken = (text, time.monotonic())
         from osa_voice import tts_available
 
         ok, missing = tts_available()

@@ -72,6 +72,11 @@ router = APIRouter()
 # --------------------------------------------------------------------------- #
 _PENDING_CONFIRM: dict[str, dict] = {}
 
+# The guardrail-escalation clause (locked decision #1). Kept in the DISPLAYED
+# reply (the model badge reinforces it), but stripped from SPOKEN output
+# (Tony, 2026-07-08) — hearing it on every escalated turn is noise.
+_ESCALATION_CLAUSE = "Took Claude for that one."
+
 # What the most recent chat turn actually ran on (2026-07-07) — the orb's
 # status line shows runtime truth (pin vs escalated turn) from this.
 _LAST_TURN: dict = {"model": None, "escalated": False}
@@ -221,7 +226,7 @@ def _scrub_reply(reply: str, brain_line: str | None, *, escalated: bool) -> str:
         if not reply:
             reply = "Understood."
     if escalated and reply and "claude" not in reply.lower():
-        reply = f"{reply.rstrip()} Took Claude for that one."
+        reply = f"{reply.rstrip()} {_ESCALATION_CLAUSE}"
     return reply
 
 
@@ -387,7 +392,10 @@ def _maybe_speak_reply(reply: str) -> None:
             return
         from osa_voice import get_service
 
-        get_service().speak(reply)  # non-blocking
+        # Speak a clean version: drop the escalation clause (Tony, 2026-07-08)
+        # — it stays in the displayed reply but shouldn't be read aloud.
+        spoken = reply.replace(_ESCALATION_CLAUSE, "").strip()
+        get_service().speak(spoken)  # non-blocking
     except Exception:  # noqa: BLE001 — voice is a garnish, never a dependency
         pass
 
@@ -819,6 +827,11 @@ async def osa_chat_ws(ws: WebSocket) -> None:
         _WS_TURN_STATE.pop(thread_id, None)
         reply = _scrub_reply(reply, brain_line, escalated=escalated)
         _LAST_TURN.update(model=model_id, escalated=escalated)
+        # Voice-OUT (2026-07-08): speak the streamed reply too. The app's
+        # PRIMARY chat path is THIS WebSocket (the sync POST is only a
+        # fallback), so without this hook the app stays silent even with
+        # voice enabled. Best-effort + non-blocking, same as the POST route.
+        _maybe_speak_reply(reply)
         await ws.send_json({
             "type": "final", "reply": reply, "thread_id": thread_id,
             "model": model_id, "route": route, "pinned_model": pin,

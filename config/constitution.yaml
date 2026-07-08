@@ -60,7 +60,7 @@ constitution:
   # is the default interaction (design §9 Q3 unresolved — no always-listening
   # until Tony opts in). piper_voice is TBD pending a voice audition.
   voice:
-    enabled: false                  # HARD default — opt-in on-device only
+    enabled: true                   # voice-OUT ON (2026-07-08)
     wake_word: "osa"
     stt_model: "small"             # faster-whisper model size
     # Voice-OUT (2026-07-08): Piper TTS speaks OSA's replies + announcements.
@@ -69,5 +69,4 @@ constitution:
     speak_replies: true             # speak chat replies + announced proactive msgs
     push_to_talk_only: true         # voice-IN only; wake word deferred (§9 Q3)
     mute: false
-
 

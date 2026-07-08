@@ -49,9 +49,19 @@ def _service(enabled: bool = True, ok: bool = True, missing=None, **knobs) -> Vo
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestVoiceConfig:
-    def test_repo_constitution_flag_is_off(self):
-        """Tony's live constitution.yaml ships with voice disabled."""
-        assert Constitution.load().voice["enabled"] is False
+    def test_repo_constitution_voice_in_stays_opt_in(self):
+        """Voice-OUT is on (Tony, 2026-07-08), but the mic side stays safe.
+
+        The real safety invariant isn't ``enabled`` — voice-OUT (TTS) has no
+        mic/privacy cost and Tony turned it on. What MUST stay opt-in is
+        voice-IN: ``push_to_talk_only`` true means no always-listening mic
+        (design §9 Q3 unresolved), and the CODE default (`DEFAULT_VOICE`)
+        still ships off for anyone who hasn't opted in.
+        """
+        from core.constitution import DEFAULT_VOICE
+
+        assert Constitution.load().voice["push_to_talk_only"] is True
+        assert DEFAULT_VOICE["enabled"] is False  # code default stays off
 
     def test_defaults_shape(self):
         cfg = Constitution().voice

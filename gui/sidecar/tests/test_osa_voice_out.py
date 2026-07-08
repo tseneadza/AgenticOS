@@ -325,3 +325,84 @@ class TestReplyWiring:
 
         monkeypatch.setattr(vcfg, "voice_config", _boom)
         pro._speak_alert("must not raise")  # swallowed
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Escalation clause stripped from SPEECH but kept in text (Tony, 2026-07-08)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestEscalationClauseNotSpoken:
+    def test_maybe_speak_strips_the_clause(self, monkeypatch):
+        from gui.sidecar.routes import api_osa
+        from osa_voice import config as vcfg
+
+        monkeypatch.setattr(
+            vcfg, "voice_config",
+            lambda: {"enabled": True, "speak_replies": True})
+        spoke = []
+        from osa_voice import get_service
+        monkeypatch.setattr(
+            get_service(), "speak", lambda t, **k: spoke.append(t))
+        api_osa._maybe_speak_reply(
+            "Stopping worldwise now, Sir. Took Claude for that one.")
+        assert spoke == ["Stopping worldwise now, Sir."]  # clause gone from speech
+
+    def test_displayed_reply_keeps_the_clause(self):
+        # _scrub_reply still appends it to the returned/displayed text.
+        from gui.sidecar.routes import api_osa
+
+        out = api_osa._scrub_reply("Done.", None, escalated=True)
+        assert out.endswith(api_osa._ESCALATION_CLAUSE)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WS chat path speaks too (the app's PRIMARY route — regression guard)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestWsPathHasVoiceHook:
+    def test_ws_handler_calls_maybe_speak_reply(self):
+        # The app streams over /api/osa/ws/chat; the sync POST is only a
+        # fallback. Guard that the WS finalizer speaks (source-level check —
+        # a full WS integration test needs a live graph + checkpointer).
+        import inspect
+        from gui.sidecar.routes import api_osa
+
+        src = inspect.getsource(api_osa.osa_chat_ws)
+        assert "_maybe_speak_reply(reply)" in src, \
+            "WS chat handler must speak the final reply (voice-OUT)"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# De-dupe — identical reply twice in the window speaks once (double-open guard)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestSpeakDedupe:
+    def test_identical_text_within_window_spoken_once(self, monkeypatch):
+        monkeypatch.setattr(osa_voice, "tts_available", lambda: (True, []))
+        svc = _svc()
+        spoke = []
+        monkeypatch.setattr(svc, "_synthesize", lambda t: spoke.append(t))
+        first = svc.speak("Same reply, Sir.", blocking=True)
+        second = svc.speak("Same reply, Sir.", blocking=True)
+        assert first["ok"] is True
+        assert second == {"ok": False, "reason": "duplicate"}
+        assert spoke == ["Same reply, Sir."]  # synthesized only once
+
+    def test_different_text_not_deduped(self, monkeypatch):
+        monkeypatch.setattr(osa_voice, "tts_available", lambda: (True, []))
+        svc = _svc()
+        spoke = []
+        monkeypatch.setattr(svc, "_synthesize", lambda t: spoke.append(t))
+        svc.speak("First line.", blocking=True)
+        svc.speak("Second line.", blocking=True)
+        assert spoke == ["First line.", "Second line."]
+
+    def test_same_text_after_window_speaks_again(self, monkeypatch):
+        monkeypatch.setattr(osa_voice, "tts_available", lambda: (True, []))
+        svc = _svc()
+        svc._dedupe_window_s = 0.0  # window elapsed => not a duplicate
+        spoke = []
+        monkeypatch.setattr(svc, "_synthesize", lambda t: spoke.append(t))
+        svc.speak("Repeat me.", blocking=True)
+        svc.speak("Repeat me.", blocking=True)
+        assert spoke == ["Repeat me.", "Repeat me."]
