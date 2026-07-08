@@ -16,13 +16,13 @@
  * clearly-named CSS custom properties so they're easy to retune.
  *
  * Props:
- *   state    — "idle" | "thinking" | "speaking" | "listening" (default "idle")
+ *   state    — "idle" | "thinking" | "speaking" | "listening" | "alert" (default "idle")
  *   lastLine — OSA's most recent line (empty → "Standing by.")
  *   status   — optional short sub-caption (e.g. "Local · Ollama up")
  *   onOpen   — click handler (used to jump to the Agent view)
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { get } from "../api";
 
 // Component-scoped stylesheet. Inline styles can't express @keyframes or
@@ -33,6 +33,7 @@ const styles = `
   --osa-idle: #35d0e0;   /* cyan — calm presence */
   --osa-think: #ffb454;  /* amber — working */
   --osa-listen: #49e08b; /* green — voice (14d) */
+  --osa-alert: #ff6d6d;   /* red — needs you (pending approval) */
   /* Static flow: the orb sits inside the OSA rail and is centered as a flex
      column (reactor stage on top, caption below) — no absolute pinning. */
   position: relative;
@@ -146,23 +147,54 @@ const styles = `
 .osa-orb[data-state="listening"] .orb-label { opacity: .25; }
 @keyframes orbBounce { 0%, 100% { transform: scaleY(.5); opacity: .6; } 50% { transform: scaleY(2.4); opacity: 1; } }
 
+/* State word (14f) — the orb names its state: a small uppercase readout in
+   the current state hue, between the reactor and the caption. */
+.osa-orb .orb-word {
+  display: block;
+  margin-top: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--osa-idle);
+  transition: color .4s;
+}
+.osa-orb[data-state="thinking"] .orb-word { color: var(--osa-think); }
+.osa-orb[data-state="listening"] .orb-word { color: var(--osa-listen); }
+.osa-orb[data-state="alert"] .orb-word { color: var(--osa-alert); }
+/* Alert (14f) — a pending human-in-the-loop approval needs you: red hue,
+   urgent pulse on glow + core; rings quicken without thinking's sweep. */
+.osa-orb[data-state="alert"] .orb-glow { opacity: .34; background: radial-gradient(circle, var(--osa-alert) 0%, transparent 68%); animation: orbPulseGlow .7s ease-in-out infinite; }
+.osa-orb[data-state="alert"] .orb-stroke { stroke: var(--osa-alert); }
+.osa-orb[data-state="alert"] .orb-core { stroke: var(--osa-alert); animation: orbPulseCore .7s ease-in-out infinite; }
+.osa-orb[data-state="alert"] .orb-ring-out { animation-duration: 10s; }
+.osa-orb[data-state="alert"] .orb-ring-mid { animation-duration: 7s; }
+.osa-orb[data-state="alert"] .orb-ring-in { animation-duration: 4.5s; }
 @media (prefers-reduced-motion: reduce) {
   .osa-orb *, .osa-orb [class*="orb-"] { animation: none !important; }
 }
 `;
 
-const VALID_STATES = ["idle", "thinking", "speaking", "listening"];
+const VALID_STATES = ["idle", "thinking", "speaking", "listening", "alert"];
 
 export default function OSAOrb({
   state = "idle",
   lastLine = "",
   status = "",
   onOpen,
+  // onState (2026-07-07): optional callback invoked with each successful
+  // /api/osa/state payload from the orb's 15s poll. Lets the rail piggyback
+  // this poll to detect pin changes made OUTSIDE its Brain picker (chat's
+  // switch_model, the REST route, another window) without a second poller.
+  // Not called when the caller supplies `status` (the poll is skipped).
+  onState,
 }) {
   // Optional cheap live status: fetch /api/osa/state on mount + a light 15s
   // interval to populate the sub-caption when the caller didn't pass one.
   // Degrades silently on error.
   const [fetchedStatus, setFetchedStatus] = useState("");
+  const onStateRef = useRef(onState);
+  onStateRef.current = onState;
   useEffect(() => {
     if (status) return; // caller-provided status wins; skip polling
     let alive = true;
@@ -170,6 +202,7 @@ export default function OSAOrb({
       get("/api/osa/state")
         .then((s) => {
           if (!alive || !s) return;
+          try { onStateRef.current?.(s); } catch { /* observer must not break the orb */ }
           // Brain display (2026-07-07): show OSA's brain truthfully — the pin
           // when pinned (with the actual runtime when the guardrail escalated
           // the last turn), the auto route otherwise.
@@ -230,6 +263,7 @@ export default function OSAOrb({
       </svg>
       </span>
       <span className="orb-cap">
+        <span className="orb-word" data-testid="osa-orb-word">{dataState}</span>
         {caption}
         {subStatus && <span className="orb-status">{subStatus}</span>}
       </span>

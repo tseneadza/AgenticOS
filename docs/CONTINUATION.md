@@ -1,3 +1,53 @@
+# ⏹ SESSION CLOSED 2026-07-07 (later) — 14f ORB STATE WORD + ALERT + SYSTEM DRIVERS ✅
+
+Orb now NAMES its state and reacts to the whole system, not just chat.
+Interview-locked: all four drivers (workflow runs · approvals · health ·
+manual) + a visible state word under the reactor. Design untouched — small
+details only, per Tony.
+
+## What shipped
+1. **State word readout** (`OSAOrb.jsx`) — small uppercase `IDLE / THINKING /
+   SPEAKING / LISTENING / ALERT` between reactor and caption, colored in the
+   state hue (renders `dataState` directly — can never drift from the
+   animation). data-testid `osa-orb-word`.
+2. **New `alert` state** (`OSAOrb.jsx`) — `--osa-alert: #ff6d6d`, urgent .7s
+   pulse on glow + core, rings quickened (no amber sweep — visually distinct
+   from thinking). Added to VALID_STATES.
+3. **System drivers** (`App.jsx`) — `osaEffectiveState` resolver feeding the
+   rail. Priority: manual override → pending approvals (`alert`, from the
+   existing /api/approvals poll + WS pushes) → chat thinking/speaking
+   (unchanged 14c path) → any active LangGraph run (`thinking`; run_ids
+   tracked from AG-UI RUN_STARTED/FINISHED/ERROR, set cleared on socket
+   disconnect) → idle. Health downs already speak via the events bridge — no
+   dedicated state needed.
+4. **Dev/preview hook** — `window.__osaSetState("alert"|…|null)` (same
+   global-hook pattern as `__agenticOsSetView`); null releases the override.
+5. **AgentView test regression FIX (pre-existing)** — 5 AgentView tests were
+   red in the working tree BEFORE 14f (bisect-verified against pre-14f
+   App.jsx): jsdom DOES construct WebSockets, so the WS-primary send path
+   stranded mid-handshake instead of riding the documented POST fallback.
+   File-level `vi.stubGlobal("WebSocket", <throwing ctor>)` in
+   AgentView.test.jsx forces openSocket() → null → POST, per the original
+   design note. AgentViewStream.test.jsx (own frame-level WS mock) untouched.
+
+Tests: vitest **622/622** (was 617 passed / 5 failed on entry). OSAOrb 17
+(+ state-word test, alert in the state loop), OSARail 22.
+
+## ▶ RESUME HERE
+1. **Sidecar restart still pending** (carried from previous entry) — kill ALL
+   `gui.sidecar` PIDs, relaunch; until then WS chat + history 404 and chat
+   silently rides the POST fallback.
+2. **Tony on-device visual pass (accumulated):** orb state word + ALERT
+   (`window.__osaSetState("alert")` in devtools to preview), orb goes amber
+   THINKING during any workflow run, red ALERT while an approval is pending;
+   PLUS prior items: streaming chat tokens + tool chips, Allow/Deny on a real
+   destructive turn, New chat, transcript restore across restart, rail
+   (feed/Brief me/Brain picker), HUD, freeze/CONT a managed app.
+3. Phase 13f (legacy raw-connector migration) still queued; Phase 10 session
+   notes retro still owed to Brain2.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 (late) — OSA CHAT STREAMING UPGRADE SHIPPED ✅
 
 Agent-view OSA chat upgraded from sync request/response to live streaming.

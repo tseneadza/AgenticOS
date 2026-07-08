@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { AgentView, OSAContext } from "../App";
 
@@ -38,27 +38,59 @@ function stubFetch(overrides = {}) {
   return calls;
 }
 
+// 14f: jsdom DOES construct WebSockets (they just never connect), which
+// strands the WS-primary send path mid-handshake in tests. Force the
+// documented fallback — a throwing constructor makes openSocket() return
+// null, so every send rides POST /api/osa/chat, exactly as these synchronous
+// fetch stubs expect. (AgentViewStream.test.jsx installs its own frame-level
+// WS mock instead and is untouched by this file-level stub.)
+beforeEach(() => {
+  vi.stubGlobal("WebSocket", class {
+    constructor() { throw new Error("no WebSocket in AgentView tests"); }
+  });
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+
 describe("AgentView (OSA chat)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     delete global.fetch;
   });
 
-  it("renders the OSA status strip from /api/osa/state", async () => {
+  // 2026-07-07: the agent-bar status strip is REMOVED — it displayed the
+  // legacy governor active model (llm.active_model), not the OSA pin, and
+  // conflicted with the rail orb's truthful brain line. The orb is the one
+  // brain display now; this view keeps /api/osa/state only for input gating.
+  it("does NOT render the old status strip (bar removed — orb owns the brain display)", async () => {
     stubFetch();
     render(<AgentView />);
     await waitFor(() =>
-      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+      expect(global.fetch.mock.calls.some((c) => String(c[0]).includes("/api/osa/state"))).toBe(true)
     );
-    expect(screen.getByText(/Ollama up/)).toBeInTheDocument();
-    expect(screen.getByText(/soul: Soul_OSA.md/)).toBeInTheDocument();
+    expect(screen.queryByText(/Qwen2.5 7B Instruct \(local\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ollama up/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/soul: Soul_OSA.md/)).not.toBeInTheDocument();
+  });
+
+  it("puts the New chat button in the composer next to Send", async () => {
+    stubFetch();
+    render(<AgentView />);
+    const composer = screen.getByPlaceholderText(/Message OSA/).closest(".agent-input");
+    expect(composer).toBeTruthy();
+    const newChat = screen.getByRole("button", { name: /New chat/ });
+    const send = screen.getByRole("button", { name: /Send/ });
+    expect(composer.contains(newChat)).toBe(true);
+    expect(composer.contains(send)).toBe(true);
   });
 
   it("enables the input when OSA is ready", async () => {
     stubFetch();
     render(<AgentView />);
     await waitFor(() =>
-      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+      expect(global.fetch.mock.calls.some((c) => String(c[0]).includes("/api/osa/state"))).toBe(true)
     );
     const box = screen.getByPlaceholderText(/Message OSA/);
     expect(box).not.toBeDisabled();
@@ -68,7 +100,7 @@ describe("AgentView (OSA chat)", () => {
     const calls = stubFetch();
     render(<AgentView />);
     await waitFor(() =>
-      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+      expect(global.fetch.mock.calls.some((c) => String(c[0]).includes("/api/osa/state"))).toBe(true)
     );
 
     const box = screen.getByPlaceholderText(/Message OSA/);
@@ -97,7 +129,7 @@ describe("AgentView (OSA chat)", () => {
     const calls = stubFetch();
     render(<AgentView />);
     await waitFor(() =>
-      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+      expect(global.fetch.mock.calls.some((c) => String(c[0]).includes("/api/osa/state"))).toBe(true)
     );
     const box = screen.getByPlaceholderText(/Message OSA/);
 
@@ -126,7 +158,7 @@ describe("AgentView (OSA chat)", () => {
     });
     render(<AgentView />);
     await waitFor(() =>
-      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+      expect(global.fetch.mock.calls.some((c) => String(c[0]).includes("/api/osa/state"))).toBe(true)
     );
     const box = screen.getByPlaceholderText(/Message OSA/);
     fireEvent.change(box, { target: { value: "boom" } });
@@ -163,7 +195,7 @@ describe("AgentView drives OSA presence (Phase 14c)", () => {
     stubFetch();
     const presence = renderWithPresence();
     await waitFor(() =>
-      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+      expect(global.fetch.mock.calls.some((c) => String(c[0]).includes("/api/osa/state"))).toBe(true)
     );
 
     const box = screen.getByPlaceholderText(/Message OSA/);
@@ -189,7 +221,7 @@ describe("AgentView drives OSA presence (Phase 14c)", () => {
     });
     const presence = renderWithPresence();
     await waitFor(() =>
-      expect(screen.getByText(/Qwen2.5 7B Instruct \(local\)/)).toBeInTheDocument()
+      expect(global.fetch.mock.calls.some((c) => String(c[0]).includes("/api/osa/state"))).toBe(true)
     );
     const box = screen.getByPlaceholderText(/Message OSA/);
     fireEvent.change(box, { target: { value: "boom" } });

@@ -1392,30 +1392,13 @@ export function AgentView() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
+  // 2026-07-07: the old agent-bar (active model + Ollama badges + soul label)
+  // is GONE — it showed the legacy governor-era llm.active_model(), NOT the
+  // OSA pin, and confused everyone next to the rail orb's truthful brain line.
+  // The rail orb (OSAOrb ← /api/osa/state poll) is the ONE brain display.
+  // /api/osa/state is still loaded here solely for the `ready` input gate.
   return (
     <div className="agent-view">
-      <div className="agent-bar">
-        <div className="agent-model">
-          <label>OSA</label>
-          <span className="agent-badge local" title="Active OSA brain">
-            {osa?.active_label || "loading…"}
-          </span>
-          <span className={`agent-badge ${osa?.ollama_up ? "local" : "cloud"}`}
-            title="Local Ollama runtime status">
-            {osa?.ollama_up ? "● Ollama up" : "○ Ollama down"}
-          </span>
-        </div>
-        <div className="agent-bar-right">
-          {osa?.soul && (
-            <span className="agent-escalate" title="Active soul / persona file">soul: {osa.soul}</span>
-          )}
-          <button className="btn new-chat-btn" onClick={newChat} disabled={sending}
-            title="Start a fresh durable thread (the old one stays in the checkpointer)">
-            ⊕ New chat
-          </button>
-        </div>
-      </div>
-
       <div className="agent-scroll" ref={scrollRef}>
         {turns.length === 0 && (
           <Empty msg="Ask OSA to run the machine — e.g. “how’s my memory?”" />
@@ -1477,6 +1460,10 @@ export function AgentView() {
           onKeyDown={onKey}
           disabled={!ready}
         />
+        <button className="btn new-chat-btn" onClick={newChat} disabled={sending}
+          title="Start a fresh durable thread (the old one stays in the checkpointer)">
+          ⊕ New chat
+        </button>
         <button
           className="btn approve send-btn"
           disabled={!input.trim() || sending || !ready}
@@ -1556,6 +1543,13 @@ export default function App() {
   // it via OSAContext (thinking on send, speaking on reply). speak() shows the
   // reply (trimmed to ~90 chars) then falls back to idle after ~3s.
   const [osaState, setOsaStateRaw] = useState("idle");
+  // 14f: orb state drivers beyond chat. Active LangGraph runs (any run_id on
+  // the AG-UI stream) hold "thinking"; pending approvals raise "alert";
+  // window.__osaSetState("alert"|null) is a dev/preview override (same
+  // global-hook pattern as __agenticOsSetView).
+  const osaRunsRef = useRef(new Set());
+  const [osaActiveRuns, setOsaActiveRuns] = useState(0);
+  const [osaManualState, setOsaManualState] = useState(null);
   const [osaLastLine, setOsaLastLine] = useState("");
   const osaSpeakTimer = useRef(null);
   const setOsaState = useCallback((s) => {
@@ -1609,6 +1603,35 @@ export default function App() {
     }
     speak(d.text);
   }, [recordOsaEvents, speak]);
+  // 14f: stale-run guard — a dropped AG-UI socket strands run ids in the set
+  // (their FINISHED never arrives), so clear on disconnect.
+  useEffect(() => {
+    if (!connected) { osaRunsRef.current.clear(); setOsaActiveRuns(0); }
+  }, [connected]);
+
+  // 14f: dev/preview override, mirroring the __agenticOsSetView bridge.
+  useEffect(() => {
+    window.__osaSetState = (s) =>
+      setOsaManualState(
+        ["idle", "thinking", "speaking", "listening", "alert"].includes(s) ? s : null
+      );
+    return () => { delete window.__osaSetState; };
+  }, []);
+
+  // 14f: the state the orb actually shows. Priority — manual override, then
+  // pending approvals (alert), then chat-driven thinking/speaking, then any
+  // active workflow run (thinking), else idle. Health downs already speak via
+  // the events bridge, so they surface without a dedicated state.
+  const osaEffectiveState =
+    osaManualState ??
+    (approvals.length > 0
+      ? "alert"
+      : osaState !== "idle"
+        ? osaState
+        : osaActiveRuns > 0
+          ? "thinking"
+          : "idle");
+
   const osaCtx = useMemo(
     () => ({ state: osaState, lastLine: osaLastLine, events: osaEvents, setOsaState, speak }),
     [osaState, osaLastLine, osaEvents, setOsaState, speak]
@@ -1652,8 +1675,17 @@ export default function App() {
       }
       if (evt.type === "APPROVAL_REQUIRED" || evt.type === "APPROVAL_RESOLVED")
         setApprovalKey((k) => k + 1);           // immediate re-fetch
-      if (evt.type === "RUN_FINISHED" || evt.type === "RUN_ERROR")
+      if (evt.type === "RUN_STARTED" && evt.run_id) {
+        osaRunsRef.current.add(evt.run_id);          // 14f: run underway
+        setOsaActiveRuns(osaRunsRef.current.size);
+      }
+      if (evt.type === "RUN_FINISHED" || evt.type === "RUN_ERROR") {
+        if (evt.run_id) {
+          osaRunsRef.current.delete(evt.run_id);     // 14f: run settled
+          setOsaActiveRuns(osaRunsRef.current.size);
+        }
         setRefreshKey((k) => k + 1);
+      }
     }, setConnected);
     return stop;
   }, []);
@@ -1778,7 +1810,7 @@ export default function App() {
           and its "hide on Agent" rule). Fixed 220px; hides itself below
           ~900px via its own media query. */}
       <OSARail
-        state={osaState}
+        state={osaEffectiveState}
         lastLine={osaLastLine}
         events={osaEvents}
         onOpen={() => setView("agent")}

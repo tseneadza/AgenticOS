@@ -260,3 +260,84 @@ describe("OSARail brain picker", () => {
     expect(screen.queryByTestId("rail-brain")).toBeNull();
   });
 });
+
+// ── Brain picker ↔ orb state-poll sync (2026-07-07) ─────────────────────────
+// The picker only refetched /api/osa/model after its OWN changes, so a pin
+// made in chat ("switch to claude-fable-5") or via the REST route left it
+// stale. Fix: the rail passes onState to OSAOrb; each /api/osa/state payload
+// from the orb's poll is compared against the known pin — mismatch ⇒ refetch.
+describe("OSARail brain picker syncs with the orb's state poll", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete global.fetch;
+  });
+
+  it("refetches /api/osa/model when the state poll reports a different pin", async () => {
+    // /api/osa/model: first GET returns a STALE brain (no pin); later GETs
+    // return the truth (pinned claude-fable-5, now in choices as (custom)).
+    // /api/osa/state: always reports pinned_model claude-fable-5 (the pin was
+    // made conversationally, outside the picker).
+    let modelGets = 0;
+    const stale = { ...MODEL, pinned_model: null, mode: "auto" };
+    const fresh = {
+      ...MODEL,
+      pinned_model: "claude-fable-5",
+      mode: "pinned",
+      choices: [
+        ...MODEL.choices,
+        { id: "claude-fable-5", label: "claude-fable-5 (custom)", is_local: false, available: true, reason: null },
+      ],
+    };
+    global.fetch = vi.fn((url, opts = {}) => {
+      if (url.includes("/api/osa/model") && (opts.method || "GET") === "GET") {
+        modelGets += 1;
+        const payload = modelGets === 1 ? stale : fresh;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(payload) });
+      }
+      if (url.includes("/api/osa/state"))
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ ...STATE, pinned_model: "claude-fable-5", pinned_label: "claude-fable-5" }),
+        });
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    });
+
+    render(<OSARail events={[]} />);
+    const select = await screen.findByTestId("rail-brain-select");
+    // The orb's mount poll reports the fable-5 pin → mismatch → refetch →
+    // the picker converges on the truth, including the (custom) entry.
+    await waitFor(() => expect(select.value).toBe("claude-fable-5"));
+    expect(modelGets).toBeGreaterThanOrEqual(2);
+    const custom = select.querySelector('option[value="claude-fable-5"]');
+    expect(custom).toBeTruthy();
+    expect(custom.textContent).toContain("(custom)");
+  });
+
+  it("does NOT refetch when the state poll matches the known pin", async () => {
+    let modelGets = 0;
+    const pinned = { ...MODEL, pinned_model: "claude-sonnet-4-6", mode: "pinned" };
+    global.fetch = vi.fn((url, opts = {}) => {
+      if (url.includes("/api/osa/model") && (opts.method || "GET") === "GET") {
+        modelGets += 1;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(pinned) });
+      }
+      if (url.includes("/api/osa/state"))
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ ...STATE, pinned_model: "claude-sonnet-4-6" }),
+        });
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    });
+
+    render(<OSARail events={[]} />);
+    const select = await screen.findByTestId("rail-brain-select");
+    await waitFor(() => expect(select.value).toBe("claude-sonnet-4-6"));
+    const settled = modelGets;
+    // Advance past another orb poll tick: matching pin ⇒ no further refetch.
+    vi.useFakeTimers();
+    await act(async () => { vi.advanceTimersByTime(16_000); });
+    vi.useRealTimers();
+    await act(async () => {}); // flush any pending microtasks
+    expect(modelGets).toBe(settled);
+  });
+});

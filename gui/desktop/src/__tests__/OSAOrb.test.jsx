@@ -35,7 +35,7 @@ describe("OSAOrb", () => {
   });
 
   it("applies the correct data-state for each state prop", () => {
-    for (const state of ["idle", "thinking", "speaking", "listening"]) {
+    for (const state of ["idle", "thinking", "speaking", "listening", "alert"]) {
       stubFetch();
       const { unmount } = render(<OSAOrb state={state} status="x" />);
       expect(screen.getByTestId("osa-orb")).toHaveAttribute("data-state", state);
@@ -47,6 +47,16 @@ describe("OSAOrb", () => {
     stubFetch();
     render(<OSAOrb state="bogus" status="x" />);
     expect(screen.getByTestId("osa-orb")).toHaveAttribute("data-state", "idle");
+  });
+
+  it("names its state — the word readout tracks the state prop (14f)", () => {
+    stubFetch();
+    const { unmount } = render(<OSAOrb state="thinking" status="x" />);
+    expect(screen.getByTestId("osa-orb-word")).toHaveTextContent("thinking");
+    unmount();
+    stubFetch();
+    render(<OSAOrb state="alert" status="x" />);
+    expect(screen.getByTestId("osa-orb-word")).toHaveTextContent("alert");
   });
 
   it("shows the lastLine caption when provided", () => {
@@ -135,5 +145,41 @@ describe("OSAOrb brain display", () => {
     await waitFor(() =>
       expect(screen.getByText(/Pinned: Qwen2\.5 7B Instruct \(local\) \(ran Claude Sonnet 4\.6 \(cloud\)\) · Ollama up/)).toBeInTheDocument()
     );
+  });
+});
+
+// ── onState observer (2026-07-07): rail piggybacks the orb's state poll ─────
+describe("OSAOrb onState callback", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals?.();
+  });
+
+  it("invokes onState with each successful /api/osa/state payload", async () => {
+    const payload = { ready: true, active_label: "OSA", ollama_up: true, pinned_model: "claude-fable-5" };
+    stubFetch(payload);
+    const onState = vi.fn();
+    render(<OSAOrb onState={onState} />);
+    await waitFor(() => expect(onState).toHaveBeenCalled());
+    expect(onState.mock.calls[0][0]).toMatchObject({ pinned_model: "claude-fable-5" });
+  });
+
+  it("a throwing onState does not break the orb's status line", async () => {
+    stubFetch({ ready: true, active_label: "OSA", ollama_up: true });
+    const onState = vi.fn(() => { throw new Error("observer boom"); });
+    render(<OSAOrb onState={onState} />);
+    await waitFor(() =>
+      expect(screen.getByText(/Auto · OSA · Ollama up/)).toBeInTheDocument()
+    );
+    expect(onState).toHaveBeenCalled();
+  });
+
+  it("is not called when a caller-provided status suppresses the poll", async () => {
+    stubFetch(STATE);
+    const onState = vi.fn();
+    render(<OSAOrb status="Local · Ollama up" onState={onState} />);
+    await new Promise((r) => setTimeout(r, 30)); // give any (wrong) poll a beat
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(onState).not.toHaveBeenCalled();
   });
 });

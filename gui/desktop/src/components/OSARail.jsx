@@ -36,7 +36,7 @@
  *              /api/osa/briefing upstream); button hidden if omitted
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { get, post } from "../api";
 import OSAOrb from "./OSAOrb";
 
@@ -230,20 +230,37 @@ export default function OSARail({
   // mount + after each change. Sidecar down / endpoint failing ⇒ brain stays
   // null and the whole line hides — silent degrade, like the rest of the rail.
   const [brain, setBrain] = useState(null); // GET /api/osa/model payload
+  const brainRef = useRef(null);
   const loadBrain = useCallback(async () => {
     try {
-      setBrain(await get("/api/osa/model"));
+      const b = await get("/api/osa/model");
+      brainRef.current = b;
+      setBrain(b);
     } catch {
+      brainRef.current = null;
       setBrain(null);
     }
   }, []);
   useEffect(() => {
     loadBrain();
   }, [loadBrain]);
+  // Pin sync (2026-07-07): the picker only refetched after ITS OWN changes,
+  // so a pin made in chat ("switch to claude-fable-5") or via the REST route
+  // left it showing a stale brain. The orb already polls /api/osa/state every
+  // 15s and that payload carries pinned_model — piggyback it: on mismatch,
+  // refetch /api/osa/model (choices may have changed too, e.g. a (custom)
+  // uncurated pin appearing). No new steady-state traffic.
+  const handleOrbState = useCallback((s) => {
+    const seen = s?.pinned_model ?? null;
+    const known = brainRef.current ? (brainRef.current.pinned_model ?? null) : undefined;
+    if (known === undefined || seen !== known) loadBrain();
+  }, [loadBrain]);
   const handleBrainChange = async (e) => {
     const model = e.target.value;
     try {
-      setBrain(await post("/api/osa/model", { model }));
+      const b = await post("/api/osa/model", { model });
+      brainRef.current = b;
+      setBrain(b);
     } catch {
       // Degrade silently — the controlled select snaps back to the last
       // known-good state on re-render.
@@ -268,7 +285,7 @@ export default function OSARail({
       {/* — Presence block: reactor orb + caption/status (OSAOrb renders the
             caption + /api/osa/state sub-status itself). — */}
       <section className="rail-section rail-presence" data-testid="rail-presence">
-        <OSAOrb state={state} lastLine={lastLine} onOpen={onOpen} />
+        <OSAOrb state={state} lastLine={lastLine} onOpen={onOpen} onState={handleOrbState} />
         {onBrief && (
           <button
             type="button"
