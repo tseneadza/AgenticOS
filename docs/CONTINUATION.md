@@ -1,3 +1,61 @@
+# ⏹ SESSION CLOSED 2026-07-08 (early hrs) — OSA HAS A VOICE ✅ (Phase 14d voice-OUT)
+
+Built inline (subagent spend limit still on), supervisor-verified, live-
+auditioned. Commits `135ab35` (code) + docs checkpoint. Tony went to sleep
+mid-build ("check in the morning") — everything's committed, green, and SAFE:
+`voice.enabled` stays hard-off so NOTHING auto-speaks overnight.
+
+## What shipped — OSA speaks (voice-OUT)
+
+Chose the recommended slice: **voice-OUT first** (speak replies + alerts),
+before voice-IN (wake word/STT) which needs mic permission. TTS needs none.
+
+- **Piper installed + voice auditioned LIVE** — `piper-tts` in the venv
+  (pulled onnxruntime, bumped numpy→2.5.1; **full suite stayed green**).
+  Voice **en_GB-alan-medium** (calm British male, JARVIS register) in
+  `~/.agentic-os/voices/`. Played "Good evening, Sir…" + "Voice output is
+  now online" through Tony's speakers during the build — confirmed working.
+- **`osa_voice/pipeline.py`** — real `_synthesize` (cached `PiperVoice` →
+  temp WAV → macOS `afplay`); public `speak(text, blocking=False)` gated on
+  Piper-importable + not-muted + non-empty, INDEPENDENT of the mic stack and
+  `start()`; `stop_speaking()` barge-in; mute mid-sentence cancels playback;
+  `mark("first_audio")`; best-effort (TTS fail → silent, never raises).
+- **`osa_voice/__init__.py`** — `tts_available()` = Piper-only dep subset.
+- **Config** — `DEFAULT_VOICE` + yaml: `piper_voice=en_GB-alan-medium`,
+  `voice_dir=~/.agentic-os/voices`, `speak_replies=true`. Merge-load intact.
+- **Wiring** — chat route `_maybe_speak_reply(reply)`; `osa_proactive._append`
+  → `_speak_alert(text)` for ANNOUNCED msgs only; both gated
+  `enabled+speak_replies`, non-blocking, fully guarded. New
+  **`POST /api/osa/voice/say {text}`** to audition without a chat turn;
+  registered in HubApiExplorer.
+- Tests: pytest **474** (+25 `test_osa_voice_out.py`, Piper+afplay mocked =
+  headless), vitest **622**. 2 scaffold asserts updated for new shape.
+
+## ▶ RESUME HERE — hear it in the morning
+
+1. **Turn OSA's voice ON (Tony):** set `config/constitution.yaml`
+   `constitution.voice.enabled: true`, restart sidecar (kill ALL
+   `pgrep -f gui.sidecar` first). Then either:
+   - `curl -s -X POST localhost:5130/api/osa/voice/say -H 'Content-Type: application/json' -d '{"text":"Good morning, Tony. Voice is online."}'`
+   - or just chat with OSA (Agent view) — replies speak aloud.
+   - Mute anytime: `POST /api/osa/voice/mute {"mute":true}`.
+   Voice = en_GB-alan-medium; swap by changing `voice.piper_voice` (download
+   others via `python -m piper.download_voices <name> --download-dir ~/.agentic-os/voices`).
+2. **Voice-IN (next pass):** fill `_wake_loop`/`_capture_utterance`/
+   `_transcribe` — install the 4 mic deps (`pip install -r requirements-voice.txt`),
+   grant mic permission, wire utterance→/api/osa/chat→speak. Push-to-talk
+   first (§9 Q3); wake word after. Then 14f hardening.
+3. Still pending: accumulated on-device VISUAL pass (rail/orb/brain picker),
+   `.env.local` sk-admin- relabel.
+
+## Housekeeping
+- Current: sidecar fresh, voice.enabled=FALSE (silent), brain=auto, tts_ok=true.
+- Subagent spend limit — build inline. Sidecar restart: kill ALL PIDs first.
+- Voice models (~60MB .onnx) live OUTSIDE the repo (~/.agentic-os/voices) —
+  not committed.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-07 (later) — 14f ORB STATE WORD + ALERT + SYSTEM DRIVERS ✅
 
 Orb now NAMES its state and reacts to the whole system, not just chat.
