@@ -1,3 +1,59 @@
+# ⏹ SESSION 2026-07-08 — OSA VOICE-OUT LIVE + DEBUGGED ✅ (Tony hears it in the app)
+
+Voice-OUT shipped (prior block) then live-debugged WITH Tony this session.
+End state: OSA speaks its chat replies aloud in the app, single clean voice.
+Commits through `01839bc`, full suite 480 passed, pushed.
+
+## Bugs found + fixed live (all in `01839bc`)
+
+1. **App was silent though /say + curl spoke.** Root cause: the app's PRIMARY
+   chat path is **WS `/api/osa/ws/chat`** (sync POST is only a fallback). The
+   voice hook was only in the POST route. Fix: `_maybe_speak_reply(reply)` at
+   the WS finalizer (after `_scrub_reply`, before the `final` frame).
+2. **Double voices at once.** The app opens the chat socket twice (dev
+   StrictMode / reconnect / window) → same reply spoken twice
+   simultaneously; barge-in missed the overlap (both in synth phase). Fix:
+   `speak()` de-dupes identical text within an 8s window
+   (`_last_spoken` + `_dedupe_window_s`). NOTE: not two sidecars — the
+   sidecar already self-singletons via the port bind ("already running,
+   exiting"). It was two client WS connections.
+3. **"Took Claude for that one" spoken every turn.** It was pinned to local
+   qwen → every tool/reasoning turn escalated to Claude → clause every time.
+   Fixes: (a) clause = `_ESCALATION_CLAUSE`, STRIPPED from spoken text but
+   KEPT in the displayed reply (badge already shows the brain); (b) brain
+   switched to **Auto** (pin cleared) so no forced escalation.
+4. **Config gotcha (Tony hit it):** `constitution.voice.enabled` is the
+   dotted PATH; he'd pasted it as a new YAML line while the real
+   `enabled:` stayed false. Fixed + `enabled: true` now.
+
+## Current live state
+- Voice-OUT ON (`constitution.yaml` voice.enabled: true; en_GB-alan-medium;
+  piper installed; plays via macOS `afplay`). Brain = Auto. Sidecar fresh.
+- Safety test repurposed: asserts `push_to_talk_only` true (no always-
+  listening mic) + `DEFAULT_VOICE` code default still off. voice-IN deps NOT
+  installed.
+
+## ▶ RESUME HERE
+1. **Voice-IN (next):** wake word + STT. Install the 4 mic deps
+   (`pip install -r requirements-voice.txt`), grant mic permission, fill
+   `_wake_loop`/`_capture_utterance`/`_transcribe`, wire utterance →
+   /api/osa/chat → speak. Push-to-talk first (§9 Q3), wake word after.
+2. **Voice polish:** audition other Piper voices
+   (`python -m piper.download_voices <name> --download-dir ~/.agentic-os/voices`,
+   set `voice.piper_voice`); consider a rail mute/voice toggle in the GUI;
+   maybe make voice.enabled a runtime toggle (like the model pin) instead of
+   YAML so it's not a version-controlled default.
+3. Accumulated on-device VISUAL pass (rail/orb/brain picker); `.env.local`
+   sk-admin- relabel.
+
+## Housekeeping
+- Subagent spend limit → build INLINE. Sidecar restart: kill ALL
+  `pgrep -f "python -m gui.sidecar"` first, then nohup a fresh one.
+- Full suite can exceed a 45s shell cap; run to a file + tail, or run OSA
+  subsets. This session: 480 passed.
+
+---
+
 # ⏹ SESSION CLOSED 2026-07-08 (early hrs) — OSA HAS A VOICE ✅ (Phase 14d voice-OUT)
 
 Built inline (subagent spend limit still on), supervisor-verified, live-
