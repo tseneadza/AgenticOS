@@ -40,8 +40,14 @@ from a stubbed stage land it in ``error``/``disabled`` with a reason in
 from __future__ import annotations
 
 import logging
+import os
+import shutil
+import subprocess
+import tempfile
 import threading
 import time
+import wave
+from pathlib import Path
 
 logger = logging.getLogger("agenticos.osa.voice")
 
@@ -77,6 +83,12 @@ class VoiceService:
         self._last_error: str | None = None
         self._latency: dict[str, float] = {}
         self._deps_ok, self._missing = self._probe_deps()
+        # Voice-OUT (2026-07-08): cached Piper voice + current playback handle
+        # (for barge-in / mute-mid-speech). TTS runs independently of the mic
+        # stack, so these are managed outside start()/stop().
+        self._voice = None            # cached PiperVoice (lazy)
+        self._voice_key: str | None = None  # path the cache was loaded for
+        self._play_proc: subprocess.Popen | None = None
 
     # ------------------------------------------------------------------ #
     # Introspection
@@ -111,7 +123,21 @@ class VoiceService:
                 "wake_word": self._config.get("wake_word", "osa"),
                 "stt_model": self._config.get("stt_model", "small"),
                 "piper_voice": self._config.get("piper_voice", ""),
+                # Voice-OUT (2026-07-08): whether replies/alerts are spoken,
+                # and whether Piper (TTS-only) is importable regardless of the
+                # full mic stack in ``deps_ok``.
+                "speak_replies": bool(self._config.get("speak_replies", False)),
+                "tts_ok": self._tts_ok(),
             }
+
+    def _tts_ok(self) -> bool:
+        """Whether Piper (voice-OUT) is importable (never raises)."""
+        try:
+            from osa_voice import tts_available
+
+            return tts_available()[0]
+        except Exception:  # noqa: BLE001
+            return False
 
     def mark(self, stage: str) -> float:
         """Record a monotonic latency stamp for a pipeline stage.
@@ -219,12 +245,15 @@ class VoiceService:
 
         Mute silences TTS playback only — the state machine keeps running so
         captions still flow. Runtime-only: does not write the YAML back.
+        Muting mid-sentence also cancels the current playback (barge-in).
 
         Returns:
             The full ``state()`` snapshot after the flip.
         """
         with self._lock:
             self._mute = bool(mute)
+        if mute:
+            self.stop_speaking()
         logger.info("voice mute set to %s", mute)
         return self.state()
 
@@ -277,19 +306,158 @@ class VoiceService:
         """
         raise NotImplementedError("14d skeleton — STT lands in the implementation pass")
 
-    def _synthesize(self, text: str) -> None:
-        """Speak OSA's reply with Piper — NOT IMPLEMENTED.
+    # ------------------------------------------------------------------ #
+    # Voice-OUT (2026-07-08) — Piper TTS + macOS playback. Implemented ahead
+    # of the mic stack: speaking needs no mic permission, so OSA can talk
+    # before it can listen. Everything here is best-effort — a TTS failure
+    # degrades to silent (the caller already has captions) and never raises.
+    # ------------------------------------------------------------------ #
+    def _voice_path(self) -> Path | None:
+        """Resolve the configured Piper voice to an absolute .onnx path.
 
-        Design (§3.3): stream ``text`` through the configured ``piper_voice``
-        model (TBD — Tony auditions later) and play via ``sounddevice``.
-        State is ``speaking``; ``mark("first_audio")`` when playback starts
-        (budget: text -> first audio < ~1 s local, §3.4). Honors ``mute``
-        (skip playback, captions only). Barge-in: a new wake word cancels
-        in-flight playback. Captions are emitted before/while synthesizing so
-        perceived latency stays low.
+        ``piper_voice`` is either an absolute/relative path to an ``.onnx``
+        file, or a bare voice NAME (``en_GB-alan-medium``) resolved under
+        ``voice_dir``. ``~`` is expanded. Returns None when nothing resolves.
+        """
+        name = str(self._config.get("piper_voice", "")).strip()
+        if not name:
+            return None
+        p = Path(os.path.expanduser(name))
+        if p.suffix == ".onnx" and p.exists():
+            return p
+        vdir = Path(os.path.expanduser(str(self._config.get("voice_dir", ""))))
+        cand = vdir / (name if name.endswith(".onnx") else f"{name}.onnx")
+        return cand if cand.exists() else None
+
+    def _load_voice(self):
+        """Load + cache the Piper voice (lazy). None on any failure."""
+        path = self._voice_path()
+        if path is None:
+            self._last_error = "no Piper voice model found (check voice.piper_voice / voice_dir)"
+            return None
+        key = str(path)
+        with self._lock:
+            if self._voice is not None and self._voice_key == key:
+                return self._voice
+        try:
+            from piper import PiperVoice
+
+            voice = PiperVoice.load(key)
+        except Exception as exc:  # noqa: BLE001 — missing piper / bad model
+            self._last_error = f"Piper load failed: {exc}"
+            logger.warning(self._last_error)
+            return None
+        with self._lock:
+            self._voice = voice
+            self._voice_key = key
+        return voice
+
+    def stop_speaking(self) -> None:
+        """Cancel any in-flight playback (barge-in / mute-mid-speech)."""
+        with self._lock:
+            proc = self._play_proc
+            self._play_proc = None
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:  # noqa: BLE001 — already gone
+                pass
+
+    def speak(self, text: str, *, blocking: bool = False) -> dict:
+        """Speak ``text`` aloud (voice-OUT entrypoint for replies + alerts).
+
+        Independent of the mic stack and of ``start()``: gated only on Piper
+        being importable, ``mute`` being off, and non-empty text. Synthesizes
+        with the cached Piper voice and plays via macOS ``afplay``. Sets the
+        service ``speaking`` for the duration, then restores the resting
+        state. Non-blocking by default (returns immediately, plays on a
+        worker thread); ``blocking=True`` for tests/PTT.
+
+        Returns:
+            ``{ok, reason}`` — ``ok`` False (with a reason) when muted, empty,
+            Piper missing, or synth/playback failed.
+        """
+        text = (text or "").strip()
+        if not text:
+            return {"ok": False, "reason": "empty text"}
+        if self._mute:
+            return {"ok": False, "reason": "muted"}
+        from osa_voice import tts_available
+
+        ok, missing = tts_available()
+        if not ok:
+            return {"ok": False, "reason": "missing: " + ", ".join(missing)}
+
+        if blocking:
+            return self._speak_now(text)
+        threading.Thread(
+            target=self._speak_now, args=(text,), daemon=True
+        ).start()
+        return {"ok": True, "reason": None}
+
+    def _resting_state(self) -> str:
+        """State to return to after speaking: idle if the full stack is up."""
+        if self._config.get("enabled", False) and self._deps_ok:
+            return "idle"
+        return "disabled"
+
+    def _speak_now(self, text: str) -> dict:
+        """Synthesize + play synchronously. Best-effort; never raises."""
+        self.stop_speaking()  # barge-in: newest utterance wins
+        with self._lock:
+            self._state = "speaking"
+        try:
+            self._synthesize(text)
+            return {"ok": True, "reason": None}
+        except Exception as exc:  # noqa: BLE001 — TTS failure => silent
+            with self._lock:
+                self._last_error = f"speak failed: {exc}"
+            logger.warning(self._last_error, exc_info=True)
+            return {"ok": False, "reason": self._last_error}
+        finally:
+            with self._lock:
+                if self._state == "speaking":
+                    self._state = self._resting_state()
+
+    def _synthesize(self, text: str) -> None:
+        """Speak OSA's reply with Piper (voice-OUT implemented 2026-07-08).
+
+        Loads/caches the configured Piper voice, synthesizes ``text`` to a
+        temp WAV, and plays it via macOS ``afplay`` (no PortAudio needed for
+        output). Honors ``mute`` (skip playback). ``mark("first_audio")`` when
+        playback starts (budget: text -> first audio < ~1 s, §3.4). Barge-in
+        is handled by ``stop_speaking``/``_speak_now``. Raises on hard
+        failure so ``_speak_now`` can record it; callers there never re-raise.
 
         Args:
             text: OSA's reply text (the ``reply`` field from
                 ``POST /api/osa/chat`` — see the module-level contract).
         """
-        raise NotImplementedError("14d skeleton — TTS lands in the implementation pass")
+        voice = self._load_voice()
+        if voice is None:
+            raise RuntimeError(self._last_error or "no Piper voice")
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tmp_path = tmp.name
+        tmp.close()
+        try:
+            with wave.open(tmp_path, "wb") as wf:
+                voice.synthesize_wav(text, wf)
+            if self._mute:
+                return  # synthesized but silenced
+            player = shutil.which("afplay")
+            if not player:
+                logger.info("no afplay on PATH — synthesized but not played")
+                return
+            self.mark("first_audio")
+            proc = subprocess.Popen([player, tmp_path])
+            with self._lock:
+                self._play_proc = proc
+            proc.wait()
+            with self._lock:
+                if self._play_proc is proc:
+                    self._play_proc = None
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass

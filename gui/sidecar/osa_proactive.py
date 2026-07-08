@@ -266,7 +266,32 @@ def _append(app_id: str, kind: str, text: str, announced: bool,
             "announced": announced,
         }
         _messages.append(msg)
+    # Voice-OUT (2026-07-08): an ANNOUNCED proactive message is spoken aloud
+    # (best-effort, non-blocking) when voice + speak_replies are on. Silent
+    # messages stay text-only. Gated + guarded inside speak_alert so a
+    # voiceless machine (no Piper / disabled) is a no-op, never a raise.
+    if announced:
+        _speak_alert(text)
     return msg
+
+
+def _speak_alert(text: str) -> None:
+    """Speak an announced proactive message aloud if voice-OUT is on.
+
+    Fully best-effort: any import/config/audio trouble is swallowed — the
+    proactive buffer must never depend on the voice subsystem.
+    """
+    try:
+        from osa_voice.config import voice_config
+
+        cfg = voice_config()
+        if not (cfg.get("enabled") and cfg.get("speak_replies")):
+            return
+        from osa_voice import get_service
+
+        get_service().speak(text)  # non-blocking
+    except Exception:  # noqa: BLE001 — voice is a garnish, never a dependency
+        pass
 
 
 def record_transitions(transitions: list[str], *, now: datetime | None = None) -> list[dict]:

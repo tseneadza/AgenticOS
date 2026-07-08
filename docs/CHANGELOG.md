@@ -1,3 +1,41 @@
+## 2026-07-08 — Phase 14d voice-OUT: OSA speaks (Piper TTS, live)
+
+The first real slice of 14d — OSA now has a VOICE. Piper synthesizes OSA's
+chat replies and announced proactive messages, played through macOS `afplay`.
+Voice-OUT ships ahead of voice-IN (wake word / STT) because speaking needs no
+mic permission. Still behind the hard-off `voice.enabled` flag; `speak_replies`
+gates it independently.
+
+- **Piper installed + voice auditioned** — `piper-tts` in the venv (pulls
+  onnxruntime, bumps numpy to 2.x; full suite stays green). Voice model
+  `en_GB-alan-medium` (calm British male, JARVIS register) in
+  `~/.agentic-os/voices/`. Auditioned live during the build.
+- **`osa_voice/pipeline.py`** — real `_synthesize`: cached `PiperVoice.load`
+  (resolves `voice.piper_voice` as a name under `voice_dir` or an absolute
+  .onnx path), synth to a temp WAV, play via `afplay`. New public
+  `speak(text, blocking=False)` — voice-OUT entrypoint, independent of the
+  mic stack and `start()`: gated on Piper importable + not muted + non-empty.
+  `stop_speaking()` barge-in; muting mid-sentence cancels playback;
+  `mark("first_audio")` latency stamp; best-effort throughout (TTS failure →
+  silent, never raises). `_tts_ok()` + `speak_replies` in `state()`.
+- **`osa_voice/__init__.py`** — `tts_available()`: Piper-only dep subset, so
+  voice-OUT works with just `piper-tts` while the mic deps are still absent.
+- **Config** — `DEFAULT_VOICE` + `constitution.yaml` gain `piper_voice`
+  (default `en_GB-alan-medium`), `voice_dir` (`~/.agentic-os/voices`), and
+  `speak_replies` (true). Pre-14d/14e YAMLs still merge-load unchanged.
+- **Wiring** — the chat route speaks each `reply` (`_maybe_speak_reply`);
+  `osa_proactive._append` speaks ANNOUNCED messages (`_speak_alert`); both
+  gated on `enabled + speak_replies`, non-blocking, fully guarded (a
+  voiceless machine is a silent no-op). New `POST /api/osa/voice/say {text}`
+  to audition without a chat turn (409 muted / TTS missing / synth fails);
+  registered in `HubApiExplorer.jsx`.
+- **Tests** — pytest 474 (+25 `test_osa_voice_out.py`; Piper + afplay mocked,
+  fully headless), vitest 622. Two scaffold assertions updated for the new
+  config/state shape.
+- **Left for Tony (on-device):** flip `voice.enabled: true`, restart the
+  sidecar, `POST /api/osa/voice/say {"text":"Good evening, Sir."}` (or just
+  chat) to hear it. Voice-IN (wake word + STT) is the next pass.
+
 ## 2026-07-07 (late) — OSA Agent-view chat: WebSocket streaming + interrupt-based confirms + transcript restore
 
 Upgraded the Agent-view OSA chat from a synchronous request/response into a

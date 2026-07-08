@@ -60,7 +60,11 @@ class TestVoiceConfig:
         assert cfg["push_to_talk_only"] is True  # §9 Q3 unresolved => PTT
         assert cfg["wake_word"] == "osa"
         assert cfg["stt_model"] == "small"
-        assert cfg["piper_voice"] == ""  # TBD — Tony auditions later
+        # Voice-OUT (2026-07-08): piper_voice now defaults to the auditioned
+        # model; new speak_replies / voice_dir knobs are present.
+        assert cfg["piper_voice"] == "en_GB-alan-medium"
+        assert cfg["speak_replies"] is True
+        assert cfg["voice_dir"]
         assert cfg["mute"] is False
 
     def test_pre_14d_yaml_without_voice_block_merges_defaults(self, tmp_path):
@@ -195,6 +199,8 @@ class TestServiceLifecycle:
         assert set(snap) == {
             "state", "mute", "deps_ok", "missing", "last_error", "latency",
             "push_to_talk_only", "wake_word", "stt_model", "piper_voice",
+            # Voice-OUT (2026-07-08):
+            "speak_replies", "tts_ok",
         }
         assert snap["state"] in STATES
         assert isinstance(snap["latency"], dict)

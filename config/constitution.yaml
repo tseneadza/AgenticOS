@@ -63,8 +63,11 @@ constitution:
     enabled: false                  # HARD default — opt-in on-device only
     wake_word: "osa"
     stt_model: "small"             # faster-whisper model size
-    piper_voice: ""                # TBD — audition Piper voices later
-    push_to_talk_only: true
+    # Voice-OUT (2026-07-08): Piper TTS speaks OSA's replies + announcements.
+    piper_voice: "en_GB-alan-medium"   # bare name under voice_dir, or .onnx path
+    voice_dir: "~/.agentic-os/voices"  # where Piper .onnx models live
+    speak_replies: true             # speak chat replies + announced proactive msgs
+    push_to_talk_only: true         # voice-IN only; wake word deferred (§9 Q3)
     mute: false
 
 

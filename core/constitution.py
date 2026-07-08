@@ -37,7 +37,15 @@ DEFAULT_VOICE: dict = {
     "enabled": False,            # hard default — opt-in on-device only
     "wake_word": "osa",         # openWakeWord phrase (custom model TBD)
     "stt_model": "small",       # faster-whisper size (latency/quality knob)
-    "piper_voice": "",          # Piper voice model — TBD, Tony auditions later
+    # Piper voice model (2026-07-08, voice-OUT pass): a bare voice NAME
+    # resolved under ``voice_dir``, or an absolute .onnx path. Default is the
+    # auditioned calm British male (JARVIS register).
+    "piper_voice": "en_GB-alan-medium",
+    "voice_dir": "~/.agentic-os/voices",  # where Piper .onnx models live
+    # Voice-OUT toggle (2026-07-08): speak OSA's chat replies + announced
+    # proactive messages aloud. Independent of voice-IN (wake word / STT):
+    # TTS needs no mic permission, so it can run before the full loop lands.
+    "speak_replies": True,
     "push_to_talk_only": True,   # §9 Q3 unresolved => no always-listening yet
     "mute": False,               # global output mute (runtime-flippable)
 }

@@ -28,8 +28,29 @@ OPTIONAL_DEPS: dict[str, str] = {
     "webrtcvad": "webrtcvad",
 }
 
+# Voice-OUT (2026-07-08) needs ONLY Piper — no mic stack. TTS can run before
+# the full wake-word/STT loop (and its mic permission) ever lands.
+TTS_DEPS: dict[str, str] = {"piper-tts": "piper"}
+
 _lock = threading.Lock()
 _service = None  # populated lazily by get_service()
+
+
+def _probe(deps: dict[str, str]) -> tuple[bool, list[str]]:
+    """Return ``(ok, missing_pip_names)`` for a dep map (never raises)."""
+    missing: list[str] = []
+    for pip_name, module_name in deps.items():
+        try:
+            if importlib.util.find_spec(module_name) is None:
+                missing.append(pip_name)
+        except Exception:  # noqa: BLE001 — a broken install is still "missing"
+            missing.append(pip_name)
+    return (not missing, missing)
+
+
+def tts_available() -> tuple[bool, list[str]]:
+    """Whether Piper (voice-OUT) is importable. Subset of ``voice_available``."""
+    return _probe(TTS_DEPS)
 
 
 def voice_available() -> tuple[bool, list[str]]:
@@ -41,14 +62,7 @@ def voice_available() -> tuple[bool, list[str]]:
         of the absent ones (matching ``requirements-voice.txt`` lines).
         Never raises: any probe failure counts the dep as missing.
     """
-    missing: list[str] = []
-    for pip_name, module_name in OPTIONAL_DEPS.items():
-        try:
-            if importlib.util.find_spec(module_name) is None:
-                missing.append(pip_name)
-        except Exception:  # noqa: BLE001 — a broken install is still "missing"
-            missing.append(pip_name)
-    return (not missing, missing)
+    return _probe(OPTIONAL_DEPS)
 
 
 def get_service():

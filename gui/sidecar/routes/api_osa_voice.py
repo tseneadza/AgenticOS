@@ -9,6 +9,9 @@ POST /api/osa/voice/ptt   — push-to-talk trigger (one capture->chat->speak
                             still the 14d skeleton stubs.
 POST /api/osa/voice/mute  — flip the global output mute. Body ``{mute: bool}``.
                             Works even in the skeleton / while disabled.
+POST /api/osa/voice/say   — speak arbitrary text aloud via Piper (voice-OUT,
+                            2026-07-08). Body ``{text}``. 409 when muted, TTS
+                            deps missing, or synth/playback fails.
 
 Kept in its own routes module (rather than growing ``api_osa.py``, which is
 the chat + confirm-flow surface) — voice is a distinct subsystem with its own
@@ -31,6 +34,12 @@ class VoiceMute(BaseModel):
     """Request body for the mute toggle."""
 
     mute: bool
+
+
+class VoiceSay(BaseModel):
+    """Request body for the say (voice-OUT) endpoint."""
+
+    text: str
 
 
 @router.get("/api/osa/voice/state")
@@ -68,6 +77,26 @@ def osa_voice_ptt() -> dict:
             409, result.get("reason") or "voice service is not running"
         )
     return result
+
+
+@router.post("/api/osa/voice/say")
+def osa_voice_say(body: VoiceSay) -> dict:
+    """Speak arbitrary text aloud via Piper (voice-OUT, 2026-07-08).
+
+    A direct handle on TTS so Tony can audition the voice without a chat
+    turn. Independent of the mic stack — needs only Piper installed and mute
+    off. Non-blocking: returns as soon as synthesis is handed to the worker.
+
+    Raises:
+        HTTPException: 409 when speaking can't happen — muted, empty text,
+            Piper missing, or synth/playback failed. Detail carries why.
+    """
+    from osa_voice import get_service
+
+    result = get_service().speak(body.text)
+    if not result.get("ok"):
+        raise HTTPException(409, result.get("reason") or "cannot speak")
+    return {"ok": True, "spoke": body.text}
 
 
 @router.post("/api/osa/voice/mute")

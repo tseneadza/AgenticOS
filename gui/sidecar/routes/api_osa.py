@@ -351,6 +351,11 @@ def osa_chat(body: OSAChat) -> dict:
     # so /api/osa/state can show runtime truth, not just the pin.
     _LAST_TURN.update(model=model_id, escalated=escalated)
 
+    # Voice-OUT (2026-07-08): speak the reply aloud when voice + speak_replies
+    # are on. Best-effort + non-blocking — the HTTP reply (captions) returns
+    # immediately; a voiceless machine is simply silent.
+    _maybe_speak_reply(reply)
+
     return {
         "reply": reply,
         "thread_id": thread_id,
@@ -364,6 +369,27 @@ def osa_chat(body: OSAChat) -> dict:
         "pending_action": awaiting,
         "confirmed": confirmed,
     }
+
+
+def _maybe_speak_reply(reply: str) -> None:
+    """Speak an OSA chat reply aloud if voice-OUT is enabled (best-effort).
+
+    Guarded end-to-end: config read, dep probe, synth and playback all fail
+    soft. The chat route never waits on or breaks over audio.
+    """
+    if not reply:
+        return
+    try:
+        from osa_voice.config import voice_config
+
+        cfg = voice_config()
+        if not (cfg.get("enabled") and cfg.get("speak_replies")):
+            return
+        from osa_voice import get_service
+
+        get_service().speak(reply)  # non-blocking
+    except Exception:  # noqa: BLE001 — voice is a garnish, never a dependency
+        pass
 
 
 @router.get("/api/osa/state")
