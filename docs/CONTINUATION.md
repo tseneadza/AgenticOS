@@ -1,3 +1,90 @@
+# ⏹ SESSION 2026-07-08/09 — VOICE-IN LIVE ✅ (PTT + "Hey Osa" + conversation mode) + ORB v2 · v0.3.0
+
+Built inline WITH Tony live-testing every step. OSA now hears: push-to-talk,
+the "Osa" wake word, and follow-up conversation mode — all local/offline.
+Orb doubled + reacts to live voice states. Version bumped to **0.3.0**.
+Commits `0014cd8` (voice-IN) + `bb08283` (orb v2 + version). Full suites
+green: pytest 520, vitest 631. Pushed.
+
+## ▶ RESUME HERE
+
+1. **🐛 BUG (Tony, live, top priority): MULTIPLE VOICES AT ONCE.** Overlapping
+   simultaneous replies heard in the app. Suspected cause: the new
+   sentence-chunked `_synthesize` has windows where `_play_proc` is None
+   (while synthesizing the NEXT chunk / between chunks) — `stop_speaking()`
+   from a newer `speak()` kills nothing in that window, so the older thread
+   keeps playing its remaining chunks alongside the new reply. Conversation
+   mode can also fire a second turn while a reply is still playing (follow-up
+   misfire on echo/TV). Fix sketch: a speech GENERATION counter on the
+   service — every `speak()`/`stop_speaking()` bumps it; `_speak_now`
+   captures its gen and the chunk loop aborts before each play if stale.
+   Also consider: single speaking-worker queue instead of thread-per-speak.
+   Test: two concurrent speak() calls with different text → only the newer
+   text's chunks play.
+2. **Orb "alerted" for announcements:** red alert currently fires only on
+   pending approvals; proactive ANNOUNCED messages land in the rail feed but
+   don't flash the orb. Tony wants full state visibility — wire announcements
+   (osa_proactive) to the alert state (with a decay/ack).
+3. **Persona doesn't know it has ears/voice:** OSA told Tony "I'm text-only,
+   no microphone" mid voice-chat. Add voice-awareness to the system
+   prompt/soul when voice.enabled (and ideally "heard via voice" per-turn
+   context) so it stops gaslighting the operator.
+4. **DISCUSSION (Tony's request, parked): the orb's role.** Should the orb
+   gain control over the sidecar, or even BE the new sidecar/main surface?
+   Initial take (Claude): keep orb = presence/face + add control surfaces
+   (mute, wake toggle, brain picker on click); don't fuse rendering with
+   orchestration. Tony wants the orb functioning properly first. Debate
+   fresh next session.
+5. **Voice tuning backlog:** speaker verification ("tune into MY voice" —
+   Tony asked; resemblyzer embedding check on the wake burst, medium
+   effort); trained openWakeWord "osa" model to replace STT-gating (lower
+   latency/power); voice latency = mostly BRAIN latency (turns escalate to
+   Claude — consider local pin during voice, or a "voice prefers local"
+   routing hint); `min_rms` 0.02 calibrated for arm's-length-vs-TV — expose
+   in GUI later.
+
+## What shipped (details in CHANGELOG v0.3.0)
+
+- **Voice-IN pipeline (osa_voice/pipeline.py):** `_capture_utterance`
+  (sounddevice+webrtcvad, 300ms pre-roll, energy gate `min_rms`, optional
+  `input_device`), `_transcribe` (faster-whisper, per-size cache:
+  small=commands tiny=wake), `_chat_turn` (POST /api/osa/chat, sticky
+  `osa-voice-*` thread), full `push_to_talk`.
+- **Wake word:** STT-gated "Osa" (openWakeWord has no "osa" model — design
+  §3.1 fallback). Aliases incl. whisper drifts (osaka/ossa/…, extend via
+  `voice.wake_aliases`); wake word anywhere in first 3 words ("Hello, Osa");
+  discards logged as `wake discard:` for live alias tuning. **§9 Q3
+  RESOLVED:** runtime-only opt-in (`POST /api/osa/voice/wake`, GUI 🎙
+  toggle), default OFF every start; safety test still guards the YAML.
+  Turns run OFF-loop (worker thread) so it listens while thinking/speaking.
+- **Conversation mode:** 8s `followup_window_s` after reply playback ends —
+  no wake word needed; echo guard (window opens post-playback only),
+  hallucination stoplist ("Thank you." etc.), ≥2 words.
+- **Voice-OUT:** `length_scale` cadence (Tony chose **0.6**); sentence-
+  chunked playback (first audio after first sentence). ⚠️ chunking is the
+  prime suspect in bug #1.
+- **GUI:** AgentView mic button (PTT) + wake toggle; orb 236px, pulsing
+  colored backdrops, polls voice state 1.5s. Rail 280px.
+- **Deps:** 4 mic deps installed + `setuptools<81` pin (webrtcvad needs
+  pkg_resources). whisper small+tiny cached in ~/.cache/huggingface.
+
+## Debug lessons (this session)
+
+- "It's deaf" ≠ deaf: check `wake discard:` lines in /tmp/agenticos_sidecar.log
+  first — it shows exactly what whisper heard.
+- A TV/background media near the mic merges utterances (VAD hears speech
+  forever) and whisper hallucinates ("Thank you.", "Thanks for watching") —
+  hence energy gate + stoplist.
+- NEVER run diagnostic mic captures while the wake loop is on — two PortAudio
+  streams fight and both go silent/flaky. Toggle wake off first.
+- A segfault came from opening the T-12PM128GB device (Tony's phone) at
+  16kHz — don't probe random devices; resolve by name via `input_device`.
+- Tests must NEVER touch the real mic/singleton: route tests inject a fresh
+  service (see TestWakeRoute docstring), stage tests mock capture/STT/chat.
+
+## Current live state
+- Sidecar fresh on :5130, voice enabled, wake ON this session (returns OFF
+  at next restart by design). Brain = Auto. Cadence 0.6. v0.3.0.
 # ⏹ SESSION 2026-07-08 — OSA VOICE-OUT LIVE + DEBUGGED ✅ (Tony hears it in the app)
 
 Voice-OUT shipped (prior block) then live-debugged WITH Tony this session.
