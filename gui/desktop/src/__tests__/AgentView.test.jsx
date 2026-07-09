@@ -31,6 +31,15 @@ function stubFetch(overrides = {}) {
     try { body = opts.body ? JSON.parse(opts.body) : null; } catch { /* ignore */ }
     calls.push({ url, method, body });
     const respond = (b) => Promise.resolve({ ok: true, json: () => Promise.resolve(b) });
+    if (url.includes("/api/osa/voice/state")) {
+      // Voice-IN (2026-07-08): unstubbed tests 404 here so the mic stays
+      // hidden — pass overrides.voiceState to light it up.
+      return overrides.voiceState
+        ? respond(overrides.voiceState)
+        : Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    }
+    if (url.includes("/api/osa/voice/ptt"))
+      return respond(overrides.ptt ?? { ok: true, transcript: "", reply: "" });
     if (url.includes("/api/osa/state")) return respond(overrides.state ?? STATE);
     if (url.includes("/api/osa/chat")) return respond(overrides.chat ?? CHAT_REPLY);
     return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
@@ -232,5 +241,97 @@ describe("AgentView drives OSA presence (Phase 14c)", () => {
       expect(presence.setOsaState).toHaveBeenCalledWith("idle")
     );
     expect(presence.speak).not.toHaveBeenCalled();
+  });
+});
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Voice-IN (2026-07-08) — push-to-talk mic button. The sidecar owns the audio
+// path (capture → STT → chat → speak); the view renders captions only.
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("AgentView voice-in (push-to-talk)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete global.fetch;
+  });
+
+  const VOICE_ON = { enabled: true, deps_ok: true, state: "idle" };
+
+  it("hides the mic when voice is unavailable (default stub 404s voice/state)", async () => {
+    stubFetch();
+    render(<AgentView />);
+    await waitFor(() =>
+      expect(global.fetch.mock.calls.some((c) => String(c[0]).includes("/api/osa/voice/state"))).toBe(true)
+    );
+    expect(screen.queryByTestId("mic-btn")).not.toBeInTheDocument();
+  });
+
+  it("shows the mic when voice.enabled && deps_ok, and a PTT turn renders captions", async () => {
+    const calls = stubFetch({
+      voiceState: VOICE_ON,
+      ptt: { ok: true, transcript: "what time is it", reply: "It is noon, Sir." },
+    });
+    render(<AgentView />);
+    const mic = await screen.findByTestId("mic-btn");
+    fireEvent.click(mic);
+    // Captions: the transcript renders as the user turn, the reply as OSA's.
+    await screen.findByText(/what time is it/);
+    await screen.findByText(/It is noon, Sir\./);
+    expect(calls.some((c) => c.url.includes("/api/osa/voice/ptt") && c.method === "POST")).toBe(true);
+  });
+
+  it("surfaces a failed PTT turn as a failed turn, not a crash", async () => {
+    stubFetch({ voiceState: VOICE_ON });
+    // Make the ptt route fail AFTER the voice/state probe succeeded.
+    const okFetch = global.fetch;
+    global.fetch = vi.fn((url, opts) =>
+      String(url).includes("/api/osa/voice/ptt")
+        ? Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({ detail: "no speech detected" }) })
+        : okFetch(url, opts)
+    );
+    render(<AgentView />);
+    const mic = await screen.findByTestId("mic-btn");
+    fireEvent.click(mic);
+    await waitFor(() => expect(screen.getByText(/error:/)).toBeInTheDocument());
+  });
+});
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Wake toggle (2026-07-08) — "Hey Osa" always-listening, runtime-only opt-in.
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("AgentView wake toggle", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete global.fetch;
+  });
+
+  const VOICE_ON = { enabled: true, deps_ok: true, state: "idle", wake_active: false };
+
+  it("renders off by default and flips on via POST /api/osa/voice/wake", async () => {
+    const calls = stubFetch({ voiceState: VOICE_ON });
+    // The wake route echoes the post-flip snapshot.
+    const okFetch = global.fetch;
+    global.fetch = vi.fn((url, opts) =>
+      String(url).includes("/api/osa/voice/wake")
+        ? Promise.resolve({ ok: true, json: () => Promise.resolve({ wake_active: true }) })
+        : okFetch(url, opts)
+    );
+    render(<AgentView />);
+    const wake = await screen.findByTestId("wake-btn");
+    expect(wake.textContent).toMatch(/wake: off/);
+    fireEvent.click(wake);
+    await waitFor(() => expect(wake.textContent).toMatch(/wake: on/));
+    // Mic yields to the wake loop while it owns the mic.
+    expect(screen.getByTestId("mic-btn")).toBeDisabled();
+  });
+
+  it("reflects wake_active from the initial state probe", async () => {
+    stubFetch({ voiceState: { ...VOICE_ON, wake_active: true } });
+    render(<AgentView />);
+    const wake = await screen.findByTestId("wake-btn");
+    expect(wake.textContent).toMatch(/wake: on/);
   });
 });

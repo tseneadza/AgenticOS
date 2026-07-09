@@ -36,6 +36,12 @@ class VoiceMute(BaseModel):
     mute: bool
 
 
+class VoiceWake(BaseModel):
+    """Request body for the wake-listening toggle."""
+
+    enabled: bool
+
+
 class VoiceSay(BaseModel):
     """Request body for the say (voice-OUT) endpoint."""
 
@@ -97,6 +103,30 @@ def osa_voice_say(body: VoiceSay) -> dict:
     if not result.get("ok"):
         raise HTTPException(409, result.get("reason") or "cannot speak")
     return {"ok": True, "spoke": body.text}
+
+
+@router.post("/api/osa/voice/wake")
+def osa_voice_wake(body: VoiceWake) -> dict:
+    """Toggle always-listening wake mode ("Hey Osa") — runtime-only.
+
+    §9 Q3 resolved 2026-07-08: wake listening is an explicit per-session
+    opt-in. It is NEVER persisted — every sidecar start comes up
+    push-to-talk only. Returns the post-flip ``state()`` snapshot;
+    ``wake_active`` reports whether the loop is live.
+
+    Raises:
+        HTTPException: 409 when enabling failed (service disabled, deps
+            missing) — detail carries the reason.
+    """
+    from osa_voice import get_service
+
+    svc = get_service()
+    snapshot = svc.set_wake(body.enabled)
+    if body.enabled and not snapshot.get("wake_active"):
+        raise HTTPException(
+            409, snapshot.get("last_error") or "could not start wake listening"
+        )
+    return snapshot
 
 
 @router.post("/api/osa/voice/mute")

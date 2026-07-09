@@ -140,6 +140,7 @@ const ENDPOINTS_HARDCODED = [
   { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/voice/ptt",   desc:"Push-to-talk trigger (14d): one capture->chat->speak turn; 409 while disabled / deps missing / skeleton", params:[] },
   { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/voice/say",   desc:"Speak text aloud via Piper (voice-OUT, 2026-07-08); 409 if muted / TTS missing / synth fails", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"text":"Good evening, Sir."}'}] },
   { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/voice/mute",  desc:"Flip the global voice output mute (works even while disabled); returns post-flip state", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"mute":true}'}] },
+  { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/voice/wake",  desc:"Toggle always-listening wake mode ('Hey Osa') — runtime-only opt-in, never persisted (§9 Q3, 2026-07-08); 409 if it can't start", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"enabled":true}'}] },
 
   // ─── Keno (Georgia Lottery) (Flask @ :5000) ──────────────────────────
   { group:"Keno (Flask)", method:"GET",  path:"/api/status",        desc:"API health check", params:[] },

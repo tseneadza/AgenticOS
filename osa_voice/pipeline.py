@@ -96,6 +96,24 @@ class VoiceService:
         # voices at the same time".
         self._last_spoken: tuple[str, float] = ("", 0.0)
         self._dedupe_window_s = 8.0
+        # Voice-IN (2026-07-08): cached faster-whisper models (keyed by size —
+        # "small" for commands, "tiny" for fast wake checks) + the sticky
+        # thread id all voice turns share (one durable voice conversation).
+        self._stt_models: dict[str, object] = {}
+        self._voice_thread: str | None = None
+        # Wake word (2026-07-08, §9 Q3 RESOLVED as runtime opt-in): the
+        # always-listening loop is a daemon thread, started ONLY by set_wake
+        # (never by config) — every sidecar start comes up push-to-talk only.
+        self._wake_thread: threading.Thread | None = None
+        self._wake_stop = threading.Event()
+        # Wake turns run on a worker thread (2026-07-08, Tony's latency
+        # feedback) so the loop keeps LISTENING while OSA thinks/speaks —
+        # otherwise the mic is deaf for the whole LLM round-trip.
+        self._turn_thread: threading.Thread | None = None
+        # Conversation mode (2026-07-08): when a reply FINISHES playing, a
+        # follow-up window opens — the next utterance inside it needs no wake
+        # word. Monotonic stamp of the last completed playback.
+        self._last_reply_done: float = 0.0
 
     # ------------------------------------------------------------------ #
     # Introspection
@@ -135,6 +153,11 @@ class VoiceService:
                 # full mic stack in ``deps_ok``.
                 "speak_replies": bool(self._config.get("speak_replies", False)),
                 "tts_ok": self._tts_ok(),
+                # Wake word (2026-07-08): whether the always-listening loop is
+                # live right now (runtime toggle — never persisted).
+                "wake_active": bool(
+                    self._wake_thread is not None and self._wake_thread.is_alive()
+                ),
             }
 
     def _tts_ok(self) -> bool:
@@ -207,7 +230,8 @@ class VoiceService:
             return True
 
     def stop(self) -> None:
-        """Stop the service: cancel loops (impl pass) and go ``disabled``."""
+        """Stop the service: cancel the wake loop and go ``disabled``."""
+        self._stop_wake_thread()
         with self._lock:
             self._state = "disabled"
             self._last_error = "stopped"
@@ -228,13 +252,48 @@ class VoiceService:
             if self._state in ("disabled", "error") or not self._deps_ok:
                 reason = self._last_error or "voice service is not running"
                 return {"ok": False, "state": self._state, "reason": reason}
+            if self._state in ("listening", "transcribing"):
+                return {
+                    "ok": False,
+                    "state": self._state,
+                    "reason": "a voice turn is already in progress",
+                }
+            # Wake loop owns the mic while active — a second input stream
+            # would fight it (2026-07-08). Just speak instead.
+            if self._wake_thread is not None and self._wake_thread.is_alive():
+                return {
+                    "ok": False,
+                    "state": self._state,
+                    "reason": "wake listening is on — just say the wake word",
+                }
         try:
             self.mark("wake")  # PTT is a synthetic wake
+            self.stop_speaking()  # barge-in: pressing PTT cancels playback
             audio = self._capture_utterance()
             text = self._transcribe(audio)
-            # Impl pass: POST text -> /api/osa/chat, then _synthesize(reply).
-            self._synthesize(text)
-            return {"ok": True, "state": self._state, "reason": None}
+            if not text:
+                with self._lock:
+                    self._state = self._resting_state()
+                return {
+                    "ok": False,
+                    "state": self._state,
+                    "reason": "no speech detected",
+                    "transcript": "",
+                }
+            # Contract (module docstring): the utterance goes through the SAME
+            # /api/osa/chat turn as typed input. That route speaks the reply
+            # itself via _maybe_speak_reply (dual-path rule — side effects live
+            # in the routes); here we only return captions.
+            reply = self._chat_turn(text)
+            with self._lock:
+                self._state = self._resting_state()
+            return {
+                "ok": True,
+                "state": self._state,
+                "reason": None,
+                "transcript": text,
+                "reply": reply,
+            }
         except NotImplementedError:
             with self._lock:
                 self._state = "error"
@@ -265,53 +324,418 @@ class VoiceService:
         return self.state()
 
     # ------------------------------------------------------------------ #
-    # Pipeline stages — STUBS (implementation pass fills these in).
-    # Every stage is guarded by callers: NotImplementedError -> error state.
+    # Wake word (2026-07-08) — "Hey Osa", STT-gated. §9 Q3 RESOLVED: Tony
+    # opted in as a RUNTIME toggle, default OFF — the YAML default stays
+    # push_to_talk_only=true and the safety test keeps guarding it. Design
+    # deviation from §3.1: openWakeWord ships no "osa" model, so v1 uses the
+    # design doc's own fallback (near-homophone matching): webrtcvad gates
+    # speech into utterances, whisper-TINY transcribes the burst (fast), and
+    # the leading tokens are fuzzy-matched against ``wake_aliases``. A trained
+    # openWakeWord "osa" model can replace _wake_check later without touching
+    # the loop. Audio is processed in-memory and discarded — nothing is
+    # persisted and nothing leaves the machine.
     # ------------------------------------------------------------------ #
-    def _wake_loop(self) -> None:
-        """Always-listening wake-word loop (openWakeWord) — NOT IMPLEMENTED.
+    #: Whisper renderings of "osa" (it's not a dictionary word) — leading-
+    #: token match, case/punctuation-insensitive. Config ``wake_aliases``
+    #: extends this list.
+    _WAKE_ALIASES = (
+        "osa", "ossa", "oza", "osah", "o s a", "ohsa",
+        # Live-tuning 2026-07-08 (Tony's session): whisper renderings heard
+        # in practice — "Osa" is close to a real word and drifts.
+        "osaka", "osas", "olsa", "hosa", "oh sa", "oh za",
+    )
+    #: Whisper's stock hallucinations on noise/music (YouTube-training
+    #: artifacts) — never valid follow-up commands (cleaned, lowercased).
+    _FOLLOWUP_STOPLIST = frozenset((
+        "thank you", "thanks for watching", "thank you for watching",
+        "thanks for listening", "see you next time", "see you later",
+        "bye bye", "the end", "so", "you",
+    ))
 
-        Design (§3.1): open a low-rate ``sounddevice`` input stream and feed a
-        rolling few-hundred-ms buffer to an openWakeWord model for the
-        configured ``wake_word`` ("osa" — custom model TBD, or a
-        near-homophone + confirmation). The buffer is discarded continuously;
-        mic audio never leaves the machine and is not recorded except the
-        short utterance after a wake. On detection: ``mark("wake")``, cancel
-        any in-flight TTS (barge-in, §3.3), transition ``idle -> listening``,
-        then run capture -> transcribe -> chat -> speak and return to
-        ``idle``. Runs in a worker thread; only spawned when
-        ``push_to_talk_only`` is false (§9 Q3 — default stays PTT).
-        """
-        raise NotImplementedError("14d skeleton — wake loop lands in the implementation pass")
 
-    def _capture_utterance(self) -> bytes:
-        """Capture one utterance until end-of-speech — NOT IMPLEMENTED.
+    def set_wake(self, enabled: bool) -> dict:
+        """Start/stop the always-listening wake loop (runtime-only toggle).
 
-        Design (§3.2): record 16 kHz mono PCM from ``sounddevice`` while
-        ``webrtcvad`` reports speech; end-of-speech = a run of ~600-800 ms of
-        non-speech frames (with a hard max-utterance cap). State is
-        ``listening`` for the duration; ``mark("speech_end")`` on completion.
+        Never persisted: every sidecar start comes up push-to-talk only and
+        the loop runs ONLY after an explicit opt-in (§9 Q3). Starting
+        requires the service to be running (``idle``) with deps present.
 
         Returns:
-            Raw PCM bytes of the captured utterance.
+            The full ``state()`` snapshot after the flip (``wake_active``
+            reports the live thread).
         """
-        raise NotImplementedError("14d skeleton — capture lands in the implementation pass")
+        if not enabled:
+            self._stop_wake_thread()
+            return self.state()
+        with self._lock:
+            if self._wake_thread is not None and self._wake_thread.is_alive():
+                return self.state()  # already on
+            if self._state in ("disabled", "error") or not self._deps_ok:
+                self._last_error = (
+                    self._last_error or "voice service is not running"
+                )
+                return self.state()
+            self._wake_stop.clear()
+            self._wake_thread = threading.Thread(
+                target=self._wake_loop, daemon=True, name="osa-wake-loop"
+            )
+            self._wake_thread.start()
+        logger.info("wake loop ON (aliases=%s)", self._wake_aliases())
+        return self.state()
 
-    def _transcribe(self, audio: bytes) -> str:
-        """Transcribe an utterance with faster-whisper — NOT IMPLEMENTED.
+    def _stop_wake_thread(self) -> None:
+        """Signal the wake loop to exit and reap the thread (best-effort)."""
+        with self._lock:
+            thread = self._wake_thread
+            self._wake_thread = None
+        self._wake_stop.set()
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
 
-        Design (§3.2): run the ``stt_model``-sized faster-whisper model in a
-        worker thread (model loaded once, cached on the service). State is
-        ``transcribing``; ``mark("text")`` when the transcript is ready.
-        Budget: end-of-speech -> text < ~1.5 s on the small model (§3.4).
+    def _wake_aliases(self) -> tuple[str, ...]:
+        """Wake-word aliases: built-ins + Constitution ``wake_aliases``."""
+        extra = self._config.get("wake_aliases") or []
+        return self._WAKE_ALIASES + tuple(
+            str(a).strip().lower() for a in extra if str(a).strip()
+        )
+
+    def _match_wake(self, text: str) -> str | None:
+        """Match a transcript against the wake word; return the command tail.
+
+        "Osa" alone -> ``""`` (ack + listen for the command). "Osa, what time
+        is it" -> ``"what time is it"``. The wake word may sit ANYWHERE in
+        the first three words (2026-07-08, live fix: Tony's natural "Hello,
+        Osa. …" was discarded by strict leading-word matching) — so "Hey
+        Osa", "Hello Osa", "Excuse me, Osa …" all wake. Deeper mentions do
+        NOT wake ("tell me about osa" stays a discard — false-positive
+        guard while background speech is playing). Returns None when the
+        utterance is not addressed to OSA (discarded).
+        """
+        # Match on per-word cleaned tokens but return the ORIGINAL words, so
+        # the command tail keeps its punctuation ("what's" stays "what's").
+        words = (text or "").split()
+        cleaned = ["".join(c for c in w.lower() if c.isalnum()) for w in words]
+        pairs = [(w, c) for w, c in zip(words, cleaned) if c]
+        if not pairs:
+            return None
+        aliases = set(self._wake_aliases())
+        for start in range(min(3, len(pairs))):
+            for n in (3, 2, 1):  # "o s a" spans three words
+                if start + n <= len(pairs):
+                    gram = " ".join(c for _, c in pairs[start:start + n])
+                    if gram in aliases:
+                        return " ".join(w for w, _ in pairs[start + n:]).strip()
+        return None
+
+    def _wake_loop(self) -> None:
+        """Always-listening loop: VAD-gate -> tiny STT -> wake match -> turn.
+
+        Runs on a daemon thread until ``_wake_stop`` is set. Each pass blocks
+        in ``_capture_utterance`` (start-timeout returns b"" so the stop flag
+        is polled every few seconds). Wake bursts are checked with the
+        ``wake_stt_model`` ("tiny"); a matched inline command runs directly;
+        a bare wake word gets a spoken ack, then a second capture at command
+        quality (``stt_model``). On wake: ``mark("wake")`` + barge-in. Every
+        iteration is guarded — an audio error lands in ``error`` and exits
+        the loop rather than spinning.
+        """
+        wake_size = str(self._config.get("wake_stt_model", "tiny") or "tiny")
+        while not self._wake_stop.is_set():
+            try:
+                audio = self._capture_utterance()
+                if self._wake_stop.is_set():
+                    break
+                if not audio:
+                    with self._lock:
+                        if self._state == "listening":
+                            self._state = self._resting_state()
+                    continue
+                heard = self._transcribe(audio, size=wake_size)
+                command = self._match_wake(heard)
+                if command is None:
+                    # Conversation mode (2026-07-08): inside the follow-up
+                    # window a wake-free utterance IS the command — but only
+                    # when nothing is playing (echo guard) and it has some
+                    # substance (>=2 words — filters whisper's "Thank you."
+                    # hallucinations on noise).
+                    followup_s = float(self._config.get("followup_window_s", 8.0))
+                    with self._lock:
+                        playing = (
+                            self._play_proc is not None
+                            and self._play_proc.poll() is None
+                        )
+                        within = (
+                            followup_s > 0
+                            and (time.monotonic() - self._last_reply_done) < followup_s
+                        )
+                    cleaned_heard = " ".join(
+                        "".join(c for c in w.lower() if c.isalnum())
+                        for w in heard.split()
+                    ).strip()
+                    if (
+                        within
+                        and not playing
+                        and len(heard.split()) >= 2
+                        and cleaned_heard not in self._FOLLOWUP_STOPLIST
+                    ):
+                        # Re-transcribe at command quality (the wake pass used
+                        # the tiny model).
+                        command = self._transcribe(audio) or heard.strip()
+                        logger.info("follow-up: %r", command)
+                    else:
+                        if heard.strip():
+                            # Alias-tuning breadcrumb: what whisper heard when
+                            # we DIDN'T wake (in-memory audio discarded).
+                            logger.info("wake discard: %r", heard.strip()[:80])
+                        with self._lock:
+                            self._state = self._resting_state()
+                        continue  # not addressed to OSA — burst discarded
+                self.mark("wake")
+                self.stop_speaking()  # barge-in (§3.3)
+                if not command:
+                    # Bare "Osa" — acknowledge, then capture the command at
+                    # full quality (blocking so we don't capture our own ack).
+                    self.speak(
+                        str(self._config.get("wake_ack", "Yes?")), blocking=True
+                    )
+                    audio = self._capture_utterance()
+                    command = self._transcribe(audio)
+                if command:
+                    # Run the turn OFF-loop so we keep listening during the
+                    # LLM round-trip + reply playback. One turn at a time —
+                    # a new command while busy gets a spoken deferral (the
+                    # barge-in above already cut any in-flight playback).
+                    with self._lock:
+                        busy = (
+                            self._turn_thread is not None
+                            and self._turn_thread.is_alive()
+                        )
+                    if busy:
+                        self.speak("One moment.")
+                    else:
+                        t = threading.Thread(
+                            target=self._run_wake_turn,
+                            args=(command,),
+                            daemon=True,
+                            name="osa-wake-turn",
+                        )
+                        with self._lock:
+                            self._turn_thread = t
+                        t.start()
+                with self._lock:
+                    self._state = self._resting_state()
+            except Exception as exc:  # noqa: BLE001 — never crash the sidecar
+                with self._lock:
+                    self._state = "error"
+                    self._last_error = f"wake loop failed: {exc}"
+                logger.warning(self._last_error, exc_info=True)
+                break
+        with self._lock:
+            if self._wake_thread is threading.current_thread():
+                self._wake_thread = None
+
+    def _run_wake_turn(self, command: str) -> None:
+        """One wake-initiated agent turn (worker thread; never raises).
+
+        The chat route speaks the reply itself; failures are logged and
+        recorded in ``last_error`` without touching the loop's state — the
+        wake loop stays alive and listening either way.
+        """
+        try:
+            reply = self._chat_turn(command)
+            logger.info("wake turn: %r -> %r", command, reply[:80])
+        except Exception as exc:  # noqa: BLE001
+            with self._lock:
+                self._last_error = f"wake turn failed: {exc}"
+            logger.warning(self._last_error, exc_info=True)
+
+    def _capture_utterance(self) -> bytes:
+        """Capture one utterance until end-of-speech (voice-IN, 2026-07-08).
+
+        Design (§3.2): 16 kHz mono int16 PCM from ``sounddevice`` in 30 ms
+        frames, gated by ``webrtcvad``. A ~300 ms pre-roll ring buffer is
+        prepended when speech starts so the first syllable isn't clipped.
+        End-of-speech = ``end_silence_ms`` (default 700) of consecutive
+        non-speech frames; hard caps: ``start_timeout_s`` (default 6 — nobody
+        spoke) and ``max_utterance_s`` (default 30). State is ``listening``
+        for the duration; ``mark("speech_end")`` on completion. Audio never
+        leaves the machine and is not persisted.
+
+        Returns:
+            Raw PCM bytes of the captured utterance (b"" when nobody spoke).
+        """
+        import numpy as np
+        import sounddevice as sd
+        import webrtcvad
+
+        sample_rate = 16000
+        frame_ms = 30
+        frame_samples = sample_rate * frame_ms // 1000  # 480
+        vad = webrtcvad.Vad(int(self._config.get("vad_aggressiveness", 2)))
+        start_timeout_s = float(self._config.get("start_timeout_s", 6.0))
+        end_silence_ms = int(self._config.get("end_silence_ms", 700))
+        max_utterance_s = float(self._config.get("max_utterance_s", 30.0))
+        end_silence_frames = max(1, end_silence_ms // frame_ms)
+        # Energy gate (2026-07-08, live-calibrated with Tony): webrtcvad calls
+        # ANY speech "speech", including a TV across the room — which merges
+        # utterances into endless noisy bursts and buries the user. Their
+        # voice at arm's length measured ~7x the TV's frame energy, so frames
+        # must ALSO clear this RMS floor to count as speech. 0 disables.
+        min_rms = float(self._config.get("min_rms", 0.02))
+        # Optional named input device (substring match, e.g. "MacBook");
+        # default None = system default input.
+        device = None
+        want = str(self._config.get("input_device", "") or "").strip().lower()
+        if want:
+            try:
+                for i, d in enumerate(sd.query_devices()):
+                    if d["max_input_channels"] > 0 and want in d["name"].lower():
+                        device = i
+                        break
+            except Exception:  # noqa: BLE001 — fall back to default input
+                device = None
+
+        from collections import deque
+
+        pre: deque[bytes] = deque(maxlen=10)  # ~300 ms pre-roll
+        voiced: list[bytes] = []
+        in_speech = False
+        silence_run = 0
+        started = time.monotonic()
+
+        with self._lock:
+            self._state = "listening"
+        try:
+            with sd.RawInputStream(
+                samplerate=sample_rate,
+                blocksize=frame_samples,
+                channels=1,
+                dtype="int16",
+                device=device,
+            ) as stream:
+                while True:
+                    data, _overflowed = stream.read(frame_samples)
+                    frame = bytes(data)
+                    try:
+                        is_speech = vad.is_speech(frame, sample_rate)
+                    except Exception:  # noqa: BLE001 — odd frame => not speech
+                        is_speech = False
+                    if is_speech and min_rms > 0:
+                        samples = np.frombuffer(frame, dtype=np.int16)
+                        rms = float(
+                            np.sqrt(np.mean((samples.astype(np.float32) / 32768.0) ** 2))
+                        )
+                        is_speech = rms >= min_rms
+                    elapsed = time.monotonic() - started
+                    if not in_speech:
+                        pre.append(frame)
+                        if is_speech:
+                            in_speech = True
+                            voiced.extend(pre)
+                            pre.clear()
+                        elif elapsed > start_timeout_s:
+                            return b""  # nobody spoke
+                    else:
+                        voiced.append(frame)
+                        silence_run = 0 if is_speech else silence_run + 1
+                        if silence_run >= end_silence_frames:
+                            break
+                        if elapsed > max_utterance_s:
+                            break
+        finally:
+            self.mark("speech_end")
+        return b"".join(voiced)
+
+    def _load_stt(self, size: str | None = None):
+        """Load + cache a faster-whisper model by size (lazy). Raises on failure.
+
+        Default size is the Constitution's ``stt_model`` (commands); the wake
+        loop passes ``wake_stt_model`` ("tiny") for fast wake checks. First
+        call per size downloads the model from Hugging Face into the local
+        cache (~/.cache/huggingface) — pre-warm on-device so the first live
+        turn isn't a multi-minute download.
+        """
+        if size is None:
+            size = str(self._config.get("stt_model", "small") or "small")
+        with self._lock:
+            cached = self._stt_models.get(size)
+        if cached is not None:
+            return cached
+        from faster_whisper import WhisperModel
+
+        model = WhisperModel(size, device="cpu", compute_type="int8")
+        with self._lock:
+            self._stt_models[size] = model
+        return model
+
+    def _transcribe(self, audio: bytes, *, size: str | None = None) -> str:
+        """Transcribe an utterance with faster-whisper (voice-IN, 2026-07-08).
+
+        Design (§3.2): the ``stt_model``-sized model (default "small",
+        int8/CPU) is loaded once and cached on the service. Runs in the
+        caller's thread — PTT turns already run in the FastAPI threadpool, so
+        the event loop is never blocked. State is ``transcribing``;
+        ``mark("text")`` when the transcript is ready. Budget:
+        end-of-speech -> text < ~1.5 s on the small model (§3.4).
 
         Args:
-            audio: Raw PCM bytes from ``_capture_utterance``.
+            audio: Raw 16 kHz mono int16 PCM from ``_capture_utterance``.
 
         Returns:
             The transcript text (empty string for silence/noise).
         """
-        raise NotImplementedError("14d skeleton — STT lands in the implementation pass")
+        if not audio:
+            return ""
+        with self._lock:
+            self._state = "transcribing"
+        import numpy as np
+
+        pcm = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
+        model = self._load_stt(size)
+        segments, _info = model.transcribe(
+            pcm,
+            language=str(self._config.get("stt_language", "en")),
+            beam_size=1,
+        )
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        self.mark("text")
+        return text
+
+    def _chat_turn(self, text: str) -> str:
+        """Run one agent turn for a transcribed utterance (fixed contract).
+
+        POSTs through the SAME ``/api/osa/chat`` route as typed input — shared
+        checkpointed graph, model routing, persona, and the 14b confirm flow.
+        All voice turns share one sticky ``thread_id`` (minted per service
+        lifetime) so the voice conversation is durable and coherent. The
+        route itself speaks the reply (``_maybe_speak_reply``); this method
+        only returns the caption text.
+
+        Args:
+            text: The transcript from ``_transcribe`` (non-empty).
+
+        Returns:
+            OSA's reply text ("" if the route returned none).
+        """
+        import uuid
+
+        import requests
+
+        with self._lock:
+            if not self._voice_thread:
+                self._voice_thread = f"osa-voice-{uuid.uuid4().hex[:10]}"
+            thread_id = self._voice_thread
+        try:
+            from gui.sidecar.app import SIDECAR_PORT as port
+        except Exception:  # noqa: BLE001 — standalone/test use
+            port = 5130
+        resp = requests.post(
+            f"http://127.0.0.1:{port}/api/osa/chat",
+            json={"message": text, "thread_id": thread_id},
+            timeout=float(self._config.get("chat_timeout_s", 180.0)),
+        )
+        resp.raise_for_status()
+        return str(resp.json().get("reply") or "")
 
     # ------------------------------------------------------------------ #
     # Voice-OUT (2026-07-08) — Piper TTS + macOS playback. Implemented ahead
@@ -431,6 +855,10 @@ class VoiceService:
             with self._lock:
                 if self._state == "speaking":
                     self._state = self._resting_state()
+                # Conversation mode: the follow-up window opens NOW — only
+                # after playback ends, so OSA's own speaker output can never
+                # be captured as a wake-free "command" (feedback guard).
+                self._last_reply_done = time.monotonic()
 
     def _synthesize(self, text: str) -> None:
         """Speak OSA's reply with Piper (voice-OUT implemented 2026-07-08).
@@ -449,28 +877,91 @@ class VoiceService:
         voice = self._load_voice()
         if voice is None:
             raise RuntimeError(self._last_error or "no Piper voice")
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        tmp_path = tmp.name
-        tmp.close()
+        # Cadence (2026-07-08, Tony's live feedback): length_scale < 1.0 speaks
+        # faster than the model's deliberate trained pace. Best-effort — an
+        # old piper without SynthesisConfig just uses the default cadence.
+        syn_config = None
         try:
-            with wave.open(tmp_path, "wb") as wf:
-                voice.synthesize_wav(text, wf)
-            if self._mute:
-                return  # synthesized but silenced
-            player = shutil.which("afplay")
-            if not player:
-                logger.info("no afplay on PATH — synthesized but not played")
-                return
-            self.mark("first_audio")
-            proc = subprocess.Popen([player, tmp_path])
-            with self._lock:
-                self._play_proc = proc
-            proc.wait()
-            with self._lock:
-                if self._play_proc is proc:
-                    self._play_proc = None
+            from piper import SynthesisConfig
+
+            syn_config = SynthesisConfig(
+                length_scale=float(self._config.get("length_scale", 1.0))
+            )
+        except Exception:  # noqa: BLE001 — keep speaking at default pace
+            syn_config = None
+
+        def _synth_chunk(chunk: str) -> str:
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            path = tmp.name
+            tmp.close()
+            with wave.open(path, "wb") as wf:
+                voice.synthesize_wav(chunk, wf, syn_config=syn_config)
+            return path
+
+        # Sentence-chunked playback (2026-07-08, Tony's latency feedback):
+        # synthesize sentence 1 and START PLAYING it, synthesizing sentence
+        # i+1 while sentence i plays. Time-to-first-audio = one sentence's
+        # synth instead of the whole reply's. Barge-in (stop_speaking)
+        # terminates the current afplay and abandons the remaining chunks.
+        chunks = self._split_sentences(text) or [text]
+        next_path: str | None = _synth_chunk(chunks[0])
+        first = True
+        try:
+            for i in range(len(chunks)):
+                cur = next_path
+                next_path = None
+                if cur is None:
+                    break
+                if self._mute:
+                    return  # synthesized but silenced (mute mid-reply)
+                player = shutil.which("afplay")
+                if not player:
+                    logger.info("no afplay on PATH — synthesized but not played")
+                    return
+                if first:
+                    self.mark("first_audio")
+                    first = False
+                proc = subprocess.Popen([player, cur])
+                with self._lock:
+                    self._play_proc = proc
+                if i + 1 < len(chunks):
+                    next_path = _synth_chunk(chunks[i + 1])  # overlaps playback
+                proc.wait()
+                cancelled = False
+                with self._lock:
+                    if self._play_proc is proc:
+                        self._play_proc = None
+                    else:
+                        cancelled = True  # stop_speaking() intervened
+                try:
+                    os.unlink(cur)
+                except OSError:
+                    pass
+                if cancelled or (getattr(proc, "returncode", 0) or 0) != 0:
+                    break  # barge-in / kill — drop the rest of the reply
         finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+            if next_path is not None:
+                try:
+                    os.unlink(next_path)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _split_sentences(text: str) -> list[str]:
+        """Split a reply into playback chunks (sentences, tiny ones merged).
+
+        Merging avoids choppy inter-chunk gaps on short sentences ("Yes.",
+        "Done.") while keeping the first chunk small enough that
+        time-to-first-audio stays low.
+        """
+        import re
+
+        parts = [p.strip() for p in re.split(r"(?<=[.!?…])\s+", (text or "").strip())]
+        parts = [p for p in parts if p]
+        chunks: list[str] = []
+        for p in parts:
+            if chunks and (len(chunks[-1]) < 40 or len(p) < 12):
+                chunks[-1] = f"{chunks[-1]} {p}"
+            else:
+                chunks.append(p)
+        return chunks

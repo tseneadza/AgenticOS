@@ -1202,6 +1202,14 @@ export function AgentView() {
   });
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  // Voice-IN (2026-07-08): mic button shows only when the Constitution has
+  // voice.enabled AND the mic deps are installed (deps_ok). ptt=true while a
+  // push-to-talk turn is in flight (capture -> STT -> chat, can take a while).
+  const [voiceIn, setVoiceIn] = useState(false);
+  const [ptt, setPtt] = useState(false);
+  // Wake mode (2026-07-08): always-listening "Hey Osa". Runtime-only — the
+  // sidecar never persists it, so this reflects (and drives) live state.
+  const [wakeOn, setWakeOn] = useState(false);
   const scrollRef = useRef(null);
   const idRef = useRef(0);
   const wsRef = useRef(null);
@@ -1214,6 +1222,15 @@ export function AgentView() {
       .catch(() => setOsa({ ready: false, ollama_up: false, active_label: "OSA", soul: null }));
   }, []);
   useEffect(() => { loadState(); }, [loadState]);
+
+  useEffect(() => {
+    get("/api/osa/voice/state")
+      .then((v) => {
+        setVoiceIn(Boolean(v?.enabled && v?.deps_ok));
+        setWakeOn(Boolean(v?.wake_active));
+      })
+      .catch(() => setVoiceIn(false));
+  }, []);
 
   // Transcript restore: rehydrate the stored thread from the checkpointer.
   // Opportunistic — MySQL/sidecar down just means starting visually fresh
@@ -1374,6 +1391,46 @@ export function AgentView() {
     }
   };
 
+  // Voice-IN (2026-07-08): one push-to-talk turn. The sidecar owns the whole
+  // audio path — captures the mic, transcribes, runs the SAME /api/osa/chat
+  // turn (sticky server-side voice thread), and speaks the reply itself
+  // (_maybe_speak_reply). Here we only render captions: transcript + reply.
+  const pushToTalk = () => {
+    if (ptt || sending || !ready) return;
+    setPtt(true);
+    osaPresence.setOsaState("thinking");
+    post("/api/osa/voice/ptt", {})
+      .then((d) => {
+        const id = ++idRef.current;
+        setTurns((prev) => [...prev, {
+          id, user: `\u{1F3A4} ${d.transcript || ""}`, text: d.reply || "",
+          tools: [], route: null, model: null, status: "completed", ts: Date.now(),
+        }]);
+        osaPresence.speak(d.reply || "");
+      })
+      .catch((e) => {
+        const id = ++idRef.current;
+        setTurns((prev) => [...prev, {
+          id, user: "\u{1F3A4}", text: "", tools: [], route: null, model: null,
+          status: "failed", error: String(e.message || e), ts: Date.now(),
+        }]);
+        osaPresence.setOsaState("idle");
+      })
+      .finally(() => setPtt(false));
+  };
+
+  // Wake toggle (2026-07-08): explicit per-session opt-in to the always-
+  // listening loop. While on, the mic button yields to the wake loop (the
+  // sidecar refuses PTT — the loop owns the mic); wake turns are spoken but
+  // not captioned here (they live on the sticky server-side voice thread).
+  const toggleWake = () => {
+    const next = !wakeOn;
+    setWakeOn(next); // optimistic; reverted on failure
+    post("/api/osa/voice/wake", { enabled: next })
+      .then((s) => setWakeOn(Boolean(s?.wake_active)))
+      .catch(() => setWakeOn(!next));
+  };
+
   const newChat = () => {
     if (sending) return;
     try { wsRef.current?.close(); } catch { /* already closed */ }
@@ -1464,6 +1521,30 @@ export function AgentView() {
           title="Start a fresh durable thread (the old one stays in the checkpointer)">
           ⊕ New chat
         </button>
+        {voiceIn && (
+          <button
+            className="btn mic-btn"
+            data-testid="mic-btn"
+            disabled={ptt || sending || !ready || wakeOn}
+            onClick={pushToTalk}
+            title={wakeOn
+              ? "Wake listening is on — just say the wake word"
+              : "Push to talk — click, speak, OSA replies aloud"}
+          >
+            {ptt ? "● listening…" : "\u{1F3A4}"}
+          </button>
+        )}
+        {voiceIn && (
+          <button
+            className={`btn wake-btn${wakeOn ? " approve" : ""}`}
+            data-testid="wake-btn"
+            disabled={!ready}
+            onClick={toggleWake}
+            title='Always-listening wake mode ("Hey Osa") — session-only, off at every restart'
+          >
+            {wakeOn ? "\u{1F399} wake: on" : "\u{1F399} wake: off"}
+          </button>
+        )}
         <button
           className="btn approve send-btn"
           disabled={!input.trim() || sending || !ready}

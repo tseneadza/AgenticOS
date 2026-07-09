@@ -112,17 +112,18 @@ class TestVoiceConfig:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Dep probe — deps are genuinely absent in this .venv
+# Dep probe — environment-agnostic since 2026-07-08 (voice-IN deps installed
+# on Tony's Mac; may be absent elsewhere/CI). Probe shape + consistency only.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestVoiceAvailable:
-    def test_reports_missing_cleanly_with_deps_absent(self):
-        """The optional extras are NOT installed — probe must say so, not raise."""
+    def test_probe_is_clean_and_consistent(self):
+        """Probe never raises; ok <=> nothing missing (deps may or may not be installed)."""
         ok, missing = voice_available()
         assert isinstance(ok, bool)
         assert isinstance(missing, list)
         assert set(missing) <= set(OPTIONAL_DEPS)   # pip names only
-        assert ok is False and missing              # extras absent in base .venv
+        assert ok is (not missing)                  # consistent, env-agnostic
 
     def test_all_present_when_every_spec_resolves(self, monkeypatch):
         monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
@@ -187,14 +188,46 @@ class TestServiceLifecycle:
         assert out["state"] == "disabled"
         assert out["reason"]
 
-    def test_ptt_stub_lands_in_error_not_a_crash(self):
-        """Deps 'present' but stages are 14d stubs: NotImplementedError is
-        caught and recorded — the caller sees a reason, never an exception."""
+    def test_ptt_full_turn_with_mocked_stages(self, monkeypatch):
+        """Voice-IN (2026-07-08): the stages are REAL now — mock them and
+        assert the turn contract: capture -> STT -> chat, captions returned
+        (transcript + reply), resting state restored. Tests never touch
+        audio hardware."""
         svc = _service(enabled=True, ok=True)
         svc.start()
+        monkeypatch.setattr(svc, "_capture_utterance", lambda: b"\x00\x00" * 480)
+        monkeypatch.setattr(svc, "_transcribe", lambda audio: "hello osa")
+        monkeypatch.setattr(svc, "_chat_turn", lambda text: f"you said: {text}")
+        out = svc.push_to_talk()
+        assert out["ok"] is True
+        assert out["transcript"] == "hello osa"
+        assert out["reply"] == "you said: hello osa"
+        assert svc.state()["state"] == "idle"
+
+    def test_ptt_no_speech_is_a_clean_refusal_not_an_error(self, monkeypatch):
+        """Silence (capture returns b"") refuses cleanly and returns to idle."""
+        svc = _service(enabled=True, ok=True)
+        svc.start()
+        monkeypatch.setattr(svc, "_capture_utterance", lambda: b"")
         out = svc.push_to_talk()
         assert out["ok"] is False
-        assert "not_implemented" in out["reason"]
+        assert out["reason"] == "no speech detected"
+        assert svc.state()["state"] == "idle"
+
+    def test_ptt_chat_failure_lands_in_error_not_a_crash(self, monkeypatch):
+        """A failing agent turn is caught and recorded — never an exception."""
+        svc = _service(enabled=True, ok=True)
+        svc.start()
+        monkeypatch.setattr(svc, "_capture_utterance", lambda: b"\x00\x00")
+        monkeypatch.setattr(svc, "_transcribe", lambda audio: "hi")
+
+        def _boom(text):
+            raise RuntimeError("chat down")
+
+        monkeypatch.setattr(svc, "_chat_turn", _boom)
+        out = svc.push_to_talk()
+        assert out["ok"] is False
+        assert "chat down" in out["reason"]
         assert svc.state()["state"] == "error"
 
     def test_mute_flip_works_even_disabled(self):
@@ -211,6 +244,8 @@ class TestServiceLifecycle:
             "push_to_talk_only", "wake_word", "stt_model", "piper_voice",
             # Voice-OUT (2026-07-08):
             "speak_replies", "tts_ok",
+            # Wake word (2026-07-08):
+            "wake_active",
         }
         assert snap["state"] in STATES
         assert isinstance(snap["latency"], dict)
@@ -251,7 +286,8 @@ class TestVoiceRoutes:
         body = r.json()
         assert body["state"] == "disabled"
         assert body["enabled"] is False          # Constitution flag surfaced
-        assert body["deps_ok"] is False          # extras absent in base .venv
+        from osa_voice import voice_available
+        assert body["deps_ok"] is voice_available()[0]   # env-agnostic
         assert set(body["missing"]) <= set(OPTIONAL_DEPS)
         for key in ("mute", "last_error", "latency", "push_to_talk_only",
                     "wake_word", "stt_model", "piper_voice"):

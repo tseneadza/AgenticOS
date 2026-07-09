@@ -22,4 +22,5 @@ openwakeword          # wake word ("osa") — rolling buffer detection (§3.1) [
 faster-whisper        # local STT, model size via constitution voice.stt_model (§3.2) [voice-IN, not yet installed]
 piper-tts             # local TTS; voice model via voice.piper_voice (§3.3) [voice-OUT, INSTALLED 2026-07-08]
 sounddevice           # mic capture + speaker playback (PortAudio) [voice-IN, not yet installed]
-webrtcvad             # end-of-speech / silence detection [voice-IN, not yet installed]
+webrtcvad             # end-of-speech / silence detection [voice-IN, INSTALLED 2026-07-08]
+setuptools<81         # webrtcvad 2.0.10 imports pkg_resources, removed in setuptools 81+ (hit 2026-07-08)

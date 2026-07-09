@@ -67,6 +67,11 @@ constitution:
     piper_voice: "en_GB-alan-medium"   # bare name under voice_dir, or .onnx path
     voice_dir: "~/.agentic-os/voices"  # where Piper .onnx models live
     speak_replies: true             # speak chat replies + announced proactive msgs
+    length_scale: 0.6               # speech cadence: 1.0=trained pace, lower=faster (2026-07-08)
+    end_silence_ms: 500             # end-of-speech: ms of silence that ends an utterance (snappier, 2026-07-08)
+    min_rms: 0.02                   # energy gate: frames must be this loud to count as speech (TV rejection, calibrated live 2026-07-08)
+    followup_window_s: 8            # conversation mode: seconds after a reply when no wake word is needed (0 = off)
+    # input_device: "MacBook"       # optional: name substring of the mic to use (default = system default)
     push_to_talk_only: true         # voice-IN only; wake word deferred (§9 Q3)
     mute: false
 

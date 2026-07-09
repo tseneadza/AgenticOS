@@ -144,7 +144,8 @@ class TestSynthesize:
         model.write_bytes(b"x")
 
         class _FakeVoice:
-            def synthesize_wav(self, text, wf):
+            # syn_config added 2026-07-08 (cadence: length_scale pass-through).
+            def synthesize_wav(self, text, wf, syn_config=None):
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
                 wf.setframerate(22050)

@@ -46,7 +46,21 @@ DEFAULT_VOICE: dict = {
     # proactive messages aloud. Independent of voice-IN (wake word / STT):
     # TTS needs no mic permission, so it can run before the full loop lands.
     "speak_replies": True,
-    "push_to_talk_only": True,   # §9 Q3 unresolved => no always-listening yet
+    # Speech cadence (2026-07-08, Tony's live feedback): Piper's length_scale
+    # — 1.0 = the model's trained pace, LOWER = faster. Alan-medium's default
+    # is deliberate/slow; ~0.85 sounds like natural conversation.
+    "length_scale": 0.85,
+    # §9 Q3 RESOLVED (2026-07-08): always-listening is a RUNTIME opt-in
+    # (POST /api/osa/voice/wake) — this YAML default stays true so every
+    # sidecar start comes up push-to-talk only. Guarded by the safety test.
+    "push_to_talk_only": True,
+    "wake_stt_model": "tiny",    # fast whisper size for wake-burst checks
+    "wake_ack": "Yes?",          # spoken ack for a bare "Osa"
+    "wake_aliases": [],          # extra whisper renderings of the wake word
+    # Conversation mode (2026-07-08): after a reply finishes playing, the
+    # next utterance within this window needs no wake word (0 disables).
+    "followup_window_s": 8.0,
+    "min_rms": 0.02,             # energy gate for speech frames (0 disables)
     "mute": False,               # global output mute (runtime-flippable)
 }
 
