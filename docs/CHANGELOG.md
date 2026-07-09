@@ -1,3 +1,37 @@
+## 2026-07-08 — v0.3.0 · Phase 14d voice-IN: OSA listens (PTT + "Hey Osa" + conversation mode) + orb v2
+
+OSA hears. Full voice loop live and tuned WITH Tony in-session: push-to-talk,
+the "Osa" wake word, and follow-up conversation mode — all local/offline
+(sounddevice → webrtcvad → faster-whisper → /api/osa/chat → Piper). Minor
+bump per policy: completed phase.
+
+- **Mic stack installed** — 4 voice-IN deps in the venv (+`setuptools<81`
+  pin: webrtcvad needs pkg_resources). whisper small+tiny pre-downloaded.
+- **Capture** — 16 kHz VAD-gated with 300 ms pre-roll; **energy gate**
+  (`min_rms`, live-calibrated: arm's-length voice ≈7× a room TV) so
+  background media can't bury the user or hold utterances open; optional
+  `input_device` (name substring).
+- **PTT** — GUI mic button in Agent view → `/api/osa/voice/ptt`: capture →
+  transcribe (small) → same chat turn as typed input (sticky voice thread)
+  → spoken reply + captions.
+- **Wake word "Osa"** — STT-gated (design §3.1 fallback: no pretrained
+  openWakeWord model for "osa"): tiny-whisper checks each speech burst;
+  alias list covers whisper drifts (osaka, ossa, …); wake word anywhere in
+  the first 3 words ("Hello, Osa…"). §9 Q3 RESOLVED: runtime-only toggle
+  (`/api/osa/voice/wake` + GUI 🎙 button), default OFF every start — the
+  safety test still guards `push_to_talk_only: true`.
+- **Conversation mode** — 8 s follow-up window after each reply ends: no
+  wake word needed; echo guard (window opens only after playback), whisper
+  hallucination stoplist, ≥2-word floor. Turns run off-loop so OSA keeps
+  listening while thinking/speaking (barge-in works mid-reply).
+- **Voice-OUT polish** — `length_scale` cadence knob (Tony landed on 0.6);
+  sentence-chunked synthesis: first sentence plays while the rest renders.
+- **Orb v2** — doubled to 236 px (rail → 280 px); colored pulsing backdrop
+  per action state; polls `/api/osa/voice/state` (1.5 s) so server-side
+  listening/transcribing/speaking show live. Precedence: alert > voice >
+  context.
+- Tests: pytest 511 (98 voice) + vitest green, all audio mocked.
+
 ## 2026-07-08 — Phase 14d voice-OUT: OSA speaks (Piper TTS, live)
 
 The first real slice of 14d — OSA now has a VOICE. Piper synthesizes OSA's

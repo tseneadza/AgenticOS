@@ -35,7 +35,7 @@ _SETTINGS = yaml.safe_load(
 
 SIDECAR_PORT = int(_SETTINGS.get("sidecar_port", 5130))
 
-app = FastAPI(title="AgenticOS Sidecar", version="0.2.0")
+app = FastAPI(title="AgenticOS Sidecar", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,

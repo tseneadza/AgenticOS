@@ -1,7 +1,8 @@
 /**
  * OSARail — dedicated OSA right rail (14e follow-on, 2026-07-07).
  *
- * A fixed-width (220px) column on the right edge of the shell, shown on EVERY
+ * A fixed-width (280px, widened 2026-07-08 for the doubled orb) column on the
+ * right edge of the shell, shown on EVERY
  * view — including Agent (which previously hid the floating orb). Replaces the
  * old absolutely-positioned OSAOrb overlay. Contents, top to bottom:
  *
@@ -67,8 +68,8 @@ const styles = `
   --osa-idle: #35d0e0;   /* cyan — calm presence / briefings */
   --osa-think: #ffb454;  /* amber — working / downs */
   --osa-listen: #49e08b; /* green — voice / recoveries */
-  flex: 0 0 220px;
-  width: 220px;
+  flex: 0 0 280px;
+  width: 280px;  /* widened from 220px for the doubled orb (2026-07-08) */
   min-width: 0;
   display: flex;
   flex-direction: column;

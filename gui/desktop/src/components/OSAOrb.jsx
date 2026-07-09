@@ -47,25 +47,58 @@ const styles = `
   border: none;
   padding: 0;
 }
-/* Fixed 118px stage so the glow's inset tracks the reactor, not the whole
-   button (which now also contains the caption). */
+/* Fixed 236px stage (doubled 2026-07-08, Tony's request) so the glow's inset
+   tracks the reactor, not the whole button (which also contains the caption). */
 .osa-orb .orb-stage {
   position: relative;
   display: block;
-  width: 118px;
-  height: 118px;
+  width: 236px;
+  height: 236px;
 }
 .osa-orb .orb-reactor {
-  width: 118px;
-  height: 118px;
+  width: 236px;
+  height: 236px;
   display: block;
   position: relative;
   z-index: 2;
   overflow: visible;
 }
+/* Backdrop halo (2026-07-08, Tony: "background colored and pulsing in action
+   states") — a wide tinted radial BEHIND the reactor, visible only in the
+   action states, each in its own hue, pulsing. */
+.osa-orb .orb-backdrop {
+  position: absolute;
+  inset: -26px;
+  border-radius: 50%;
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .4s;
+  transform-origin: center;
+}
+.osa-orb[data-state="thinking"] .orb-backdrop {
+  background: radial-gradient(circle, var(--osa-think) 0%, transparent 62%);
+  animation: orbBackPulse 1.15s ease-in-out infinite;
+}
+.osa-orb[data-state="speaking"] .orb-backdrop {
+  background: radial-gradient(circle, #4ff0ff 0%, transparent 62%);
+  animation: orbBackPulse 1s ease-in-out infinite;
+}
+.osa-orb[data-state="listening"] .orb-backdrop {
+  background: radial-gradient(circle, var(--osa-listen) 0%, transparent 62%);
+  animation: orbBackPulse 1.3s ease-in-out infinite;
+}
+.osa-orb[data-state="alert"] .orb-backdrop {
+  background: radial-gradient(circle, var(--osa-alert) 0%, transparent 62%);
+  animation: orbBackPulse .7s ease-in-out infinite;
+}
+@keyframes orbBackPulse {
+  0%, 100% { opacity: .14; transform: scale(.96); }
+  50% { opacity: .38; transform: scale(1.05); }
+}
 .osa-orb .orb-glow {
   position: absolute;
-  inset: 8px;
+  inset: 16px;
   border-radius: 50%;
   z-index: 1;
   background: radial-gradient(circle, var(--osa-idle) 0%, transparent 68%);
@@ -100,7 +133,7 @@ const styles = `
   display: block;
   margin-top: 8px;
   width: 100%;
-  max-width: 184px;
+  max-width: 248px;
   text-align: center;
   font-size: 11px;
   line-height: 1.35;
@@ -222,7 +255,42 @@ export default function OSAOrb({
     return () => { alive = false; clearInterval(t); };
   }, [status]);
 
-  const dataState = VALID_STATES.includes(state) ? state : "idle";
+  // Live voice states (2026-07-08): the wake loop / PTT run SERVER-side, so
+  // the caller's context state can't know about them. A light localhost poll
+  // of /api/osa/voice/state maps the pipeline's action states onto the orb
+  // (listening -> listening, transcribing -> thinking, speaking -> speaking).
+  // Stops polling entirely when voice is disabled or deps are missing.
+  const [voiceState, setVoiceState] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    let timer = null;
+    const poll = () => {
+      get("/api/osa/voice/state")
+        .then((v) => {
+          if (!alive) return;
+          if (!v?.enabled || !v?.deps_ok) {
+            setVoiceState(null);
+            return; // voice off — no further polling this mount
+          }
+          const map = {
+            listening: "listening",
+            transcribing: "thinking",
+            speaking: "speaking",
+          };
+          setVoiceState(map[v.state] || null);
+          timer = setTimeout(poll, 1500);
+        })
+        .catch(() => {
+          if (alive) timer = setTimeout(poll, 8000); // sidecar down — back off
+        });
+    };
+    poll();
+    return () => { alive = false; clearTimeout(timer); };
+  }, []);
+
+  const requested = VALID_STATES.includes(state) ? state : "idle";
+  // Precedence: alert (needs the human) > live voice state > context state.
+  const dataState = requested === "alert" ? "alert" : (voiceState || requested);
   const caption = lastLine && lastLine.trim() ? lastLine : "Standing by.";
   const subStatus = status || fetchedStatus;
 
@@ -243,6 +311,7 @@ export default function OSAOrb({
     >
       <style>{styles}</style>
       <span className="orb-stage">
+      <span className="orb-backdrop" aria-hidden="true" />
       <span className="orb-glow" aria-hidden="true" />
       <svg viewBox="0 0 200 200" className="orb-reactor" role="img" aria-label="OSA reactor">
         <g className="orb-ring orb-ring-out"><circle cx="100" cy="100" r="92" className="orb-stroke orb-dash-a" /></g>

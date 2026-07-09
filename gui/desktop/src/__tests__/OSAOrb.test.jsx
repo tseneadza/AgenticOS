@@ -69,7 +69,12 @@ describe("OSAOrb", () => {
     stubFetch();
     render(<OSAOrb status="Local · Ollama up" />);
     expect(screen.getByText("Local · Ollama up")).toBeInTheDocument();
-    expect(global.fetch).not.toHaveBeenCalled();
+    // 2026-07-08: the orb now ALSO polls /api/osa/voice/state (live voice
+    // states) — only the /api/osa/state status poll must be suppressed.
+    const osaStateCalls = global.fetch.mock.calls.filter(
+      (c) => String(c[0]).includes("/api/osa/state")
+    );
+    expect(osaStateCalls).toHaveLength(0);
   });
 
   it("populates the status sub-caption from /api/osa/state when no status prop", async () => {
@@ -179,7 +184,62 @@ describe("OSAOrb onState callback", () => {
     const onState = vi.fn();
     render(<OSAOrb status="Local · Ollama up" onState={onState} />);
     await new Promise((r) => setTimeout(r, 30)); // give any (wrong) poll a beat
-    expect(global.fetch).not.toHaveBeenCalled();
+    // 2026-07-08: voice-state polling is allowed; /api/osa/state is not.
+    const osaStateCalls = global.fetch.mock.calls.filter(
+      (c) => String(c[0]).includes("/api/osa/state")
+    );
+    expect(osaStateCalls).toHaveLength(0);
     expect(onState).not.toHaveBeenCalled();
+  });
+});
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Live voice states (2026-07-08) — the orb polls /api/osa/voice/state and maps
+// the server-side pipeline states onto its visuals.
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("OSAOrb live voice states", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete global.fetch;
+  });
+
+  function stubVoiceFetch(voice) {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes("/api/osa/voice/state"))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(voice) });
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    });
+  }
+
+  it("maps server 'listening' onto the orb even when the prop says idle", async () => {
+    stubVoiceFetch({ enabled: true, deps_ok: true, state: "listening" });
+    render(<OSAOrb state="idle" status="x" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("osa-orb")).toHaveAttribute("data-state", "listening")
+    );
+  });
+
+  it("maps server 'transcribing' onto 'thinking'", async () => {
+    stubVoiceFetch({ enabled: true, deps_ok: true, state: "transcribing" });
+    render(<OSAOrb state="idle" status="x" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("osa-orb")).toHaveAttribute("data-state", "thinking")
+    );
+  });
+
+  it("alert prop outranks the live voice state", async () => {
+    stubVoiceFetch({ enabled: true, deps_ok: true, state: "listening" });
+    render(<OSAOrb state="alert" status="x" />);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId("osa-orb")).toHaveAttribute("data-state", "alert");
+  });
+
+  it("stays on the prop state when voice is disabled", async () => {
+    stubVoiceFetch({ enabled: false, deps_ok: false, state: "disabled" });
+    render(<OSAOrb state="idle" status="x" />);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId("osa-orb")).toHaveAttribute("data-state", "idle");
   });
 });
