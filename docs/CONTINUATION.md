@@ -68,6 +68,14 @@ green: pytest 520, vitest 631. Pushed.
 - **Deps:** 4 mic deps installed + `setuptools<81` pin (webrtcvad needs
   pkg_resources). whisper small+tiny cached in ~/.cache/huggingface.
 
+## New skills (this session) — consult BEFORE debugging voice-IN
+- `skills/osa-voice-in-mic-debugging` — "it's deaf" diagnosis: discard log
+  first, energy gate, PortAudio contention, device segfault, level tests.
+- `skills/osa-wake-word-tuning` — alias loop, matching rules, conversation-
+  mode guards, all voice knobs, cadence audition without restarts.
+- `skills/osa-voice-test-safety` — no real audio in tests, singleton
+  injection for route tests, env-agnostic dep asserts, thread joins.
+
 ## Debug lessons (this session)
 
 - "It's deaf" ≠ deaf: check `wake discard:` lines in /tmp/agenticos_sidecar.log
