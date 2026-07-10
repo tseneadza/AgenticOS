@@ -156,4 +156,62 @@ describe("OSAEventsBridge (proactive events polling)", () => {
     await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(2));
     expect(onMessages).not.toHaveBeenCalled();
   });
+
+  // ---- Orb alert (2026-07-09, OSAORB_IDEAS #1): onAnnounced flashes the orb ----
+
+  it("fires onAnnounced when a NEW announced message lands (post-priming)", async () => {
+    const onAnnounced = vi.fn();
+    stubFetchSequence([
+      EMPTY,
+      {
+        messages: [
+          { id: 1, app_id: "keno", kind: "down", announced: true, text: "Tony — keno just went down." },
+        ],
+        latest_id: 1,
+      },
+      { messages: [], latest_id: 1 },
+    ]);
+    render(
+      <OSAEventsBridge speak={vi.fn()} onLine={vi.fn()} onAnnounced={onAnnounced} intervalMs={30} />
+    );
+    await waitFor(() => expect(onAnnounced).toHaveBeenCalled());
+  });
+
+  it("does not fire onAnnounced on the priming batch (buffered history)", async () => {
+    const onAnnounced = vi.fn();
+    stubFetchSequence([
+      {
+        messages: [
+          { id: 1, app_id: "keno", kind: "down", announced: true, text: "buffered down." },
+        ],
+        latest_id: 1,
+      },
+      { messages: [], latest_id: 1 },
+    ]);
+    render(
+      <OSAEventsBridge speak={vi.fn()} onLine={vi.fn()} onAnnounced={onAnnounced} intervalMs={30} />
+    );
+    // let a couple of polls run
+    await new Promise((r) => setTimeout(r, 120));
+    expect(onAnnounced).not.toHaveBeenCalled();
+  });
+
+  it("does not fire onAnnounced for silent-only batches", async () => {
+    const onAnnounced = vi.fn();
+    stubFetchSequence([
+      EMPTY,
+      {
+        messages: [
+          { id: 1, app_id: "keno", kind: "up", announced: false, text: "keno is back up." },
+        ],
+        latest_id: 1,
+      },
+      { messages: [], latest_id: 1 },
+    ]);
+    render(
+      <OSAEventsBridge speak={vi.fn()} onLine={vi.fn()} onAnnounced={onAnnounced} intervalMs={30} />
+    );
+    await new Promise((r) => setTimeout(r, 120));
+    expect(onAnnounced).not.toHaveBeenCalled();
+  });
 });

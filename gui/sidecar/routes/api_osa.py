@@ -327,7 +327,7 @@ def osa_chat(body: OSAChat) -> dict:
         checkpointer = memory.get_checkpointer(conn)
         agent = osa_agent.build_agent(
             model_id, approval_fn=approval_fn, checkpointer=checkpointer,
-            system_suffix=brain_line,
+            system_suffix=brain_line, voice_aware=_voice_is_on(),
         )
         config = {"configurable": {"thread_id": thread_id}}
         result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=config)
@@ -374,6 +374,21 @@ def osa_chat(body: OSAChat) -> dict:
         "pending_action": awaiting,
         "confirmed": confirmed,
     }
+
+
+def _voice_is_on() -> bool:
+    """Whether voice-OUT is live per the Constitution (best-effort, never raises).
+
+    Drives the voice-awareness prompt line (2026-07-09) in BOTH chat routes
+    (dual-path rule) so OSA stops claiming "I'm text-only" mid voice-chat.
+    Config unreadable ⇒ False — OSA never claims ears it can't prove.
+    """
+    try:
+        from osa_voice.config import voice_config
+
+        return bool(voice_config().get("enabled"))
+    except Exception:  # noqa: BLE001 — voice is a garnish, never a dependency
+        return False
 
 
 def _maybe_speak_reply(reply: str) -> None:
@@ -580,6 +595,27 @@ def osa_briefing() -> dict:
 
     osa_proactive.note_chat_turn()
     return osa_proactive.post_briefing(force_announce=True)
+
+
+class OSAGreeting(BaseModel):
+    """Request body for the presence greeting (``pending`` = items awaiting Tony)."""
+
+    pending: int = 0
+
+
+@router.post("/api/osa/greeting")
+def osa_greeting_route(body: OSAGreeting) -> dict:
+    """Return OSA's time-of-day welcome-back line and speak it (best-effort).
+
+    Called by the app on launch + on return-after-away (2026-07-09). Templated
+    and cheap; the line is spoken via the shared voice hook when voice-OUT is
+    on, and captioned on the orb by the caller.
+    """
+    from gui.sidecar import osa_greeting
+
+    text = osa_greeting.greeting(pending=body.pending)
+    _maybe_speak_reply(text)
+    return {"text": text}
 
 
 # --------------------------------------------------------------------------- #
@@ -790,7 +826,7 @@ async def osa_chat_ws(ws: WebSocket) -> None:
         checkpointer = memory.get_checkpointer(conn)
         agent = osa_agent.build_agent(
             model_id, approval_fn=_ws_approval_fn, checkpointer=checkpointer,
-            system_suffix=brain_line,
+            system_suffix=brain_line, voice_aware=_voice_is_on(),
         )
         config = {"configurable": {"thread_id": thread_id}}
         await ws.send_json({

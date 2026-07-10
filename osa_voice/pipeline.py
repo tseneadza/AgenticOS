@@ -89,6 +89,16 @@ class VoiceService:
         self._voice = None            # cached PiperVoice (lazy)
         self._voice_key: str | None = None  # path the cache was loaded for
         self._play_proc: subprocess.Popen | None = None
+        # Speech GENERATION counter (2026-07-09, "multiple voices at once" fix).
+        # The sentence-chunked _synthesize has windows where _play_proc is None
+        # (between chunks, while synthesizing the next one) — in that window a
+        # newer speak()'s stop_speaking() kills nothing, so the OLDER thread
+        # keeps playing its remaining chunks alongside the new reply. This
+        # monotonic counter is the authority instead of _play_proc alone: every
+        # speak()/stop_speaking() bumps it, _speak_now captures the value it
+        # owns, and the chunk loop aborts before each chunk once the counter
+        # has moved on. A stale generation can never reach the speaker.
+        self._speak_gen = 0
         # De-dupe guard (2026-07-08): the app can open the chat WebSocket more
         # than once (dev StrictMode, a reconnect, two windows), so the SAME
         # reply can arrive twice near-simultaneously. Speaking the identical
@@ -557,9 +567,12 @@ class VoiceService:
         prepended when speech starts so the first syllable isn't clipped.
         End-of-speech = ``end_silence_ms`` (default 700) of consecutive
         non-speech frames; hard caps: ``start_timeout_s`` (default 6 — nobody
-        spoke) and ``max_utterance_s`` (default 30). State is ``listening``
-        for the duration; ``mark("speech_end")`` on completion. Audio never
-        leaves the machine and is not persisted.
+        spoke) and ``max_utterance_s`` (default 30). The armed/waiting window
+        reads ``idle`` (resting state); the state flips to ``listening`` only
+        once speech actually starts, so the orb isn't stuck "listening" while
+        merely waiting for the wake word (Tony, 2026-07-09).
+        ``mark("speech_end")`` on completion. Audio never leaves the machine
+        and is not persisted.
 
         Returns:
             Raw PCM bytes of the captured utterance (b"" when nobody spoke).
@@ -603,8 +616,11 @@ class VoiceService:
         silence_run = 0
         started = time.monotonic()
 
+        # ponytail: stay at the resting state (idle) while armed; "listening"
+        # is set below the instant VAD detects directed speech — not for the
+        # whole start-timeout window (that's what pinned the orb "listening").
         with self._lock:
-            self._state = "listening"
+            self._state = self._resting_state()
         try:
             with sd.RawInputStream(
                 samplerate=sample_rate,
@@ -633,6 +649,8 @@ class VoiceService:
                             in_speech = True
                             voiced.extend(pre)
                             pre.clear()
+                            with self._lock:
+                                self._state = "listening"
                         elif elapsed > start_timeout_s:
                             return b""  # nobody spoke
                     else:
@@ -784,8 +802,16 @@ class VoiceService:
         return voice
 
     def stop_speaking(self) -> None:
-        """Cancel any in-flight playback (barge-in / mute-mid-speech)."""
+        """Cancel any in-flight playback (barge-in / mute-mid-speech).
+
+        Bumps the speech generation so any _synthesize loop currently between
+        chunks (with _play_proc momentarily None) sees itself as stale and
+        abandons its remaining chunks — the window that let an old reply keep
+        playing under a new one. Then terminates the live afplay if there is
+        one.
+        """
         with self._lock:
+            self._speak_gen += 1
             proc = self._play_proc
             self._play_proc = None
         if proc is not None and proc.poll() is None:
@@ -840,11 +866,16 @@ class VoiceService:
 
     def _speak_now(self, text: str) -> dict:
         """Synthesize + play synchronously. Best-effort; never raises."""
-        self.stop_speaking()  # barge-in: newest utterance wins
+        self.stop_speaking()  # barge-in: newest utterance wins (bumps the gen)
+        # Claim the generation this reply owns, AFTER the barge-in bump above.
+        # A later speak()/stop_speaking() bumps past it, and _synthesize aborts
+        # the moment it notices — so only the newest reply ever reaches the
+        # speaker (the "multiple voices at once" fix).
         with self._lock:
+            my_gen = self._speak_gen
             self._state = "speaking"
         try:
-            self._synthesize(text)
+            self._synthesize(text, gen=my_gen)
             return {"ok": True, "reason": None}
         except Exception as exc:  # noqa: BLE001 — TTS failure => silent
             with self._lock:
@@ -860,7 +891,7 @@ class VoiceService:
                 # be captured as a wake-free "command" (feedback guard).
                 self._last_reply_done = time.monotonic()
 
-    def _synthesize(self, text: str) -> None:
+    def _synthesize(self, text: str, *, gen: int | None = None) -> None:
         """Speak OSA's reply with Piper (voice-OUT implemented 2026-07-08).
 
         Loads/caches the configured Piper voice, synthesizes ``text`` to a
@@ -873,6 +904,13 @@ class VoiceService:
         Args:
             text: OSA's reply text (the ``reply`` field from
                 ``POST /api/osa/chat`` — see the module-level contract).
+            gen: The speech generation this reply owns (from ``_speak_now``).
+                Before playing each chunk the loop confirms ``_speak_gen``
+                still equals ``gen``; if a newer speak()/stop_speaking() has
+                moved it on, this reply is stale and abandons its remaining
+                chunks — closing the between-chunks window where ``_play_proc``
+                is None and an old reply could otherwise play under a new one.
+                ``None`` (direct/test callers) skips the check.
         """
         voice = self._load_voice()
         if voice is None:
@@ -903,6 +941,14 @@ class VoiceService:
         # i+1 while sentence i plays. Time-to-first-audio = one sentence's
         # synth instead of the whole reply's. Barge-in (stop_speaking)
         # terminates the current afplay and abandons the remaining chunks.
+        #
+        # Generation guard (2026-07-09): before EACH chunk we confirm this
+        # reply still owns the current generation. A newer speak() bumps it,
+        # so a reply caught mid-loop (between chunks, _play_proc None) sees
+        # itself as stale and stops — it can no longer sneak its remaining
+        # chunks onto the speaker under the new reply. Claiming _play_proc is
+        # done under the same staleness check so a stale reply never even
+        # registers a proc a later stop_speaking() would miss.
         chunks = self._split_sentences(text) or [text]
         next_path: str | None = _synth_chunk(chunks[0])
         first = True
@@ -921,9 +967,26 @@ class VoiceService:
                 if first:
                     self.mark("first_audio")
                     first = False
+                # Start playback only if still current, and register the proc
+                # atomically with that check (else a stop_speaking() that fires
+                # between the check and the assignment would miss it).
                 proc = subprocess.Popen([player, cur])
                 with self._lock:
-                    self._play_proc = proc
+                    if gen is not None and self._speak_gen != gen:
+                        superseded = True  # a newer reply already took over
+                    else:
+                        self._play_proc = proc
+                        superseded = False
+                if superseded:
+                    try:
+                        proc.terminate()
+                    except Exception:  # noqa: BLE001 — already gone
+                        pass
+                    try:
+                        os.unlink(cur)
+                    except OSError:
+                        pass
+                    break
                 if i + 1 < len(chunks):
                     next_path = _synth_chunk(chunks[i + 1])  # overlaps playback
                 proc.wait()
@@ -933,12 +996,14 @@ class VoiceService:
                         self._play_proc = None
                     else:
                         cancelled = True  # stop_speaking() intervened
+                    if gen is not None and self._speak_gen != gen:
+                        cancelled = True  # a newer reply superseded us
                 try:
                     os.unlink(cur)
                 except OSError:
                     pass
                 if cancelled or (getattr(proc, "returncode", 0) or 0) != 0:
-                    break  # barge-in / kill — drop the rest of the reply
+                    break  # barge-in / kill / superseded — drop the rest
         finally:
             if next_path is not None:
                 try:

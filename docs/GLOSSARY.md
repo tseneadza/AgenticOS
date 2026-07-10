@@ -288,6 +288,12 @@ its `ENDPOINTS` array in the same change that adds/renames the route (see
 **JSX** — JavaScript syntax extension for embedding HTML-like markup in
 React components. AgenticOS uses `.jsx` (not TSX) for React source.
 
+**Orb (OSAOrb) / orb states** — The JARVIS-style reactor orb
+(`gui/desktop/src/components/OSAOrb.jsx`) that renders OSA's presence in the
+right rail. Driven by a `data-state` of `idle | listening | thinking |
+speaking | alert`; precedence is alert > live voice state > chat/context
+state. Voice states come from a 1.5s poll of `/api/osa/voice/state`.
+
 **PTY** — "Pseudo-Terminal." A pair of virtual character devices that
 lets a program pretend to be a terminal. AgenticOS's interactive terminal
 panel is `xterm.js` in the browser talking to a PTY on the sidecar via
@@ -314,13 +320,33 @@ Renders the PTY output stream in the terminal panel.
 
 ## 6. Voice, LLM, and OSA
 
+**Barge-in** — Interrupting OSA mid-speech. A new wake word, a push-to-talk
+press, or mute cancels in-flight Piper playback: `stop_speaking()` terminates
+the `afplay` process and abandons the remaining sentence chunks. Design §3.3.
+
 **Claude** — Anthropic's LLM family. AgenticOS routes to Claude (via
 `~/.agentic-os/.env` `ANTHROPIC_API_KEY`) for tool-use and heavy
 reasoning. Requires a standard `sk-ant-api03-` key; `sk-admin-` keys
 cannot call the Messages API.
 
+**Conversation mode / follow-up window** — After a spoken reply finishes, an
+~8s window (`followup_window_s`) in which the next utterance needs no wake
+word. Guarded by an echo check (opens only post-playback), a hallucination
+stoplist, and a ≥2-word minimum. See `osa_voice/pipeline.py`.
+
+**Energy gate (`min_rms`)** — An RMS-amplitude floor (default 0.02) a frame
+must clear, on TOP of VAD, to count as speech. Rejects a TV or background
+media across the room that VAD alone calls "speech." Live-calibrated with Tony
+(his voice measured ~7× the TV's frame energy). 0 disables the gate.
+
 **faster-whisper** — A fast, CTranslate2-based reimplementation of
 OpenAI's Whisper. Used as OSA's local speech-to-text engine.
+
+**Headless voice test** — A unit test that exercises the voice state machine
+without a real microphone or the optional audio deps, by injecting fake
+`sounddevice` + `webrtcvad` modules and controlling the per-frame VAD verdict.
+Lets CI assert pipeline transitions (e.g. idle-vs-listening) deterministically.
+See `gui/sidecar/tests/test_osa_idle_state.py`.
 
 **JARVIS** — Iron Man's fictional AI assistant. OSA mimics JARVIS's
 *role* (calm, competent, always-on) — not copied identity.
@@ -347,6 +373,18 @@ depending on context.
 
 **Piper** — A local neural TTS engine. Produces OSA's spoken responses.
 
+**Presence greeting** — OSA's time-of-day "welcome back" line, shown and
+spoken when the app launches or regains focus after being away past a
+threshold (~3 min). Templated per bucket (morning / afternoon / evening /
+late night, cheek dialed to 3–4) with a pending-items clause. Backend:
+`gui/sidecar/osa_greeting.py` + `POST /api/osa/greeting`; wired in `App.jsx`.
+
+**Resting state** — The state the voice pipeline returns to when not in an
+active turn: `idle` when voice is enabled with deps present, else `disabled`
+(`_resting_state()`). The armed wake loop waits in the resting state (idle)
+and flips to `listening` only when VAD detects directed speech (2026-07-09
+fix — the orb no longer reads "listening" while merely armed and waiting).
+
 **STT** — "Speech To Text." Voice input → text. OSA uses faster-whisper.
 
 **Tool guardrail (7B tool-calling)** — Local 7B-class models aren't
@@ -356,6 +394,11 @@ turn needs a tool, OSA escalates to Claude and marks the reply
 work.
 
 **TTS** — "Text To Speech." Text output → voice. OSA uses Piper.
+
+**VAD** — "Voice Activity Detection." Frame-level speech/non-speech
+classification (via `webrtcvad`) that gates utterance capture: pre-roll until
+speech starts, end-of-speech after `end_silence_ms` of non-speech. Paired with
+the energy gate (`min_rms`) so background noise doesn't count as speech.
 
 **Wake word** — The trigger phrase ("OSA") that flips the assistant from
 passive-listening to active. Detected locally by openWakeWord.

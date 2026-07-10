@@ -1,3 +1,45 @@
+## 2026-07-09 — OSA presence: idle-vs-listening fix + "welcome back" greeting + no-holds-barred Soul + living-orb redesign
+
+- **Living orb redesign** — `gui/desktop/src/components/OSAOrb.jsx` rebuilt from
+  Tony's approved reference (`uploads/jarvis-orb.html`): a luminous breathing
+  core (white hot-spot → state hue), layered glow, expanding ripple rings,
+  orbiting satellites, and a voice waveform — replacing the flat SVG reactor.
+  State hue is one `--orb` r,g,b triple per `data-state`. **Wiring unchanged**
+  (alert>voice>context precedence, 15s/1.5s polls, brain-status line, onState,
+  caption); the swap is visual only. All 21 OSAOrb tests + full vitest 631 green.
+
+OSA now shows its TRUE state and greets Tony on return. Built with Tony this
+session (state-display was the ask; presence greeting + persona dial fell out
+of it). Full suites green: pytest 525 (+5), vitest 631.
+
+- **Idle-vs-listening fix** — `osa_voice/pipeline.py` `_capture_utterance` no
+  longer holds `"listening"` through the whole start-timeout window. The armed
+  wake loop now waits at the resting state (idle) and flips to `"listening"`
+  only when VAD detects directed speech — so the orb stops reading "listening"
+  while merely armed and waiting (Tony's live complaint; reproduced via the
+  running sidecar reporting `state:listening` with nobody talking). One guard
+  in the shared capture fn covers both PTT and the wake loop.
+- **Presence greeting** — new `gui/sidecar/osa_greeting.py`: pure + templated,
+  time-of-day buckets (morning/afternoon/evening/late night) at cheek 3–4 with
+  a pending-items clause. `POST /api/osa/greeting` returns the line and speaks
+  it via the shared `_maybe_speak_reply` hook. `App.jsx` greets on launch and
+  on RETURN after being away >3 min (visibilitychange/focus; pending count from
+  approvals; server audio de-dupe covers StrictMode double-mounts).
+- **Soul** — `config/Soul_OSA.md` cheekiness dialed to no-holds-barred (Tony:
+  "swing freely, I'll correct you"); guardrail kept (never cutting when he's
+  actually struggling). Notes the return greeting.
+- **Glossary** — added Barge-in, Conversation mode, Energy gate/`min_rms`,
+  Headless voice test, Orb (OSAOrb) states, Presence greeting, Resting state,
+  VAD; synced to the Brain2 mirror. New `skills/update-glossary` skill
+  codifying the same-change glossary rule.
+- **Session-save (wrap)** — `docs/OSAORB_IDEAS.md` (prioritized, ponytail-sized
+  orb enhancements for next session) + new `skills/osa-orb-state` skill (the
+  state-truth rule + idle-vs-listening lesson, so the bug can't recur).
+- Tests: 5 new — `test_osa_idle_state.py` (2, headless: fake
+  sounddevice/webrtcvad, no real mic) + `test_osa_greeting.py` (3). Frontend
+  greeting wiring intentionally not vitest'd (thin event-listener layer;
+  mounting all of App for a threshold compare isn't worth it — ponytail).
+
 ## 2026-07-08 — v0.3.0 · Phase 14d voice-IN: OSA listens (PTT + "Hey Osa" + conversation mode) + orb v2
 
 OSA hears. Full voice loop live and tuned WITH Tony in-session: push-to-talk,

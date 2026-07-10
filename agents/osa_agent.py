@@ -89,6 +89,21 @@ OSA_SYSTEM = (
 )
 
 
+# Voice-awareness line (2026-07-09) — appended to the system prompt ONLY when
+# voice-OUT is live, so OSA stops telling Tony "I'm text-only, no microphone"
+# mid voice-chat (found live 2026-07-08). Kept short and factual; the routes
+# compute the flag from the Constitution's voice block and pass it through
+# build_agent(voice_aware=...). When voice is OFF this line is absent, so OSA
+# never claims ears it doesn't have.
+VOICE_AWARENESS_LINE = (
+    "Voice is ON: your replies are spoken aloud through a speaker, and Tony "
+    "can talk to you by microphone (push-to-talk or the 'Osa' wake word). You "
+    "are NOT text-only — never say you have no voice, no microphone, or that "
+    "you can't hear or speak. If a turn reached you as speech, answer as though "
+    "spoken to."
+)
+
+
 # --------------------------------------------------------------------------- #
 # Ollama ensure-on-OSA-init (decision #9): best-effort, cached, non-fatal.
 # --------------------------------------------------------------------------- #
@@ -900,6 +915,7 @@ def build_agent(
     event_fn: EventFn = _noop_event,
     checkpointer: Any | None = None,
     system_suffix: str | None = None,
+    voice_aware: bool = False,
 ):
     """Build a compiled LangGraph ReAct OSA agent over the toolbox.
 
@@ -909,8 +925,13 @@ def build_agent(
     to make threads durable; omit it for a stateless agent (unit tests).
     ``system_suffix`` is a dynamic tail appended to the composed system prompt
     — the chat route injects the per-turn brain-status line through it
-    (``brain_prompt_line``) so OSA knows its brain without a tool call. All
-    heavy imports are local so the toolbox stays testable without LangChain.
+    (``brain_prompt_line``) so OSA knows its brain without a tool call.
+    ``voice_aware=True`` (2026-07-09) inserts ``VOICE_AWARENESS_LINE`` so OSA
+    knows it has ears + a voice when the Constitution's voice block is live —
+    it sits BEFORE ``system_suffix`` so the brain line stays the very tail
+    (small local models echo trailing text; the brain line already carries the
+    never-repeat marker for that). All heavy imports are local so the toolbox
+    stays testable without LangChain.
     """
     from langgraph.prebuilt import create_react_agent
 
@@ -925,6 +946,8 @@ def build_agent(
     preamble = soul.identity_preamble(soul_name=OSA_SOUL_NAME)
     if preamble:
         prompt = f"{preamble}\n\n{prompt}"
+    if voice_aware:
+        prompt = f"{prompt}\n\n{VOICE_AWARENESS_LINE}"
     if system_suffix:
         prompt = f"{prompt}\n\n{system_suffix}"
     kwargs: dict[str, Any] = {"prompt": prompt}

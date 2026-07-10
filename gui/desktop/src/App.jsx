@@ -1145,7 +1145,12 @@ export const OSAContext = createContext({
 // owner — after an on-demand POST /api/osa/briefing the app speaks the reply
 // itself and advances the cursor past the new entry so the next poll doesn't
 // speak it a second time.
-export function OSAEventsBridge({ speak, onLine, onMessages, busyRef, cursorRef, intervalMs = 12_000 }) {
+//
+// Orb alert (2026-07-09, OSAORB_IDEAS #1): the optional `onAnnounced()` fires
+// once per poll that carries a NEW announced message (never on the priming
+// batch), so the owner can flash the orb `alert` for full state visibility —
+// announcements previously only reached the rail feed, not the orb.
+export function OSAEventsBridge({ speak, onLine, onMessages, busyRef, cursorRef, onAnnounced, intervalMs = 12_000 }) {
   const internalCursorRef = useRef(null);
   const lastSeenRef = cursorRef ?? internalCursorRef;
   const primedRef = useRef(false);
@@ -1167,15 +1172,19 @@ export function OSAEventsBridge({ speak, onLine, onMessages, busyRef, cursorRef,
           }
           if (!msgs.length) return;
           const announced = msgs.filter((m) => m.announced);
-          if (announced.length) speak(announced[announced.length - 1].text);
-          else onLine(msgs[msgs.length - 1].text);
+          if (announced.length) {
+            speak(announced[announced.length - 1].text);
+            onAnnounced?.(); // flash the orb alert (decays owner-side)
+          } else {
+            onLine(msgs[msgs.length - 1].text);
+          }
         })
         .catch(() => { /* sidecar down — degrade silently */ });
     };
     tick();
     const t = setInterval(tick, intervalMs);
     return () => { alive = false; clearInterval(t); };
-  }, [speak, onLine, onMessages, busyRef, intervalMs]);
+  }, [speak, onLine, onMessages, busyRef, onAnnounced, intervalMs]);
   return null;
 }
 
@@ -1631,6 +1640,13 @@ export default function App() {
   const osaRunsRef = useRef(new Set());
   const [osaActiveRuns, setOsaActiveRuns] = useState(0);
   const [osaManualState, setOsaManualState] = useState(null);
+  // Announcement alert (2026-07-09, OSAORB_IDEAS #1): a proactive ANNOUNCED
+  // event flashes the orb `alert` for a few seconds, then decays back on its
+  // own — unlike the approvals alert (which persists until the queue clears),
+  // an announcement is a momentary "look here". The timer is cleared on
+  // unmount and re-armed on each new announcement.
+  const [osaAnnounceAlert, setOsaAnnounceAlert] = useState(false);
+  const osaAnnounceTimer = useRef(null);
   const [osaLastLine, setOsaLastLine] = useState("");
   const osaSpeakTimer = useRef(null);
   const setOsaState = useCallback((s) => {
@@ -1657,6 +1673,33 @@ export default function App() {
   // (osaState "thinking" — AgentView sets it on send).
   const osaBusyRef = useRef(false);
   useEffect(() => { osaBusyRef.current = osaState === "thinking"; }, [osaState]);
+  // Presence greeting (2026-07-09) — greet on launch AND on RETURN after being
+  // away past the threshold, so quick alt-tabs don't retrigger. The sidecar
+  // picks the time-of-day line, folds in the pending count, and speaks it; we
+  // just caption it via speak(). The server de-dupes identical audio, so a dev
+  // StrictMode double-mount can't double-speak. The approvals count is read
+  // from a ref so this effect runs once (stable speak()), not per approval.
+  const osaAwayRef = useRef(0);
+  const osaApprovalsRef = useRef(0);
+  useEffect(() => { osaApprovalsRef.current = approvals.length; }, [approvals.length]);
+  useEffect(() => {
+    const AWAY_MS = 3 * 60_000;
+    const greet = () =>
+      post("/api/osa/greeting", { pending: osaApprovalsRef.current })
+        .then((d) => d?.text && speak(d.text))
+        .catch(() => { /* sidecar down — no greeting */ });
+    const onVis = () => {
+      if (document.hidden) { osaAwayRef.current = Date.now(); return; }
+      if (Date.now() - osaAwayRef.current >= AWAY_MS) greet();
+    };
+    greet(); // launch greeting
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
+  }, [speak]);
   // 14e follow-on (OSA rail): accumulate proactive messages from the SAME
   // bridge poll (onMessages) for the rail's feed — no second /api/osa/events
   // poll. Bounded here so app-level state can't grow without limit; the rail
@@ -1684,6 +1727,20 @@ export default function App() {
     }
     speak(d.text);
   }, [recordOsaEvents, speak]);
+  // Orb alert (2026-07-09, OSAORB_IDEAS #1): flash `alert` for ANNOUNCE_ALERT_MS
+  // when a proactive announcement lands, then decay. Re-arming restarts the
+  // window (a fresh announcement keeps the orb lit). Stable identity so the
+  // events bridge effect doesn't re-subscribe.
+  const ANNOUNCE_ALERT_MS = 12_000;
+  const flashAnnounceAlert = useCallback(() => {
+    setOsaAnnounceAlert(true);
+    if (osaAnnounceTimer.current) clearTimeout(osaAnnounceTimer.current);
+    osaAnnounceTimer.current = setTimeout(() => {
+      setOsaAnnounceAlert(false);
+      osaAnnounceTimer.current = null;
+    }, ANNOUNCE_ALERT_MS);
+  }, []);
+  useEffect(() => () => { if (osaAnnounceTimer.current) clearTimeout(osaAnnounceTimer.current); }, []);
   // 14f: stale-run guard — a dropped AG-UI socket strands run ids in the set
   // (their FINISHED never arrives), so clear on disconnect.
   useEffect(() => {
@@ -1699,13 +1756,16 @@ export default function App() {
     return () => { delete window.__osaSetState; };
   }, []);
 
-  // 14f: the state the orb actually shows. Priority — manual override, then
-  // pending approvals (alert), then chat-driven thinking/speaking, then any
-  // active workflow run (thinking), else idle. Health downs already speak via
-  // the events bridge, so they surface without a dedicated state.
+  // 14f + orb-alert (2026-07-09): the state the orb actually shows. Priority —
+  // manual override, then ALERT (pending approvals OR a fresh proactive
+  // announcement's decaying flash), then chat-driven thinking/speaking, then
+  // any active workflow run (thinking), else idle. Announcements now raise the
+  // orb (OSAORB_IDEAS #1) instead of only landing in the rail feed — the
+  // approvals alert persists until the queue clears; the announcement alert
+  // decays on its own (flashAnnounceAlert).
   const osaEffectiveState =
     osaManualState ??
-    (approvals.length > 0
+    (approvals.length > 0 || osaAnnounceAlert
       ? "alert"
       : osaState !== "idle"
         ? osaState
@@ -1835,7 +1895,7 @@ export default function App() {
     <OSAContext.Provider value={osaCtx}>
     {/* Phase 14e: proactive events → orb speech/caption + rail feed — ONE
         shared poll (renders nothing) */}
-    <OSAEventsBridge speak={speak} onLine={setOsaCaption} onMessages={recordOsaEvents} busyRef={osaBusyRef} cursorRef={osaCursorRef} />
+    <OSAEventsBridge speak={speak} onLine={setOsaCaption} onMessages={recordOsaEvents} busyRef={osaBusyRef} cursorRef={osaCursorRef} onAnnounced={flashAnnounceAlert} />
     <div className="shell">
       {/* FR-36: sidebar is navigation only */}
       <aside className="sidebar">

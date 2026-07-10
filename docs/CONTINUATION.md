@@ -1,3 +1,106 @@
+# ⏹ SESSION 2026-07-10 — EXPLODED ORB FIXED ✅ + css-layered-visuals SKILL
+
+Tony's screenshot showed the living-orb redesign (2026-07-09, uncommitted)
+visually EXPLODED on-device: rings at the rail top, dotted orbit behind the
+proactive feed, glowing core at the rail bottom. Root cause: `.orb-stage`
+used `display: grid; place-items: center` with NO shared cell — grid
+auto-placement put each layer in its own implicit row. jsdom computes no
+layout, so all 43 orb/rail vitest stayed green while the render scattered.
+
+## What shipped
+- **One-rule fix** (`OSAOrb.jsx`): `.osa-orb .orb-stage > * { grid-area:
+  1 / 1; }` + a comment explaining why. Orb suite 22/22 (was 21, +tripwire).
+- **Tripwire test** (`OSAOrb.test.jsx`): asserts the injected stylesheet
+  contains the grid-area rule — can't prove layout, but hard-fails if THE
+  LINE is ever deleted.
+- **New skill `skills/css-layered-visuals`** — layered/concentric visuals:
+  siblings never overlap by default (flow/flex/grid); the two sanctioned
+  stacking patterns; HTML-mockup→React porting checklist; symptom→cause
+  table; the jsdom-can't-see-layout verification rule.
+- **`docs/gui-frontend-conventions.md` rule 9** — short form of the above
+  (CLAUDE.md already forces this doc before any GUI work).
+
+## Live state
+- **Fix NOT yet seen on-device** — no AgenticOS vite dev server was running
+  (Tony is on a built bundle), so relaunch `cd gui/desktop && npm run tauri
+  dev` (or rebuild) to see the corrected orb.
+- Working tree still holds the ENTIRE 2026-07-09 presence session
+  (uncommitted) + today's fix. Two-commit plan agreed in-session:
+  1. `feat(osa): presence session — idle-state truth, welcome-back greeting,
+     Soul dial, glossary+skills` (everything EXCEPT the 4 orb-fix files).
+  2. `fix(orb): living-orb redesign + stack stage layers in one grid cell`
+     (OSAOrb.jsx, OSAOrb.test.jsx, gui-frontend-conventions.md,
+     skills/css-layered-visuals/) — redesign + fix land together so no
+     broken-orb state exists in history.
+
+## ▶ RESUME HERE
+0. **Tony visual pass on the fixed orb**, then execute the two commits +
+   push. (If not yet done, that's the first move.)
+1. Then the prior session's queue below (OSAORB_IDEAS enhancement — top
+   candidate announcements→alert — under ponytail) is unchanged.
+
+---
+
+# ⏹ SESSION 2026-07-09 — OSA PRESENCE: idle-state fix + welcome-back greeting + Soul dialed ✅
+
+The ask was "Osa needs to display its current state promptly." Tested it (both
+automated + live), found the orb stuck "listening" while merely armed, fixed it,
+then built the presence greeting + dialed the Soul. Full suites green: pytest
+525 (+5), vitest 631. Built with ponytail (minimal diffs).
+
+## What shipped
+- **Idle-vs-listening fix** — `osa_voice/pipeline.py` `_capture_utterance`:
+  armed wake loop now waits at the resting state (idle) and flips to
+  "listening" only when VAD detects speech (`in_speech`). One guard, both
+  callers (PTT + wake loop). Live-confirmed the bug first (running sidecar
+  reported `state:listening` with nobody talking).
+- **Presence greeting** — `gui/sidecar/osa_greeting.py` (pure, templated,
+  time-of-day × cheek 3–4 + pending clause) + `POST /api/osa/greeting` (speaks
+  via `_maybe_speak_reply`). `App.jsx` greets on launch + return-after-away
+  >3 min (visibilitychange/focus; pending from approvals count).
+- **Soul_OSA.md** — cheekiness → no-holds-barred (Tony: "swing freely, I'll
+  correct you"); struggling-guardrail kept.
+- **Glossary + skill** — added 8 terms (VAD, energy gate/`min_rms`, headless
+  voice test, resting state, presence greeting, orb states, barge-in,
+  conversation mode); synced Brain2 mirror; new `skills/update-glossary`.
+- Tests: `test_osa_idle_state.py` (2, headless fake sounddevice/webrtcvad),
+  `test_osa_greeting.py` (3).
+- **Session-save artifacts (wrap)** — `docs/OSAORB_IDEAS.md` (prioritized orb
+  enhancements) + `skills/osa-orb-state` (state-truth rule so idle-vs-listening
+  can't recur).
+- **Living orb redesign** — `OSAOrb.jsx` rebuilt from Tony's reference
+  (`uploads/jarvis-orb.html`): breathing luminous core, ripple rings, orbiting
+  satellites, per-state `--orb` hue. Wiring unchanged; 21 orb tests + vitest 631
+  green. The flat SVG reactor is retired.
+
+## Live state
+- Sidecar on :5130, voice enabled, wake was ON this session (OFF next restart
+  by design). Brain = Auto. v0.3.0 (no bump — mid-phase fix + feature).
+- NOT YET COMMITTED — offered to commit/push at session end.
+
+## ▶ RESUME HERE
+0. **NEXT SESSION FOCUS — enhance the OSAOrb.** Pull the cheapest high-value
+   idea from `docs/OSAORB_IDEAS.md` (top candidate: announcements → orb
+   `alert`). Read `skills/osa-orb-state` FIRST (state-truth rules), then work
+   under `/ponytail:ponytail` to conserve Fable 5 tokens — smallest diff that
+   holds, one check at a time (Tony follows better slow, not dumbed down).
+1. **Greeting is templated MVP** (Tony chose templated over LLM-gen). If it
+   feels repetitive, revisit a hybrid (LLM flourish over the template).
+   "Pending" is approvals count only — widen to proactive events if wanted.
+2. **No vitest for the App.jsx greeting wiring** — deliberate ponytail call
+   (thin event-listener layer). Add one if the return-detection logic grows.
+3. **Still open from the voice-IN session (below):**
+   - 🐛 MULTIPLE VOICES AT ONCE — speech-generation counter / single speak
+     worker (details in that block).
+   - Orb "alerted" for proactive announcements (wire `osa_proactive` → alert).
+   - Persona voice-awareness (OSA claimed "text-only" mid voice-chat).
+   - Voice tuning backlog (speaker verification, trained openWakeWord, …).
+- Verify: `source .venv/bin/activate; PYTHONPATH=$PWD:$PWD/gui/sidecar \
+  python -m pytest gui/sidecar/tests -q` (525); `cd gui/desktop && npx vitest
+  run` (631).
+
+---
+
 # ⏹ SESSION 2026-07-08/09 — VOICE-IN LIVE ✅ (PTT + "Hey Osa" + conversation mode) + ORB v2 · v0.3.0
 
 Built inline WITH Tony live-testing every step. OSA now hears: push-to-talk,

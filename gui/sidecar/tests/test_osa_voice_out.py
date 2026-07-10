@@ -77,7 +77,7 @@ class TestSpeakGating:
         monkeypatch.setattr(osa_voice, "tts_available", lambda: (True, []))
         svc = _svc()
         spoke = []
-        monkeypatch.setattr(svc, "_synthesize", lambda t: spoke.append(t))
+        monkeypatch.setattr(svc, "_synthesize", lambda t, **k: spoke.append(t))
         out = svc.speak("Systems nominal, Sir.", blocking=True)
         assert out == {"ok": True, "reason": None}
         assert spoke == ["Systems nominal, Sir."]
@@ -88,7 +88,7 @@ class TestSpeakGating:
         monkeypatch.setattr(osa_voice, "tts_available", lambda: (True, []))
         svc = _svc()
 
-        def _boom(_t):
+        def _boom(_t, **_k):
             raise RuntimeError("piper exploded")
 
         monkeypatch.setattr(svc, "_synthesize", _boom)
@@ -102,7 +102,7 @@ class TestSpeakGating:
         svc = _svc()
         import threading
         gate = threading.Event()
-        monkeypatch.setattr(svc, "_synthesize", lambda t: gate.wait(2))
+        monkeypatch.setattr(svc, "_synthesize", lambda t, **k: gate.wait(2))
         out = svc.speak("async", blocking=False)
         assert out == {"ok": True, "reason": None}  # didn't wait on _synthesize
         gate.set()
@@ -382,7 +382,7 @@ class TestSpeakDedupe:
         monkeypatch.setattr(osa_voice, "tts_available", lambda: (True, []))
         svc = _svc()
         spoke = []
-        monkeypatch.setattr(svc, "_synthesize", lambda t: spoke.append(t))
+        monkeypatch.setattr(svc, "_synthesize", lambda t, **k: spoke.append(t))
         first = svc.speak("Same reply, Sir.", blocking=True)
         second = svc.speak("Same reply, Sir.", blocking=True)
         assert first["ok"] is True
@@ -393,7 +393,7 @@ class TestSpeakDedupe:
         monkeypatch.setattr(osa_voice, "tts_available", lambda: (True, []))
         svc = _svc()
         spoke = []
-        monkeypatch.setattr(svc, "_synthesize", lambda t: spoke.append(t))
+        monkeypatch.setattr(svc, "_synthesize", lambda t, **k: spoke.append(t))
         svc.speak("First line.", blocking=True)
         svc.speak("Second line.", blocking=True)
         assert spoke == ["First line.", "Second line."]
@@ -403,7 +403,163 @@ class TestSpeakDedupe:
         svc = _svc()
         svc._dedupe_window_s = 0.0  # window elapsed => not a duplicate
         spoke = []
-        monkeypatch.setattr(svc, "_synthesize", lambda t: spoke.append(t))
+        monkeypatch.setattr(svc, "_synthesize", lambda t, **k: spoke.append(t))
         svc.speak("Repeat me.", blocking=True)
         svc.speak("Repeat me.", blocking=True)
         assert spoke == ["Repeat me.", "Repeat me."]
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# Generation counter — "multiple voices at once" fix (2026-07-09)
+#
+# The sentence-chunked _synthesize has windows where _play_proc is None
+# (between chunks). Before the fix, a newer speak()'s stop_speaking() killed
+# nothing in that window, so the OLDER reply kept playing its remaining chunks
+# UNDER the new one. The generation counter makes each _synthesize abandon its
+# remaining chunks the moment a newer speak()/stop_speaking() bumps the gen.
+# ══════════════════════════════════════════════════════════════════════════════════════
+
+class TestSpeechGeneration:
+    # Two sentences that survive the tiny-chunk MERGE in _split_sentences
+    # (first must be >=40 chars, second >=12) so we reliably get TWO chunks.
+    TWO_CHUNK_TEXT = (
+        "This first sentence is definitely more than forty characters long "
+        "indeed. And this second sentence is also comfortably beyond forty "
+        "characters as well here."
+    )
+
+    def _wire_multichunk(self, monkeypatch, tmp_path):
+        """A service whose _synthesize plays real (fake) chunks we can watch.
+
+        Piper is faked to write a stub WAV; afplay is faked with a _Proc whose
+        every play is recorded, so we can assert exactly which chunks of which
+        reply reached the speaker. wait() returns instantly (returncode 0).
+        """
+        import osa_voice.pipeline as pl
+
+        model = tmp_path / "v.onnx"
+        model.write_bytes(b"x")
+
+        class _FakeVoice:
+            def synthesize_wav(self, text, wf, syn_config=None):
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(22050)
+                wf.writeframes(b"\x00\x00" * 10)
+
+        svc = _svc(piper_voice=str(model))
+        monkeypatch.setattr(svc, "_load_voice", lambda: _FakeVoice())
+        monkeypatch.setattr(pl.shutil, "which", lambda p: "/usr/bin/afplay")
+        return svc, pl
+
+    def test_stop_speaking_bumps_generation(self):
+        svc = _svc()
+        g0 = svc._speak_gen
+        svc.stop_speaking()
+        assert svc._speak_gen == g0 + 1
+
+    def test_stale_reply_abandons_remaining_chunks(self, monkeypatch, tmp_path):
+        # A reply is mid-loop (played chunk 0, about to play chunk 1) when a
+        # newer speak() bumps the generation. The stale reply must NOT play
+        # chunk 1 — that's the overlap that produced two voices at once.
+        svc, pl = self._wire_multichunk(monkeypatch, tmp_path)
+        played = []
+
+        class _Proc:
+            def __init__(self, argv):
+                self.argv = argv
+                played.append(argv[-1])
+
+            def wait(self):
+                return 0
+
+            def poll(self):
+                return 0
+
+            def terminate(self):
+                pass
+
+        monkeypatch.setattr(pl.subprocess, "Popen", lambda argv: _Proc(argv))
+
+        # Two clear sentences => two chunks.
+        my_gen = svc._speak_gen
+        text = self.TWO_CHUNK_TEXT
+        assert len(svc._split_sentences(text)) == 2
+
+        # afplay's wait() on chunk 0 bumps the generation, emulating a newer
+        # reply barging in while chunk 0 is still playing.
+        bumped = {"done": False}
+
+        class _ProcBumpAfterFirst:
+            def __init__(self, argv):
+                self.argv = argv
+                played.append(argv[-1])
+
+            def wait(self):
+                if not bumped["done"]:
+                    bumped["done"] = True
+                    svc.stop_speaking()  # newer reply barges in
+                return 0
+
+            def poll(self):
+                return 0
+
+            def terminate(self):
+                pass
+
+        monkeypatch.setattr(
+            pl.subprocess, "Popen", lambda argv: _ProcBumpAfterFirst(argv))
+        svc._synthesize(text, gen=my_gen)
+        # Exactly ONE chunk played (chunk 0); chunk 1 was abandoned because the
+        # generation moved on mid-loop.
+        assert len(played) == 1
+
+    def test_current_reply_plays_all_chunks(self, monkeypatch, tmp_path):
+        # Sanity: with no interruption, every chunk of the current generation
+        # plays through.
+        svc, pl = self._wire_multichunk(monkeypatch, tmp_path)
+        played = []
+
+        class _Proc:
+            def __init__(self, argv):
+                played.append(argv[-1])
+
+            def wait(self):
+                return 0
+
+            def poll(self):
+                return 0
+
+            def terminate(self):
+                pass
+
+        monkeypatch.setattr(pl.subprocess, "Popen", lambda argv: _Proc(argv))
+        text = self.TWO_CHUNK_TEXT
+        assert len(svc._split_sentences(text)) == 2
+        svc._synthesize(text, gen=svc._speak_gen)
+        assert len(played) == 2  # both chunks reached the speaker
+
+    def test_none_gen_skips_the_check(self, monkeypatch, tmp_path):
+        # Direct callers (gen=None) keep the old behaviour: no staleness gate.
+        svc, pl = self._wire_multichunk(monkeypatch, tmp_path)
+        played = []
+
+        class _Proc:
+            def __init__(self, argv):
+                played.append(argv[-1])
+
+            def wait(self):
+                return 0
+
+            def poll(self):
+                return 0
+
+            def terminate(self):
+                pass
+
+        monkeypatch.setattr(pl.subprocess, "Popen", lambda argv: _Proc(argv))
+        svc.stop_speaking()  # bump the gen; gen=None must ignore it
+        text = self.TWO_CHUNK_TEXT
+        assert len(svc._split_sentences(text)) == 2
+        svc._synthesize(text, gen=None)
+        assert len(played) == 2
