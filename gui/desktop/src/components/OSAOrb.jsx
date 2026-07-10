@@ -1,41 +1,36 @@
 /**
- * OSAOrb — Phase 14c JARVIS-style OSA reactor orb.
+ * OSAOrb — the OSA presence orb (living-orb redesign, 2026-07-09).
  *
- * A presentational reactor. Originally pinned absolutely to the upper-right of
- * every non-Agent view; since the OSA right-rail change (14e follow-on,
- * 2026-07-07) it renders in normal static flow, centered by its container —
- * its one mount point is the rail (components/OSARail.jsx), shown on EVERY
- * view including Agent. Ported faithfully from the approved mockup
- * (gui/mockups/osa_reactor.html — signed off by Tony 2026-07-07): concentric
- * rotating rings, amber "thinking" sweep, "OSA" core, emanating "speaking"
- * waves, and a green "listening" equalizer (voice state — dormant until 14d).
+ * Presentational orb mounted in the OSA right rail (components/OSARail.jsx),
+ * shown on every view. Redesigned from the flat SVG "reactor" to a luminous,
+ * breathing sphere from Tony's approved reference (uploads/jarvis-orb.html,
+ * signed off 2026-07-09): a white-hot core with layered glow, expanding ripple
+ * rings, orbiting satellites, and a voice waveform — all colored by state.
  *
- * The animations are driven entirely by `data-state` on the root, matching the
- * mockup's four states. Colors follow the frontend conventions: theme tokens
- * for text/neutral surfaces, with the cyan/amber/green *state hues* kept as
- * clearly-named CSS custom properties so they're easy to retune.
+ * State drives everything via `data-state` on the root button; the state hue is
+ * one CSS custom property (`--orb`, an "r,g,b" triple) so retuning a color is a
+ * one-line change. The wiring is UNCHANGED from the reactor version: the same
+ * /api/osa/state (15s) + /api/osa/voice/state (1.5s) polls, the same
+ * alert > voice > context precedence, caption, brain-status line, and onState.
  *
  * Props:
  *   state    — "idle" | "thinking" | "speaking" | "listening" | "alert" (default "idle")
  *   lastLine — OSA's most recent line (empty → "Standing by.")
  *   status   — optional short sub-caption (e.g. "Local · Ollama up")
  *   onOpen   — click handler (used to jump to the Agent view)
+ *   onState  — optional observer of each /api/osa/state payload (rail piggyback)
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { get } from "../api";
 
-// Component-scoped stylesheet. Inline styles can't express @keyframes or
-// data-state selectors (conventions rule 3), so we inject a scoped <style>
-// block once, with orb-* prefixed classes to avoid collisions.
+// Component-scoped stylesheet. @keyframes + data-state selectors can't be
+// inline styles (conventions rule 3), so we inject a scoped <style> once, with
+// orb-* prefixed classes. The state hue is `--orb` (an "r,g,b" triple) so every
+// glow/stroke derives from rgba(var(--orb), a); data-state just swaps the triple.
 const styles = `
 .osa-orb {
-  --osa-idle: #35d0e0;   /* cyan — calm presence */
-  --osa-think: #ffb454;  /* amber — working */
-  --osa-listen: #49e08b; /* green — voice (14d) */
-  --osa-alert: #ff6d6d;   /* red — needs you (pending approval) */
-  /* Static flow: the orb sits inside the OSA rail and is centered as a flex
-     column (reactor stage on top, caption below) — no absolute pinning. */
+  --orb: 56,189,248;   /* idle — cyan */
   position: relative;
   display: flex;
   flex-direction: column;
@@ -47,91 +42,180 @@ const styles = `
   border: none;
   padding: 0;
 }
-/* Fixed 236px stage (doubled 2026-07-08, Tony's request) so the glow's inset
-   tracks the reactor, not the whole button (which also contains the caption). */
+.osa-orb[data-state="listening"] { --orb: 52,211,153; }  /* emerald */
+.osa-orb[data-state="thinking"]  { --orb: 251,191,36; }  /* amber */
+.osa-orb[data-state="speaking"]  { --orb: 167,139,250; } /* violet */
+.osa-orb[data-state="alert"]     { --orb: 248,113,113; } /* red */
+
+/* Stage: a fixed square that centers every layer in one grid cell so the
+   core, rings, orbits and monogram all stack concentrically. */
 .osa-orb .orb-stage {
   position: relative;
-  display: block;
-  width: 236px;
-  height: 236px;
+  width: 240px;
+  height: 240px;
+  display: grid;
+  place-items: center;
 }
-.osa-orb .orb-reactor {
-  width: 236px;
-  height: 236px;
-  display: block;
-  position: relative;
-  z-index: 2;
-  overflow: visible;
-}
-/* Backdrop halo (2026-07-08, Tony: "background colored and pulsing in action
-   states") — a wide tinted radial BEHIND the reactor, visible only in the
-   action states, each in its own hue, pulsing. */
-.osa-orb .orb-backdrop {
-  position: absolute;
-  inset: -26px;
+/* CRITICAL: every layer shares grid cell 1/1 so core, rings, orbits and the
+   monogram stack CONCENTRICALLY. Without this, grid auto-placement puts each
+   child in its own implicit ROW and the orb's pieces scatter down the rail
+   (the 2026-07-10 "exploded orb" bug — jsdom tests can't catch layout). */
+.osa-orb .orb-stage > * { grid-area: 1 / 1; }
+
+/* Core — the luminous sphere: white hot-spot → state hue → transparent, with
+   three layered outer glows + an inner sheen. Breathes at rest. */
+.osa-orb .orb-core {
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
-  z-index: 0;
-  opacity: 0;
+  background: radial-gradient(circle at 35% 32%,
+    rgba(255,255,255,0.95) 0%,
+    rgba(var(--orb),0.95) 22%,
+    rgba(var(--orb),0.65) 55%,
+    rgba(var(--orb),0.15) 100%);
+  box-shadow:
+    0 0 34px rgba(var(--orb),0.85),
+    0 0 66px rgba(var(--orb),0.45),
+    0 0 120px rgba(var(--orb),0.25),
+    inset 0 0 32px rgba(255,255,255,0.25);
+  animation: orbBreathe 3.2s ease-in-out infinite;
+  transition: box-shadow 0.6s ease;
+  z-index: 3;
+}
+.osa-orb[data-state="thinking"] .orb-core { animation-duration: 0.9s; }
+.osa-orb[data-state="alert"]    .orb-core { animation-duration: 0.55s; }
+.osa-orb[data-state="speaking"] .orb-core { animation: orbTalk 0.45s ease-in-out infinite; }
+@keyframes orbBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+@keyframes orbTalk { 0%,100% { transform: scale(1); } 30% { transform: scale(1.13); } 65% { transform: scale(0.97); } }
+
+/* Faint "OSA" monogram floating in the core's glow. */
+.osa-orb .orb-mark {
+  z-index: 4;
+  font: 700 14px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 4px;
+  text-indent: 4px;
+  color: rgba(255,255,255,0.9);
+  mix-blend-mode: screen;
   pointer-events: none;
-  transition: opacity .4s;
-  transform-origin: center;
 }
-.osa-orb[data-state="thinking"] .orb-backdrop {
-  background: radial-gradient(circle, var(--osa-think) 0%, transparent 62%);
-  animation: orbBackPulse 1.15s ease-in-out infinite;
-}
-.osa-orb[data-state="speaking"] .orb-backdrop {
-  background: radial-gradient(circle, #4ff0ff 0%, transparent 62%);
-  animation: orbBackPulse 1s ease-in-out infinite;
-}
-.osa-orb[data-state="listening"] .orb-backdrop {
-  background: radial-gradient(circle, var(--osa-listen) 0%, transparent 62%);
-  animation: orbBackPulse 1.3s ease-in-out infinite;
-}
-.osa-orb[data-state="alert"] .orb-backdrop {
-  background: radial-gradient(circle, var(--osa-alert) 0%, transparent 62%);
-  animation: orbBackPulse .7s ease-in-out infinite;
-}
-@keyframes orbBackPulse {
-  0%, 100% { opacity: .14; transform: scale(.96); }
-  50% { opacity: .38; transform: scale(1.05); }
-}
-.osa-orb .orb-glow {
-  position: absolute;
-  inset: 16px;
+
+/* Expanding ripple rings. */
+.osa-orb .orb-ring {
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
+  border: 1.5px solid rgba(var(--orb),0.5);
+  animation: orbRipple 3.4s linear infinite;
   z-index: 1;
-  background: radial-gradient(circle, var(--osa-idle) 0%, transparent 68%);
-  opacity: .22;
-  filter: blur(6px);
-  transition: opacity .4s, background .4s;
 }
-.osa-orb .orb-stroke { fill: none; stroke: var(--osa-idle); stroke-width: 2; opacity: .85; }
-.osa-orb .orb-dash-a { stroke-dasharray: 6 10; opacity: .7; }
-.osa-orb .orb-dash-b { stroke-dasharray: 34 20; opacity: .6; }
-.osa-orb .orb-thin { stroke-width: 1.3; opacity: .55; }
-.osa-orb .orb-core { fill: rgba(10, 26, 34, .55); stroke: var(--osa-idle); stroke-width: 1.4; }
-.osa-orb .orb-label {
-  fill: #eaf6f9;
-  font-size: 26px;
+.osa-orb .orb-ring:nth-of-type(2) { animation-delay: 1.13s; }
+.osa-orb .orb-ring:nth-of-type(3) { animation-delay: 2.26s; }
+.osa-orb[data-state="thinking"]  .orb-ring { animation-duration: 1.3s; }
+.osa-orb[data-state="listening"] .orb-ring { animation-duration: 2.1s; }
+@keyframes orbRipple { from { transform: scale(1); opacity: 0.85; } to { transform: scale(1.75); opacity: 0; } }
+
+/* Orbiting satellites — a dashed ring + a dotted counter-rotating ring, each
+   carrying a glowing dot. */
+.osa-orb .orb-orbit {
+  width: 185px;
+  height: 185px;
+  border-radius: 50%;
+  border: 1px dashed rgba(var(--orb),0.28);
+  animation: orbSpin 12s linear infinite;
+  z-index: 2;
+}
+.osa-orb .orb-orbit::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--orb));
+  box-shadow: 0 0 14px rgba(var(--orb),0.95);
+}
+.osa-orb .orb-orbit.rev {
+  width: 224px;
+  height: 224px;
+  border-style: dotted;
+  animation: orbSpin 19s linear infinite reverse;
+}
+.osa-orb[data-state="thinking"] .orb-orbit     { animation-duration: 3s; }
+.osa-orb[data-state="thinking"] .orb-orbit.rev { animation-duration: 4.5s; }
+@keyframes orbSpin { to { transform: rotate(360deg); } }
+
+/* Voice waveform — only while listening or speaking. */
+.osa-orb .orb-wave {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 4px;
+  z-index: 4;
+}
+.osa-orb[data-state="listening"] .orb-wave,
+.osa-orb[data-state="speaking"]  .orb-wave { display: flex; }
+.osa-orb .orb-wave i {
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: rgba(var(--orb),0.9);
+  animation: orbBar 0.8s ease-in-out infinite;
+}
+.osa-orb .orb-wave i:nth-child(2) { animation-delay: .1s; }
+.osa-orb .orb-wave i:nth-child(3) { animation-delay: .2s; }
+.osa-orb .orb-wave i:nth-child(4) { animation-delay: .3s; }
+.osa-orb .orb-wave i:nth-child(5) { animation-delay: .4s; }
+@keyframes orbBar { 0%,100% { transform: scaleY(.4); } 50% { transform: scaleY(1.7); } }
+
+/* State word — a small uppercase readout in the current state hue. */
+.osa-orb .orb-word {
+  display: block;
+  margin-top: 14px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 2px;
-  text-anchor: middle;
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: rgb(var(--orb));
+  transition: color .4s;
 }
-.osa-orb .orb-sweep { opacity: 0; transform-origin: 100px 100px; }
-.osa-orb .orb-sweep-arc {
-  fill: none;
-  stroke: var(--osa-think);
-  stroke-width: 3;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 4px var(--osa-think));
+/* Armed affordance (2026-07-09, OSAORB_IDEAS #3) — wake listening is ON but
+   OSA is merely waiting. Deliberately STATIC (no animation) so it can never
+   be confused with the animated listening state: the state stays honest
+   (idle), this chip just says "it can hear you". Emerald = the voice hue. */
+.osa-orb .orb-armed {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: rgba(52,211,153,0.85);
 }
-.osa-orb .orb-waves .orb-wave { fill: none; stroke: #4ff0ff; stroke-width: 2; opacity: 0; }
-.osa-orb .orb-eq rect { fill: var(--osa-listen); opacity: 0; transform-origin: center; }
+.osa-orb .orb-armed::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(52,211,153);
+  box-shadow: 0 0 6px rgba(52,211,153,0.7);
+}
+/* A faint steady outer ring on the stage while armed — static, sub-ripple. */
+.osa-orb[data-wake="on"] .orb-stage::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1px solid rgba(52,211,153,0.22);
+  pointer-events: none;
+}
 .osa-orb .orb-cap {
   display: block;
-  margin-top: 8px;
+  margin-top: 6px;
   width: 100%;
   max-width: 248px;
   text-align: center;
@@ -141,70 +225,11 @@ const styles = `
 }
 .osa-orb .orb-cap .orb-status { display: block; margin-top: 3px; color: var(--text-dim); opacity: .8; }
 
-.osa-orb .orb-ring { transform-origin: 100px 100px; }
-.osa-orb .orb-ring-out { animation: orbSpin 26s linear infinite; }
-.osa-orb .orb-ring-mid { animation: orbSpin 18s linear infinite reverse; }
-.osa-orb .orb-ring-in { animation: orbSpin 12s linear infinite; }
-@keyframes orbSpin { to { transform: rotate(360deg); } }
-
-.osa-orb[data-state="idle"] .orb-glow { opacity: .16; }
-
-.osa-orb[data-state="thinking"] .orb-ring-out { animation-duration: 7s; }
-.osa-orb[data-state="thinking"] .orb-ring-mid { animation-duration: 5s; }
-.osa-orb[data-state="thinking"] .orb-ring-in { animation-duration: 3.5s; }
-.osa-orb[data-state="thinking"] .orb-glow { opacity: .3; background: radial-gradient(circle, var(--osa-think) 0%, transparent 68%); }
-.osa-orb[data-state="thinking"] .orb-sweep { opacity: 1; animation: orbSpin 1.15s linear infinite; }
-.osa-orb[data-state="thinking"] .orb-stroke { stroke: #ffcf8f; }
-
-.osa-orb[data-state="speaking"] .orb-glow { animation: orbPulseGlow 1s ease-in-out infinite; }
-.osa-orb[data-state="speaking"] .orb-core { animation: orbPulseCore 1s ease-in-out infinite; }
-.osa-orb[data-state="speaking"] .orb-label { animation: orbPulseCore 1s ease-in-out infinite; }
-.osa-orb[data-state="speaking"] .orb-wave { animation: orbEmanate 1.6s ease-out infinite; }
-.osa-orb[data-state="speaking"] .orb-wave.orb-w2 { animation-delay: .8s; }
-@keyframes orbPulseGlow { 0%, 100% { opacity: .2; } 50% { opacity: .5; } }
-@keyframes orbPulseCore { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-.osa-orb .orb-core, .osa-orb .orb-label { transform-origin: 100px 100px; }
-@keyframes orbEmanate { 0% { opacity: .55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); transform-origin: 100px 100px; } }
-
-.osa-orb[data-state="listening"] .orb-glow { opacity: .28; background: radial-gradient(circle, var(--osa-listen) 0%, transparent 68%); }
-.osa-orb[data-state="listening"] .orb-stroke { stroke: var(--osa-listen); }
-.osa-orb[data-state="listening"] .orb-core { stroke: var(--osa-listen); }
-.osa-orb[data-state="listening"] .orb-ring-out { animation-duration: 40s; }
-.osa-orb[data-state="listening"] .orb-ring-mid { animation-duration: 30s; }
-.osa-orb[data-state="listening"] .orb-eq rect { opacity: .95; animation: orbBounce 1s ease-in-out infinite; }
-.osa-orb[data-state="listening"] .orb-eq rect:nth-child(1) { animation-delay: 0s; }
-.osa-orb[data-state="listening"] .orb-eq rect:nth-child(2) { animation-delay: .15s; }
-.osa-orb[data-state="listening"] .orb-eq rect:nth-child(3) { animation-delay: .3s; }
-.osa-orb[data-state="listening"] .orb-eq rect:nth-child(4) { animation-delay: .15s; }
-.osa-orb[data-state="listening"] .orb-eq rect:nth-child(5) { animation-delay: 0s; }
-.osa-orb[data-state="listening"] .orb-label { opacity: .25; }
-@keyframes orbBounce { 0%, 100% { transform: scaleY(.5); opacity: .6; } 50% { transform: scaleY(2.4); opacity: 1; } }
-
-/* State word (14f) — the orb names its state: a small uppercase readout in
-   the current state hue, between the reactor and the caption. */
-.osa-orb .orb-word {
-  display: block;
-  margin-top: 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--osa-idle);
-  transition: color .4s;
-}
-.osa-orb[data-state="thinking"] .orb-word { color: var(--osa-think); }
-.osa-orb[data-state="listening"] .orb-word { color: var(--osa-listen); }
-.osa-orb[data-state="alert"] .orb-word { color: var(--osa-alert); }
-/* Alert (14f) — a pending human-in-the-loop approval needs you: red hue,
-   urgent pulse on glow + core; rings quicken without thinking's sweep. */
-.osa-orb[data-state="alert"] .orb-glow { opacity: .34; background: radial-gradient(circle, var(--osa-alert) 0%, transparent 68%); animation: orbPulseGlow .7s ease-in-out infinite; }
-.osa-orb[data-state="alert"] .orb-stroke { stroke: var(--osa-alert); }
-.osa-orb[data-state="alert"] .orb-core { stroke: var(--osa-alert); animation: orbPulseCore .7s ease-in-out infinite; }
-.osa-orb[data-state="alert"] .orb-ring-out { animation-duration: 10s; }
-.osa-orb[data-state="alert"] .orb-ring-mid { animation-duration: 7s; }
-.osa-orb[data-state="alert"] .orb-ring-in { animation-duration: 4.5s; }
 @media (prefers-reduced-motion: reduce) {
-  .osa-orb *, .osa-orb [class*="orb-"] { animation: none !important; }
+  .osa-orb .orb-core,
+  .osa-orb .orb-ring,
+  .osa-orb .orb-orbit,
+  .osa-orb .orb-wave i { animation: none !important; }
 }
 `;
 
@@ -260,7 +285,12 @@ export default function OSAOrb({
   // of /api/osa/voice/state maps the pipeline's action states onto the orb
   // (listening -> listening, transcribing -> thinking, speaking -> speaking).
   // Stops polling entirely when voice is disabled or deps are missing.
+  // Armed affordance (2026-07-09, OSAORB_IDEAS #3): the same payload carries
+  // wake_active — captured here so an armed-but-idle orb shows a static
+  // "armed" chip WITHOUT lying about its state (armed reads idle; see
+  // skills/osa-orb-state).
   const [voiceState, setVoiceState] = useState(null);
+  const [wakeActive, setWakeActive] = useState(false);
   useEffect(() => {
     let alive = true;
     let timer = null;
@@ -270,6 +300,7 @@ export default function OSAOrb({
           if (!alive) return;
           if (!v?.enabled || !v?.deps_ok) {
             setVoiceState(null);
+            setWakeActive(false);
             return; // voice off — no further polling this mount
           }
           const map = {
@@ -278,6 +309,7 @@ export default function OSAOrb({
             speaking: "speaking",
           };
           setVoiceState(map[v.state] || null);
+          setWakeActive(Boolean(v.wake_active));
           timer = setTimeout(poll, 1500);
         })
         .catch(() => {
@@ -295,8 +327,8 @@ export default function OSAOrb({
   const subStatus = status || fetchedStatus;
 
   const label = useMemo(
-    () => `OSA presence — ${dataState}. Open OSA chat.`,
-    [dataState]
+    () => `OSA presence — ${dataState}${wakeActive ? ", wake armed" : ""}. Open OSA chat.`,
+    [dataState, wakeActive]
   );
 
   return (
@@ -304,35 +336,30 @@ export default function OSAOrb({
       type="button"
       className="osa-orb"
       data-state={dataState}
+      data-wake={wakeActive ? "on" : undefined}
       data-testid="osa-orb"
       onClick={onOpen}
       title="Open OSA chat"
       aria-label={label}
     >
       <style>{styles}</style>
-      <span className="orb-stage">
-      <span className="orb-backdrop" aria-hidden="true" />
-      <span className="orb-glow" aria-hidden="true" />
-      <svg viewBox="0 0 200 200" className="orb-reactor" role="img" aria-label="OSA reactor">
-        <g className="orb-ring orb-ring-out"><circle cx="100" cy="100" r="92" className="orb-stroke orb-dash-a" /></g>
-        <g className="orb-ring orb-ring-mid"><circle cx="100" cy="100" r="74" className="orb-stroke orb-dash-b" /></g>
-        <g className="orb-ring orb-ring-in"><circle cx="100" cy="100" r="58" className="orb-stroke orb-thin" /></g>
-        <g className="orb-sweep"><path d="M100 22 A78 78 0 0 1 178 100" className="orb-sweep-arc" /></g>
-        <circle cx="100" cy="100" r="42" className="orb-core" />
-        <g className="orb-waves">
-          <circle cx="100" cy="100" r="46" className="orb-wave" />
-          <circle cx="100" cy="100" r="46" className="orb-wave orb-w2" />
-        </g>
-        <g className="orb-eq">
-          <rect x="72" y="96" width="5" height="8" rx="2" /><rect x="84" y="96" width="5" height="8" rx="2" />
-          <rect x="96" y="96" width="5" height="8" rx="2" /><rect x="108" y="96" width="5" height="8" rx="2" />
-          <rect x="120" y="96" width="5" height="8" rx="2" />
-        </g>
-        <text x="100" y="107" className="orb-label">OSA</text>
-      </svg>
+      <span className="orb-stage" role="img" aria-label="OSA reactor">
+        <span className="orb-ring" aria-hidden="true" />
+        <span className="orb-ring" aria-hidden="true" />
+        <span className="orb-ring" aria-hidden="true" />
+        <span className="orb-orbit" aria-hidden="true" />
+        <span className="orb-orbit rev" aria-hidden="true" />
+        <span className="orb-core" aria-hidden="true" />
+        <span className="orb-mark">OSA</span>
+        <span className="orb-wave" aria-hidden="true">
+          <i /><i /><i /><i /><i />
+        </span>
       </span>
       <span className="orb-cap">
         <span className="orb-word" data-testid="osa-orb-word">{dataState}</span>
+        {wakeActive && (
+          <span className="orb-armed" data-testid="osa-orb-armed">armed</span>
+        )}
         {caption}
         {subStatus && <span className="orb-status">{subStatus}</span>}
       </span>

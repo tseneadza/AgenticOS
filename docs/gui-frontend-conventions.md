@@ -109,6 +109,24 @@ logic (e.g. a regex) in the sandbox, and (c) handing Tony the exact build/verify
 command. Frontend JS/CSS-only changes hot-reload; sidecar changes need a
 restart.
 
+## 9. Layered/concentric visuals — siblings don't overlap by default
+
+Orbs, spinners, gauges, badges: siblings never stack on top of each other in
+normal flow, flex, OR grid. `display: grid; place-items: center` alone puts
+each child in its **own implicit row** — the layers scatter vertically (the
+2026-07-10 "exploded OSAOrb" bug: rings at the rail top, core at the bottom,
+all 43 tests green). Opt in explicitly:
+
+```css
+.stage > * { grid-area: 1 / 1; }   /* grid stack — never omit */
+```
+
+or `position: absolute` centering (beware: transform-centering fights
+transform keyframes). **jsdom computes no layout, so vitest can NEVER catch
+this** — a layered-visual change is unverified until seen on-device
+(`npm run tauri dev`; a built bundle won't show file edits). Full patterns +
+mockup-porting checklist: `skills/css-layered-visuals`.
+
 ---
 
 ## Case study — WebNews view polish (2026-06-23)

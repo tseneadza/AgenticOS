@@ -27,6 +27,18 @@ describe("OSAOrb", () => {
     expect(screen.getByRole("img", { name: /OSA reactor/i })).toBeInTheDocument();
   });
 
+  it("stacks the stage layers in one grid cell (exploded-orb tripwire)", () => {
+    // jsdom computes NO layout, so this can't prove the render — it only
+    // guards THE LINE. Without `grid-area: 1 / 1` on the stage children,
+    // grid auto-placement scatters the rings/core/orbits down the rail
+    // (2026-07-10 bug). See skills/css-layered-visuals +
+    // docs/gui-frontend-conventions.md rule 9.
+    stubFetch();
+    const { container } = render(<OSAOrb />);
+    const css = container.querySelector("style")?.textContent || "";
+    expect(css).toMatch(/\.orb-stage\s*>\s*\*\s*\{\s*grid-area:\s*1\s*\/\s*1/);
+  });
+
   it("defaults to the idle state and the 'Standing by.' caption", () => {
     stubFetch();
     render(<OSAOrb />);
