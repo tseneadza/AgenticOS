@@ -99,6 +99,9 @@ NOT a matching problem.
 ## Quick checklist
 
 - [ ] Read `wake discard:` lines FIRST — deaf, or refusing?
+- [ ] **Audio hardware just changed (headphones/AirPods/new mic)?** → new
+      per-device drift profile; see osa-wake-word-tuning "Drift profiles
+      are PER-MICROPHONE" (2026-07-10 incident)
 - [ ] User's words present → fix matcher/aliases, not audio
 - [ ] Hallucination fragments / media dialog → energy gate (`min_rms`)
 - [ ] Wake loop OFF before any diagnostic capture

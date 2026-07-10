@@ -1,3 +1,16 @@
+## 2026-07-10 — wake aliases for headphone mic + per-device drift rules
+
+- **Wake aliases +4** (`osa_voice/pipeline.py` `_WAKE_ALIASES`): `os`, `usa`,
+  `elsa`, `oh sir` — the drift set the Bluetooth headset mic produces for
+  "Osa" (all seen in live wake discards while Tony wore headphones; the
+  report was "OSA can't hear me" but capture was fine — the matcher refused).
+- **Skill lesson encoded**: `skills/osa-wake-word-tuning` gains a "Drift
+  profiles are PER-MICROPHONE" section (device change silently invalidates
+  alias tuning; min_rms is per-mic too; `input_device` pin as prevention);
+  `skills/osa-voice-in-mic-debugging` checklist cross-references it.
+- Also: exploded-orb fix + `skills/css-layered-visuals` + frontend
+  conventions rule 9 landed earlier today (commits `af0eeb6`, `31c6343`).
+
 ## 2026-07-09 — OSA presence: idle-vs-listening fix + "welcome back" greeting + no-holds-barred Soul + living-orb redesign
 
 - **Living orb redesign** — `gui/desktop/src/components/OSAOrb.jsx` rebuilt from

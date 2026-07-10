@@ -5,10 +5,15 @@ description: |
   AgenticOS voice-IN. Use when the wake word misses the user, false-wakes on
   background audio, when adding wake aliases, adjusting the follow-up
   conversation window, changing speech cadence (length_scale), or auditioning
-  voice changes. Covers the STT-gated architecture (why not openWakeWord),
-  the alias-tuning loop, wake-word position matching, conversation-mode
-  guards (echo, hallucination stoplist), all the constitution.voice knobs,
-  and how to A/B audition cadence without restarting the sidecar.
+  voice changes. ALSO use whenever the user changes audio hardware —
+  headphones/AirPods on or off, a new mic, USB/Bluetooth audio — and voice
+  suddenly "stops hearing": drift profiles are PER-MICROPHONE and a device
+  change silently invalidates the alias tuning (2026-07-10 incident). Covers
+  the STT-gated architecture (why not openWakeWord), the alias-tuning loop,
+  per-device drift profiles + the input_device pin, wake-word position
+  matching, conversation-mode guards (echo, hallucination stoplist), all the
+  constitution.voice knobs, and how to A/B audition cadence without
+  restarting the sidecar.
 compatibility: AgenticOS repo at ~/Codehome/AgenticOS, voice-IN live (Phase 14d)
 ---
 
@@ -36,6 +41,38 @@ get RE-transcribed with the small model for accuracy.
 4. Restart the sidecar (kill ALL pids — see osa-sidecar-lifecycle) and
    re-enable wake (`POST /api/osa/voice/wake {"enabled":true}` — it's
    runtime-only, OFF after every restart BY DESIGN, §9 Q3).
+
+## Drift profiles are PER-MICROPHONE (the headphones trap, 2026-07-10)
+
+**Every input device produces its own whisper drift set.** Aliases tuned
+against one mic do NOT transfer to another: Bluetooth headsets run a
+low-bandwidth telephony codec (HFP) that reshapes the audio whisper sees.
+
+The incident: Tony put on Bluetooth headphones; macOS flipped the default
+input to the headset mic; "Osa" — flawlessly matched for two days on the
+MacBook mic — started arriving as **"O.S.", "Usa.", "Elsa.", "Oh, sir"**.
+Every utterance was heard and discarded; the report was "OSA can't hear
+me." The fix was four new aliases, not audio work.
+
+Rules this encodes:
+
+- **"Went deaf right after an audio-hardware change" → assume a NEW drift
+  profile, not deafness.** Go straight to the discard log (rule #1 in
+  osa-voice-in-mic-debugging); expect the wake word in unfamiliar
+  costumes; extend the aliases (loop above). Tag additions with the device
+  in the code comment so future tuning knows which mic taught us what.
+- **`min_rms` is also per-mic.** 0.02 was calibrated on the MacBook mic at
+  arm's length. A headset boom sits at the mouth (hotter) or a far-field
+  mic sits colder — if the discard log shows NOTHING while the user
+  speaks, recheck the energy gate with the level-calibration workflow
+  before touching devices.
+- **Prevention option — pin the mic:** `voice.input_device: "MacBook"`
+  (name substring) makes capture ignore device switching entirely;
+  headphones become output-only. Bonus: Bluetooth headsets DROP output
+  quality when their own mic is active (HFP), so pinning input to the
+  MacBook keeps OSA's voice hi-fi in the user's ears. Trade-off: walk away
+  from the laptop and OSA hears the room, not the user. This is the
+  user's call — ask, don't assume.
 
 ## Matching rules (2026-07-08, learned live)
 

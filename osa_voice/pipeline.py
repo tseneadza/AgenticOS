@@ -353,6 +353,10 @@ class VoiceService:
         # Live-tuning 2026-07-08 (Tony's session): whisper renderings heard
         # in practice — "Osa" is close to a real word and drifts.
         "osaka", "osas", "olsa", "hosa", "oh sa", "oh za",
+        # Live-tuning 2026-07-10 (Tony on Bluetooth HEADPHONES): the headset
+        # mic's codec shifts whisper's drift — "Osa" arrived as "O.S.",
+        # "Usa.", "Elsa.", and "Oh, sir" (all seen in wake discards).
+        "os", "usa", "elsa", "oh sir",
     )
     #: Whisper's stock hallucinations on noise/music (YouTube-training
     #: artifacts) — never valid follow-up commands (cleaned, lowercased).
