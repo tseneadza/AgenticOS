@@ -14,9 +14,14 @@ repo must follow this cycle:
    steps, and any commands needed to verify.
 3. **Never leave the repo broken** at a checkpoint — finish or revert the
    in-flight edit so the GUI builds and workflows run.
-4. **On resume** (new session after reset), read `docs/CONTINUATION.md`
+4. **ALWAYS COMMIT (and push) at session end** (Tony's standing rule,
+   2026-07-10 — "there is no harm with that"). Do not leave finished work
+   sitting uncommitted for review "next time"; sessions are stateless and
+   uncommitted trees rot. Split into logical commits when the tree mixes
+   sessions, but never end a session with a dirty tree of completed work.
+5. **On resume** (new session after reset), read `docs/CONTINUATION.md`
    first, do the work, then clear or update the note.
-5. Prefer cheap verification (targeted greps, single builds) over broad
+6. Prefer cheap verification (targeted greps, single builds) over broad
    re-exploration to conserve budget.
 
 ## Glossary rule
