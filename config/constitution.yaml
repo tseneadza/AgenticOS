@@ -21,6 +21,8 @@ constitution:
       description: "Stopping a running app"
     - action: model_pull
       description: "Downloading a new local model (multi-GB)"
+    - action: macos.run_command
+      description: "Running a non-allowlisted terminal command on this Mac"
 
   # Hard limits
   limits:
@@ -74,4 +76,32 @@ constitution:
     input_device: "MacBook"         # PIN capture to the built-in mic (2026-07-10: headphone inline mic became default input and delivered fragments/noise — headphones are output-only now)
     push_to_talk_only: true         # voice-IN only; wake word deferred (§9 Q3)
     mute: false
+
+  # Phase 15a — OSA System MCP safety policy (design: PHASE15_OSA_SYSTEM_MCP.md
+  # §4). strict = only allowlisted terminal commands auto-run; everything else
+  # halts to human approval. Denylist patterns ALWAYS deny (both modes). This
+  # list is code review, not a runtime guess — edits here are versioned.
+  # Flip mode to "effect" only after 15e (read/mutate/irreversible classifier).
+  system_mcp:
+    mode: strict                    # strict | effect
+    terminal:
+      allowlist:                    # auto-run (prefix or exact match)
+        - date
+        - uptime
+        - whoami
+        - pwd
+        - ls
+        - df
+        - "git status"
+        - "git log"
+      denylist_patterns:            # ALWAYS deny, regardless of mode/approval
+        - "rm -rf"
+        - "sudo"
+        - "dd "
+        - "mkfs"
+        - "curl | sh"
+        - "| sh"
+        - "> /dev/"
+        - ":(){"
+        - "chmod 777 /"
 

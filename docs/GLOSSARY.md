@@ -160,6 +160,13 @@ coupling. Current agents: `brain2`, `hub`, `briefing`, `governor`, and
 names in `workflows.yaml` to their `ACTIONS` dicts. Adding an action means
 adding a function to that dict — no other wiring.
 
+**Capability (System MCP)** — One guarded, registered system function in
+`tools/system/` (e.g. `macos.run_command`). Registered via the
+`@capability` decorator in `_harness.py`, which applies the Constitution
+guard at registration — so OSA (in-process import) and Claude Desktop/Code
+(stdio MCP) hit the identical governed function. "One guard, both doors."
+Phase 15.
+
 **Checkpoint / Checkpointer** — LangGraph's mechanism for persisting the
 full graph state after every node. AgenticOS uses
 `langgraph-checkpoint-mysql`'s `PyMySQLSaver` against the `AgenticOS`
@@ -167,8 +174,21 @@ schema; tables are `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`,
 `checkpoint_migrations`. Makes HITL interrupts durable across process
 restarts.
 
+**Effect class** — A capability's side-effect severity: `read` /
+`mutate` / `irreversible`. Drives the Phase 15 safety ladder: in `strict`
+mode only auto-marked capabilities and allowlisted terminal commands run
+without approval; in `effect` mode (15e migration) reads auto-run and
+mutates/irreversibles halt to approval. Denylist patterns deny in BOTH
+modes. Config: `constitution.yaml` `system_mcp` block.
+
 **FastAPI** — The Python web framework that hosts the sidecar. Async,
 Pydantic-based, generates OpenAPI automatically at `/openapi.json`.
+
+**Harness (System MCP)** — `tools/system/_harness.py`: the capability
+registry + guard applicator that replaced `hub_mcp.py`'s hand-maintained
+if/elif dispatch. `list_tools` is generated from registered schemas;
+`dispatch` is a registry lookup. Its companion `_policy.py` is the pure
+allow/approve/deny decision function.
 
 **HTTP status codes used deliberately** — `403 approval_required`
 (constitution gate), `409` (state conflict, e.g. model not installed),
@@ -406,6 +426,13 @@ passive-listening to active. Detected locally by openWakeWord.
 ---
 
 ## 7. Unix, macOS, and system ops
+
+**Auto-continue runner** — `scripts/auto_continue.sh` + the
+`com.agenticos.auto-continue` launchd job (2026-07-11): runs Claude Code
+headless (`claude -p`, full-auto per Tony's choice) every 5 hours against
+`docs/CONTINUATION.md` so phase work continues across chat-session limits.
+Lock file prevents overlap; kill switch = `touch data/.auto_continue_off`;
+logs at `~/.agentic-os/auto_continue.log`.
 
 **launchd** — macOS's system-wide daemon manager (analog of systemd). Runs
 Tony's Brain2 vault-index job and other scheduled tasks. Configured via

@@ -1,3 +1,85 @@
+# ⏹ SESSION 2026-07-11 (night) — PHASE 15a SHIPPED ✅ (System MCP spine) + AUTO-CONTINUE RUNNER LIVE
+
+Phase 15 implementation started. Interview-locked with Tony: **inline build**,
+**`shell=True`** for run_command (guard+allowlist as mitigation), and
+**full-auto** unattended continuation runs (`--dangerously-skip-permissions`,
+Tony's explicit choice). Suite: pytest **570** green (+33). Stdio server
+verified end-to-end with a real MCP client.
+
+## What shipped (15a — the spine)
+- **`tools/system/`**: `_harness.py` (decorator registry; guard applied AT
+  REGISTRATION — one guard, both doors; `approved=` kwarg mirrors
+  `Constitution.guard`; test seam `set_constitution`), `_policy.py` (pure
+  strict/effect ladder; word-boundary allowlist — `ls -la` yes, `lsof` no;
+  denylist denies in BOTH modes, never overridable; empty run_command →
+  allow-through to the body's clean error), `macos_mcp.py` (`macos.get_time`,
+  `macos.system_info` via panels, `macos.run_command` subprocess+pane
+  surfaces, output capped 8000 chars).
+- **`tools/osa_system_mcp.py`**: stdio aggregator — `build_tool_list()` +
+  `dispatch()` module-level (testable without the server); **SECURITY:
+  dispatch strips client-supplied `approved`** (self-approval hole found +
+  closed + tested). External gated calls → `needs_approval` error (no MCP
+  escape hatch in 15a; HITL-queue routing = 15b/15e question).
+- **⚠️ FOUND: `hub_mcp.py` `_serve_mcp` is broken** — passes Server into
+  `stdio_server(...)`, not this SDK's signature; never exercised. New server
+  uses the correct pattern. Do NOT copy hub_mcp's server block (skill has
+  the note). Fixing hub_mcp itself: optional backlog.
+- **Constitution**: `DEFAULT_SYSTEM_MCP` + two-level merge in
+  `core/constitution.py`; yaml `system_mcp` block (strict, allowlist:
+  date/uptime/whoami/pwd/ls/df/git status/git log) + `macos.run_command` in
+  approval_required.
+- **OSA wiring**: `OSAToolbox._run_capability` (capability guard →
+  approval_fn two-turn confirm, retry `approved=True`; denies final) + new
+  `get_time` / `run_command` tools; OSA_SYSTEM mapping updated.
+- **Claude Code registration DONE**: `osa-system` user-scope MCP with
+  `PYTHONPATH` pinned (works from any cwd; ✓ Connected verified from /tmp).
+  Claude Desktop config snippet in the skill — NOT yet added there.
+- **Docs same-change**: CHANGELOG entry; roadmap gained retro Phase 14
+  section + Phase 15 table (15a ✅); GLOSSARY +4 entries (Capability, Effect
+  class, Harness, Auto-continue runner), Brain2 mirror MD5-synced
+  (71686469eac1397e8059334fe5f36ced); new skill `skills/osa-system-mcp`.
+- Tests: `gui/sidecar/tests/test_phase15a_system_mcp.py` (33) — policy per
+  mode, guard allow/approve/deny, pane mocked, parity, self-approval strip,
+  OSA bridge.
+
+## AUTO-CONTINUE RUNNER (Tony's ask — LIVE)
+`launchd com.agenticos.auto-continue` runs `scripts/auto_continue.sh` every
+**5h**: Claude Code headless (`claude -p`, full-auto, `--max-turns 100`)
+reads THIS FILE and works one bounded increment, then commits+pushes.
+Guardrails: mkdir lock (no overlap), dirty-tree safety-net commit, and HARD
+LIMITS in the prompt (never flip mode→effect, never touch TCC grants, never
+send real messages/mail, kill-switch itself when no automatable work
+remains). **Controls:** pause `touch data/.auto_continue_off` · logs
+`tail -f ~/.agentic-os/auto_continue.log` · run now
+`launchctl start com.agenticos.auto-continue` · uninstall via
+`scripts/setup-auto-continue.sh` output. First scheduled run: ~5h after
+install (RunAtLoad false).
+
+## ▶ RESUME HERE — 15b (filesystem domain)
+0. Read `skills/osa-system-mcp` FIRST. Then `tools/filesystem_tool.py`.
+1. **15b**: `tools/system/fs_mcp.py` — read_file/list_dir/search (read,
+   auto, scoped to `allowed_roots`), write_file/append (mutate, gated; auto
+   inside `scratch_root`), move/delete (irreversible, gated). Extend the
+   yaml `system_mcp` block with the design §4.2 `fs:` section + add fs.*
+   entries to approval_required. Import fs_mcp in the aggregator. Tests
+   mirror 15a's file (policy scoping + guard + parity).
+2. Open Qs live in design §10: OSA curated subset (15a wired get_time +
+   run_command only — system_info deliberately skipped, redundant with
+   system_health); MCP-side approval routing; effect classifier (15e).
+3. Human-only items for Tony (auto-continue runs will skip these):
+   - Add `osa-system` to **Claude Desktop**'s mcpServers (snippet in skill).
+   - 15c/15d need FDA + Automation grants on-device before they can run live.
+   - Try it: ask OSA "what time is it" and "run git status" (needs a sidecar
+     restart to load the new toolbox: kill ALL gui.sidecar PIDs, nohup
+     relaunch, re-arm wake).
+
+## ⚠️ Carried open items (unchanged this session)
+- Voice pin verify ("Osa, give me a status report" full-sentence test).
+- Orb visual pass on-device (`npm run tauri dev`).
+- Parked: `docs/OSAORB_IDEAS.md`, templated-vs-LLM greeting, voice-IN backlog.
+
+---
+
 # ⏹ SESSION 2026-07-11 — greeting comedy tuned + living orb shipped ✅ · NEXT: START PHASE 15
 
 Follow-on polish session, all committed + pushed (tree clean at b0012a0). The

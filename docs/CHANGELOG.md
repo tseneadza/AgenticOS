@@ -1,3 +1,40 @@
+## 2026-07-11 — Phase 15a SHIPPED: OSA System MCP spine (harness + macOS/terminal + stdio server)
+
+- **`tools/system/` package** (new): `_harness.py` — decorator-driven capability
+  registry that applies the Constitution-backed guard AT REGISTRATION (one
+  guard, both doors: OSA in-process + external MCP clients equally gated);
+  `_policy.py` — pure safety ladder (strict mode: allowlisted terminal commands
+  auto-run, everything else → `ApprovalRequired`; denylist patterns → 
+  `ConstitutionViolation` in BOTH modes, never overridable); `macos_mcp.py` —
+  `macos.get_time`, `macos.system_info` (reuses `panels.system_health`), and
+  `macos.run_command` with both surfaces (`subprocess` headless with captured
+  output + `pane` via the existing `iterm2_tool.py` injector). `shell=True`
+  locked (Tony, 2026-07-11) with guard + allowlist as mitigation.
+- **`tools/osa_system_mcp.py`** (new): ONE stdio MCP server over the registry —
+  `list_tools` generated from schemas, `dispatch` is a registry lookup (no
+  if/elif chain). External clients get NO `approved` escape hatch: `dispatch`
+  strips a client-supplied `approved` arg (self-approval hole closed + tested).
+  End-to-end verified with a real MCP stdio client. **Found:** `hub_mcp.py`'s
+  `_serve_mcp` passes the Server into `stdio_server(...)` — not this SDK's
+  signature; that path was never exercised. New server uses the correct
+  pattern (`stdio_server() as (r, w)` → `server.run(...)`).
+- **`core/constitution.py`**: `DEFAULT_SYSTEM_MCP` + two-level `_merge_system_mcp`
+  (partial YAML blocks keep the default denylist); `Constitution.system_mcp`
+  field. **`config/constitution.yaml`**: `system_mcp` block (mode strict,
+  terminal allowlist/denylist) + `macos.run_command` in `approval_required`.
+- **OSA wiring** (`agents/osa_agent.py`): `_run_capability` bridge (capability
+  guard → `approval_fn` two-turn confirm; denies never overridable) + new
+  `get_time` / `run_command` tools registered and mapped in `OSA_SYSTEM`.
+- **Auto-continue runner** (new, Tony's ask): `scripts/auto_continue.sh` +
+  `scripts/com.agenticos.auto-continue.plist` + `scripts/setup-auto-continue.sh`
+  — launchd runs Claude Code headless every 5h against `docs/CONTINUATION.md`
+  (full-auto per Tony's explicit choice; lock file, kill switch
+  `data/.auto_continue_off`, turn cap, logs at `~/.agentic-os/auto_continue.log`).
+- Tests: `test_phase15a_system_mcp.py` (33) — policy allow/approve/deny per
+  mode, word-boundary allowlist (`ls` ≠ `lsof`), guard paths, pane surface
+  (iTerm2 mocked), registry↔list_tools parity, MCP self-approval strip, OSA
+  approval bridge. Suite: pytest **570** green.
+
 ## 2026-07-10 (later) — voice input pinned to MacBook mic + STEP ZERO lesson
 
 - **`voice.input_device: "MacBook"` pinned** (constitution.yaml): macOS had

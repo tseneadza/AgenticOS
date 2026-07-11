@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.agenticos.auto-continue — unattended Phase-work continuation.
+  Runs scripts/auto_continue.sh every 5 hours (18000s, the Claude usage
+  window). Install via scripts/setup-auto-continue.sh.
+  Kill switch: touch ~/Codehome/AgenticOS/data/.auto_continue_off
+  Change the cadence by editing StartInterval and reloading.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.agenticos.auto-continue</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/tonyseneadza/Codehome/AgenticOS/scripts/auto_continue.sh</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>18000</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/tonyseneadza/Codehome/AgenticOS</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/tonyseneadza/.agentic-os/auto_continue.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tonyseneadza/.agentic-os/auto_continue.launchd.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/tonyseneadza</string>
+  </dict>
+</dict>
+</plist>

@@ -246,4 +246,32 @@ launch system.
 runs on MySQL — `core/memory.py` uses `langgraph-checkpoint-mysql`'s `PyMySQLSaver`,
 the `checkpoint*` tables live in the `agenticos` schema, and `data/state.db` is
 retired (only a stale `data/state.db.bak` remains). This was the last SQLite
-holdout, so no checkpointer phase remains — the roadmap has no defined next phase.
+holdout, so no checkpointer phase remains.
+
+
+## Phase 14 — OSA (voice-driven ambient assistant) 🟩 CORE SHIPPED (14a–14f + presence, 2026-07-07 → 07-11)
+
+JARVIS-analog assistant over the existing machinery. Design:
+`docs/PHASE14_OSA_ASSISTANT.md`. Shipped across July 7–11 sessions: text MVP +
+tools + destructive confirms (14a/14b), reactor orb + right rail (14c), voice
+OUT + IN with wake word and conversation mode (14d), proactive monitoring +
+briefing + HUD presence (14e), orb state words/alert/system drivers (14f),
+WebSocket streaming chat with mid-run interrupt confirms, brain switching v2,
+and the presence/greeting polish. Detail lives in `docs/CHANGELOG.md` — this
+section added retroactively 2026-07-11 (the phase outgrew its roadmap entry).
+
+
+## Phase 15 — OSA System MCP (local machine management) 🟨 IN PROGRESS
+
+Dual-mode MCP giving OSA — and Claude Desktop/Code over stdio — governed
+access to this Mac. Design: `docs/PHASE15_OSA_SYSTEM_MCP.md` (locked
+2026-07-10). One guard, both doors: the Constitution guard is applied at the
+capability layer by the registration decorator.
+
+| Sub-phase | Scope | Status |
+|-----------|-------|--------|
+| 15a | Spine: `_harness.py` registry+guard, `_policy.py` strict ladder, `macos_mcp.py` (get_time / system_info / run_command both surfaces), `osa_system_mcp.py` stdio server, constitution `system_mcp` block, OSA wiring, tests | ✅ 2026-07-11 (33 tests; suite 570 green; stdio end-to-end verified; MCP self-approval hole closed) |
+| 15b | Filesystem: `fs_mcp.py`, `allowed_roots`/`scratch_root`, read auto / write+delete gated | ⏳ |
+| 15c | iMessage: `messages_mcp.py` — chat.db reads (needs FDA) + AppleScript send spike | ⏳ |
+| 15d | Mail: `mail_mcp.py` — transport decision (AppleScript vs IMAP), read/send gated | ⏳ |
+| 15e | Harden: effect-mode migration, classifier, permissions runbook | ⏳ |

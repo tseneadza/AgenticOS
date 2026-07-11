@@ -69,7 +69,9 @@ OSA_SYSTEM = (
     "app_status; 'how's my memory' / 'system health' -> system_health; 'which "
     "apps are up' / 'are my apps healthy' -> apps_health; 'what projects do I "
     "have' / 'list my projects' -> list_projects; 'launch X' / 'start X' -> "
-    "start_app; 'stop X' / 'shut down X' -> stop_app; 'remember that ...' -> "
+    "start_app; 'stop X' / 'shut down X' -> stop_app; 'what time is it' / "
+    "'what's the date' -> get_time; 'run <command>' / any terminal request "
+    "-> run_command; 'remember that ...' -> "
     "remember; 'switch to Sonnet' / 'use your local brain' / 'back to auto' "
     "-> switch_model; 'pull llama3.3' / 'download a model' / 'add a new local "
     "model' -> pull_model. Any full claude-* id (e.g. 'claude-opus-4-8') is "
@@ -456,6 +458,76 @@ class OSAToolbox:
         except Exception as exc:  # noqa: BLE001 — surface to the model, don't crash the turn
             self.event_fn("error", action_type, {"error": str(exc)})
             return f"ERROR running '{action_type}': {exc}"
+
+    def _run_capability(
+        self, cap_name: str, payload: str, call: Callable[..., Any]
+    ) -> str:
+        """Run a Phase-15 GUARDED capability, bridging its guard to approval_fn.
+
+        System-MCP capabilities carry their own capability-layer guard (the
+        harness applied it at registration), so unlike ``_guarded`` we don't
+        pre-check the Constitution — we call, catch the guard's exceptions,
+        and on approval retry with ``approved=True``. Denies (denylist hits)
+        can never be overridden.
+        """
+        self.event_fn("start", cap_name, {"payload": payload})
+        try:
+            try:
+                result = call()
+            except ApprovalRequired as ar:
+                decision = self.approval_fn(cap_name, ar.description)
+                if not _is_yes(decision):
+                    self.event_fn("end", cap_name, {"ok": False, "denied": True})
+                    return (
+                        f"DENIED: '{cap_name}' needs Tony's OK first — "
+                        f"{ar.description}. Tell him what you want to do and "
+                        "ask him to confirm (a plain 'yes' works). Do NOT "
+                        "call this tool again until he answers."
+                    )
+                result = call(approved=True)
+            text = result if isinstance(result, str) else json.dumps(result, default=str)
+            self.event_fn("end", cap_name, {"ok": True})
+            return text
+        except ConstitutionViolation as cv:
+            self.event_fn("end", cap_name, {"ok": False, "blocked": True})
+            return f"BLOCKED: {cv}"
+        except Exception as exc:  # noqa: BLE001 — surface to the model, don't crash
+            self.event_fn("error", cap_name, {"error": str(exc)})
+            return f"ERROR running '{cap_name}': {exc}"
+
+    # ------------------------------------------------- system MCP (15a)
+    def get_time(self) -> str:
+        """Report the current local time and date on this Mac. Read-only.
+
+        Use for 'what time is it', 'what's the date', 'what day is it'.
+        Returns a compact JSON snapshot (local time, timezone, ISO, unix)
+        to summarize aloud — lead with the local time.
+        """
+        from tools.system import macos_mcp
+
+        return self._run_capability("macos.get_time", "", macos_mcp.get_time)
+
+    def run_command(self, command: str) -> str:
+        """Run a terminal command on this Mac. Guarded — safe ones auto-run.
+
+        Use for 'run <command>', 'check disk with df', any explicit terminal
+        request. Allowlisted read-only commands (date, uptime, ls, df, git
+        status, ...) run immediately; anything else needs Tony's OK first
+        (say what you'll run and ask him to confirm). Destructive patterns
+        are blocked outright. Returns JSON with stdout/stderr/returncode —
+        summarize the OUTPUT aloud, don't read it verbatim.
+        """
+        command = (command or "").strip()
+        if not command:
+            return "ERROR: command required."
+
+        from tools.system import macos_mcp
+
+        return self._run_capability(
+            "macos.run_command",
+            command,
+            lambda **kw: macos_mcp.run_command(command, **kw),
+        )
 
     # ------------------------------------------------------------ monitoring
     def system_health(self) -> str:
@@ -879,6 +951,8 @@ def build_tools(toolbox: OSAToolbox) -> list:
         (toolbox.remember, "remember"),
         (toolbox.switch_model, "switch_model"),
         (toolbox.pull_model, "pull_model"),
+        (toolbox.get_time, "get_time"),
+        (toolbox.run_command, "run_command"),
     ]
     return [
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())

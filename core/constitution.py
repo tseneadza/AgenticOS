@@ -65,6 +65,55 @@ DEFAULT_VOICE: dict = {
 }
 
 
+# Phase 15a — defaults for the optional ``system_mcp:`` block (OSA System MCP
+# safety policy). Merged under any values present in the YAML so configs
+# written before 15a keep loading unchanged. ``mode: strict`` is the hard
+# default: only allowlisted terminal commands auto-run; everything else halts
+# to human approval. Denylist patterns deny in BOTH modes.
+DEFAULT_SYSTEM_MCP: dict = {
+    "mode": "strict",              # strict | effect (effect migration = 15e)
+    "terminal": {
+        "allowlist": [              # auto-run in strict mode (prefix or exact)
+            "date",
+            "uptime",
+            "whoami",
+            "pwd",
+            "ls",
+            "df",
+            "git status",
+            "git log",
+        ],
+        "denylist_patterns": [      # ALWAYS deny (both modes)
+            "rm -rf",
+            "sudo",
+            "dd ",
+            "mkfs",
+            "curl | sh",
+            "| sh",
+            "> /dev/",
+            ":(){",
+            "chmod 777 /",
+        ],
+    },
+}
+
+
+def _merge_system_mcp(raw_block: dict | None) -> dict:
+    """Two-level defaults merge for the ``system_mcp`` block.
+
+    A partial block only overrides the keys it names — including inside the
+    nested ``terminal`` dict — so adding one allowlist entry in YAML doesn't
+    silently drop the default denylist.
+    """
+    raw_block = raw_block or {}
+    merged = {**DEFAULT_SYSTEM_MCP, **raw_block}
+    merged["terminal"] = {
+        **DEFAULT_SYSTEM_MCP["terminal"],
+        **(raw_block.get("terminal") or {}),
+    }
+    return merged
+
+
 class ConstitutionViolation(Exception):
     """Raised when a tool call violates a hard constraint. Halts the run."""
 
@@ -105,6 +154,9 @@ class Constitution:
     voice: dict = field(
         default_factory=lambda: dict(DEFAULT_VOICE)
     )
+    system_mcp: dict = field(
+        default_factory=lambda: _merge_system_mcp(None)
+    )
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Constitution":
@@ -139,6 +191,9 @@ class Constitution:
                 **DEFAULT_VOICE,
                 **(raw.get("voice") or {}),
             },
+            # 15a: absent block (pre-15a configs) => pure defaults; a partial
+            # block only overrides the keys it names (two-level merge).
+            system_mcp=_merge_system_mcp(raw.get("system_mcp")),
         )
 
     # ------------------------------------------------------------------
