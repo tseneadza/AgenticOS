@@ -1,3 +1,27 @@
+# ⏹ SESSION 2026-07-11 — greeting comedy tuned + living orb shipped ✅ · NEXT: START PHASE 15
+
+Follow-on polish session, all committed + pushed (tree clean at b0012a0). The
+living-orb redesign shipped, and the presence greeting's HUMOR was tuned live
+with Tony:
+- Late nights are his HABITAT — don't joke about the hour. Jab the company he's
+  keeping instead: "no warm bed?", "struck out tonight?", "insomnia, or did you
+  just miss me?" — cheeky + affectionate, still nodding it's his prime work time.
+- Mornings/before-noon Eastern are the ANOMALY — flatter the rare daylight
+  sighting: "up early, you must've missed me."
+Persona (`config/Soul_OSA.md`), memory (`config/Memory.md`), and templates
+(`gui/sidecar/osa_greeting.py`) all carry the RULE, not just lines, so OSA
+improvises in-register. Greeting tests green. Commits: 558c802 → b0012a0.
+
+## ▶ NEXT SESSION — START PHASE 15 (OSA System MCP)
+Tony is starting Phase 15 IMPLEMENTATION next. The design is locked + committed
+— see the "PHASE 15 DESIGNED" block immediately below for the locked decisions,
+foundation files, and its own RESUME HERE. Work under `/ponytail:ponytail` to
+conserve Fable 5 tokens; read `skills/osa-orb-state` before touching the orb.
+Parked for later: `docs/OSAORB_IDEAS.md` (orb enhancements), the templated-vs-
+LLM greeting question, and the still-open voice-IN items further below.
+
+---
+
 # ⏹ SESSION 2026-07-10 (night) — PHASE 15 DESIGNED: OSA System MCP (local machine mgmt) ✅ doc committed
 
 Design-only session (NO code). Tony asked whether he could build an MCP server
