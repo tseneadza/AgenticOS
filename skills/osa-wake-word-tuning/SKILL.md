@@ -44,6 +44,23 @@ get RE-transcribed with the small model for accuracy.
 
 ## Drift profiles are PER-MICROPHONE (the headphones trap, 2026-07-10)
 
+**STEP ZERO when voice misbehaves after ANY hardware change: check what mic
+is actually live** — `system_profiler SPAudioDataType | grep -B3 "Default
+Input Device: Yes"`. On 2026-07-10 we chased aliases and gate levels for
+two rounds before discovering macOS had silently flipped input to the
+headphones' inline cable mic ("External Microphone") — a dangling capsule
+that produced drift, then chopped sentences, then noise-only fragments.
+One `system_profiler` call at the start would have skipped all of it.
+Symptom ladder of a bad/quiet mic, in worsening order: (1) new wake-word
+drift spellings → (2) sentences chopped into fragments (severed tails show
+as separate discards; OSA replies "you're trailing off") → (3) noise-only
+discards ('You', 'Sigh.', 'Thank you.' — whisper's noise hallucinations).
+Resolution: `voice.input_device: "MacBook"` pin (now ON in constitution).
+
+Also: verify voice-OUT by EAR, not API — `POST /api/osa/voice/say` returns
+`ok:true` on handoff regardless of audibility; pair it with a direct
+`afplay /System/Library/Sounds/Glass.aiff` to isolate sidecar-vs-system.
+
 **Every input device produces its own whisper drift set.** Aliases tuned
 against one mic do NOT transfer to another: Bluetooth headsets run a
 low-bandwidth telephony codec (HFP) that reshapes the audio whisper sees.

@@ -98,6 +98,10 @@ NOT a matching problem.
 
 ## Quick checklist
 
+- [ ] STEP ZERO: `system_profiler SPAudioDataType | grep -B3 "Default Input
+      Device: Yes"` — is the expected mic even live? (2026-07-10: headphone
+      inline mic silently became default; note input_device is now pinned
+      to "MacBook" in constitution, so check the pin matches reality)
 - [ ] Read `wake discard:` lines FIRST — deaf, or refusing?
 - [ ] **Audio hardware just changed (headphones/AirPods/new mic)?** → new
       per-device drift profile; see osa-wake-word-tuning "Drift profiles

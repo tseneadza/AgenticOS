@@ -1,3 +1,48 @@
+# ⏹ SESSION 2026-07-10 (part 2) — HEADPHONE VOICE SAGA: mic pinned to MacBook ⚠️ VERIFY PENDING
+
+Tony put on wired headphones → "OSA can't hear me." Three-act diagnosis:
+1. **Act 1 — matcher refusal**: discards showed OSA heard fine but whisper
+   rendered "Osa" as 'O.S.', 'Usa.', 'Elsa.', 'Oh, sir' → +4 aliases
+   (committed `8d3f989`). Wake turns then flowed.
+2. **Act 2 — chopped sentences**: wake turns arrived as fragments
+   ('Are you able to...' / severed tails as separate discards); lowered
+   min_rms 0.02→0.012 — helped nothing, capture degraded to noise-only
+   discards ('You', 'Sigh.', 'Thank you.').
+3. **Act 3 — root cause**: `system_profiler` revealed macOS had flipped
+   default input to the headphones' INLINE CABLE MIC ("External
+   Microphone"). Fixed by **pinning `voice.input_device: "MacBook"`** in
+   constitution.yaml and restoring min_rms to its calibrated 0.02.
+   Headphones are output-only now. Voice-OUT itself verified working by
+   ear (`/say` test heard).
+
+## Live state / ⚠️ open
+- **UNVERIFIED**: Tony never confirmed the post-pin test ("Osa, give me a
+  status report") — first move next session: one wake turn, check log
+  shows the FULL sentence + reply audible in headphones.
+- Wake is armed on the running sidecar; remember it's OFF after any restart.
+- Skills updated with the lessons (see below); orb fix from part 1 still
+  awaiting Tony's visual pass on a `tauri dev` relaunch.
+
+## Skills/docs updated this session
+- `skills/osa-wake-word-tuning`: PER-MICROPHONE drift section + STEP ZERO
+  (system_profiler default-input check) + symptom ladder + ear-not-API rule.
+- `skills/osa-voice-in-mic-debugging`: step-zero + device-change checklist
+  lines.
+- `skills/css-layered-visuals` (new) + gui-frontend-conventions rule 9 +
+  OSAOrb tripwire test (part 1).
+- CLAUDE.md: standing rule — ALWAYS commit+push at session end.
+- Brain2: session note + `01 - Projects/AgenticOS — TODO.md` (the living
+  unfinished-work list — keep it updated at every checkpoint).
+
+## ▶ RESUME HERE
+0. Verify voice end-to-end on the MacBook-mic pin (full sentence heard +
+   reply audible). If fragments persist, next knob: end_silence_ms 500→800.
+1. Tony's visual pass on the fixed orb (`npm run tauri dev`).
+2. Then the Brain2 TODO list — Tony flagged "other things that may be of
+   more value right now" as the next focus; ask him which item leads.
+
+---
+
 # ⏹ SESSION 2026-07-10 — EXPLODED ORB FIXED ✅ + css-layered-visuals SKILL
 
 Tony's screenshot showed the living-orb redesign (2026-07-09, uncommitted)

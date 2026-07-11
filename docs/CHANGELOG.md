@@ -1,3 +1,18 @@
+## 2026-07-10 (later) — voice input pinned to MacBook mic + STEP ZERO lesson
+
+- **`voice.input_device: "MacBook"` pinned** (constitution.yaml): macOS had
+  silently flipped default input to the headphones' inline cable mic,
+  producing the day's whole symptom ladder — wake-word drift → chopped
+  sentences → noise-only capture. Headphones are output-only now; min_rms
+  restored to its calibrated 0.02.
+- **Skills**: osa-wake-word-tuning gains STEP ZERO (check the live default
+  input via system_profiler before tuning anything), the bad-mic symptom
+  ladder, and the verify-by-ear rule; osa-voice-in-mic-debugging checklist
+  updated to match.
+- Brain2: session note + living `AgenticOS — TODO.md` established in
+  01 - Projects (updated at every checkpoint).
+- ⚠️ End-to-end verification of the pin is pending (next session, step 0).
+
 ## 2026-07-10 — wake aliases for headphone mic + per-device drift rules
 
 - **Wake aliases +4** (`osa_voice/pipeline.py` `_WAKE_ALIASES`): `os`, `usa`,
