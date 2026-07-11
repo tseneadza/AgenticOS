@@ -36,6 +36,33 @@ to the glossary in the *same change* — same rule as `CHANGELOG.md` /
 `roadmap.md`. Both copies (docs + Brain2) must stay in sync; the
 `docs/` copy is authoritative.
 
+## Testing subagent rule (locked with Tony, 2026-07-11)
+
+Repo-versioned subagent definitions live in `.claude/agents/`. The
+standing pattern:
+
+1. **Test authorship is delegated** to the `test-author` subagent for any
+   phase/feature build that needs a test file. The subagent writes tests
+   only — never production code — and reports suspicions instead of
+   coding around them.
+2. **The subagent's green run is NOT verification.** The supervising
+   session must (a) read the test diff, and (b) independently re-run the
+   FULL suite before commit. No exceptions.
+3. **`security-verifier` is MANDATORY** before committing any diff that
+   touches the security spine: `tools/system/_harness.py`,
+   `tools/system/_policy.py`, `core/constitution.py`, the `system_mcp` /
+   `approval_required` blocks of `config/constitution.yaml`, or dispatch
+   in `tools/osa_system_mcp.py`. Available on request for anything else.
+   (Precedent: 15a shipped green with a kwargs-payload bypass; fresh eyes
+   on the diff caught it.)
+4. **Dead subagent = untrusted tree.** If a subagent dies mid-task (spend
+   limit, crash), its partial work must be reviewed or discarded before
+   any other work proceeds — never build on top of it blind. (This has
+   happened twice: brain-switching v2 and the orphaned 15b fs_mcp.py.)
+5. **Spend-limit fallback:** if subagent runs hit the plan limit, drop to
+   the documented inline mode (build + test in the main session) and note
+   it in the CONTINUATION checkpoint.
+
 ## Project conventions
 
 - Phase numbering follows the **renumbered PRD** (`Brain2/01 - Projects/

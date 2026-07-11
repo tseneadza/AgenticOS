@@ -235,6 +235,15 @@ approval. Phase 15b.
 **StateGraph** — LangGraph's typed graph primitive. State is a
 `TypedDict`; nodes are pure functions; edges connect them.
 
+**Subagent (Claude Code)** — A scoped Claude instance a supervising
+session delegates a bounded task to, defined by a markdown file in
+`.claude/agents/` (repo-versioned). AgenticOS defines two: `test-author`
+(writes test files only; its green run is never the verification of
+record) and `security-verifier` (adversarial pre-commit review, MANDATORY
+for security-spine diffs). Rules in `CLAUDE.md` "Testing subagent rule":
+supervisor independently re-runs the suite; a dead subagent leaves an
+UNTRUSTED tree that must be reviewed or discarded.
+
 **TypedDict** — Python typing construct (`typing.TypedDict`) for a dict
 whose keys and value types are known statically. LangGraph state is a
 `TypedDict` with reducer channels (e.g. `outputs`, `tokens_used`).

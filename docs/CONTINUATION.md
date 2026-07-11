@@ -1,3 +1,33 @@
+# ⏹ SESSION 2026-07-11 (day, part 2) — TESTING SUBAGENTS ESTABLISHED ✅
+
+Tony's ask: "start using subagents to do the testing." Tradeoffs discussed
+(runner-only ≈ redundant; authorship = the leverage; verifier = pay for
+independence only where it's not free) → locked: **tier-2 standing pattern
++ targeted tier-3**. Built + committed:
+
+- **`.claude/agents/test-author.md`** — authors test files per phase; test
+  files ONLY; reads glossary/skills/prior-phase tests first; conventions
+  encoded (agenticos_test fixtures, kwargs-regression class mandatory for
+  System MCP domains, tmp_path-only fs, mocked iTerm/mic).
+- **`.claude/agents/security-verifier.md`** — adversarial pre-commit
+  review, MANDATORY for security-spine diffs (_harness/_policy/
+  constitution/system_mcp yaml/dispatch); proves bypasses via /tmp
+  scripts; PASS/FAIL verdict.
+- **`CLAUDE.md` "Testing subagent rule"** — supervisor re-runs the full
+  suite itself (subagent green ≠ verification); dead subagent = untrusted
+  tree; spend-limit → documented inline fallback.
+- GLOSSARY +Subagent, Brain2 mirror synced (MD5 25e56e57...).
+
+**FIRST USE = 15c:** delegate `test_phase15c_messages_mcp.py` to
+test-author; messages/mail work touches dispatch registration but the
+security-verifier trigger is the SPINE files — run it if _harness/_policy
+change, otherwise supervisor review suffices. The auto-continue runner
+inherits these agents (repo-versioned) — its spend guardrails apply.
+
+The 15b RESUME block below is otherwise unchanged.
+
+---
+
 # ⏹ SESSION 2026-07-11 (day) — PHASE 15b SHIPPED ✅ (fs domain) + HARNESS SECURITY FIX
 
 Started from a SURPRISE: partial 15b work (fs_mcp.py + policy/constitution

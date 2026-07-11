@@ -1,3 +1,24 @@
+## 2026-07-11 — Testing subagents established (.claude/agents/ + CLAUDE.md rule)
+
+- **`.claude/agents/test-author.md`** (new): repo-versioned Claude Code
+  subagent that authors pytest/vitest files for phase builds. Test files
+  ONLY (never production code — suspicions get reported, not coded
+  around); loads glossary + relevant skills + the prior phase's test file
+  first; encodes the locked test conventions (agenticos_test fixtures, no
+  SQLite, kwargs-regression class mandatory for System MCP domains,
+  self-approval strip, hermetic seams).
+- **`.claude/agents/security-verifier.md`** (new): adversarial pre-commit
+  reviewer with a proof-it checklist (both doors × both call forms,
+  self-approval routes, deny overridability, scoping escapes, carve-out
+  abuse, config-merge drops, test honesty). MANDATORY for security-spine
+  diffs (_harness/_policy/constitution/dispatch). Never edits code;
+  delivers PASS/FAIL with concrete attacks.
+- **`CLAUDE.md` "Testing subagent rule"** (locked with Tony): delegation
+  standard, supervisor must independently re-run the full suite + read the
+  test diff, dead-subagent = untrusted tree, spend-limit inline fallback.
+- GLOSSARY +1 (Subagent), Brain2 mirror MD5-synced
+  (25e56e57108042a1d8c111a369b93aa2).
+
 ## 2026-07-11 — Phase 15b SHIPPED: filesystem domain + harness kwargs-payload security fix
 
 - **`tools/system/fs_mcp.py`** (new): seven root-scoped capabilities —
