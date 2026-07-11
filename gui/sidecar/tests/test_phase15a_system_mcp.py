@@ -78,26 +78,31 @@ class TestPolicy:
             assert self._run_cmd("sudo rm -rf /", c) == "deny"
             assert self._run_cmd("echo hi > /dev/null", c) == "deny"
 
+    # NOTE (15b): these two originally used fs.* placeholder names with a
+    # /tmp payload. The fs domain now root-scopes (deny outside allowed
+    # roots), so the generic mode-ladder is tested with a not-yet-special
+    # domain (mail.*, lands 15d) instead — the fs behavior has its own
+    # suite in test_phase15b_fs_mcp.py.
     def test_strict_auto_vs_gated(self, strict_constitution):
         auto = _policy.evaluate(
             name="macos.get_time", effect="read", auto=True,
             constitution=strict_constitution,
         )
         gated = _policy.evaluate(
-            name="fs.write_file", effect="mutate", auto=False,
-            payload="/tmp/x", constitution=strict_constitution,
+            name="mail.send", effect="mutate", auto=False,
+            payload="hello", constitution=strict_constitution,
         )
         assert auto.decision == "allow"
         assert gated.decision == "approve"
 
     def test_effect_mode_reads_allow_mutates_approve(self, effect_constitution):
         read = _policy.evaluate(
-            name="fs.read_file", effect="read", auto=False,
-            payload="/tmp/x", constitution=effect_constitution,
+            name="mail.read_inbox", effect="read", auto=False,
+            payload="", constitution=effect_constitution,
         )
         mut = _policy.evaluate(
-            name="fs.write_file", effect="mutate", auto=False,
-            payload="/tmp/x", constitution=effect_constitution,
+            name="mail.send", effect="mutate", auto=False,
+            payload="hello", constitution=effect_constitution,
         )
         assert read.decision == "allow"
         assert mut.decision == "approve"

@@ -22,6 +22,7 @@ Guard semantics (mirrors ``core.constitution.Constitution.guard``):
 from __future__ import annotations
 
 import functools
+import inspect
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
@@ -68,14 +69,21 @@ def set_constitution(constitution: Constitution | None) -> None:
     _constitution_override = constitution
 
 
-def _payload_of(cap_name: str, args: tuple, kwargs: dict) -> str:
+def _payload_of(
+    cap_name: str, args: tuple, kwargs: dict, first_param: str | None = None
+) -> str:
     """Extract the side-effect payload string for policy/audit purposes.
 
-    For ``run_command`` the payload is the command itself (first positional
-    arg or ``command=`` kwarg); other capabilities use their first string
-    argument if any, else empty. Denylist matching runs against this.
+    The payload is the capability's FIRST parameter — ``command`` for
+    run_command, ``path``/``root``/``src`` for the fs domain — whether it
+    arrives positionally or as a keyword. ``first_param`` (captured from the
+    function signature at registration) makes the keyword form visible:
+    without it, ``dispatch(**arguments)`` calls produced an empty payload and
+    the root-scoping/denylist checks silently saw nothing (15b bug, fixed).
     """
-    if "command" in kwargs:
+    if first_param is not None and isinstance(kwargs.get(first_param), str):
+        return kwargs[first_param]
+    if "command" in kwargs:  # legacy fallback, harmless
         return str(kwargs["command"])
     if args and isinstance(args[0], str):
         return args[0]
@@ -90,10 +98,17 @@ def _guard(cap_name: str, effect: Effect, auto: bool, func: Callable) -> Callabl
     human approval (OSA's two-turn confirm, the approval queue) can proceed.
     Denies can never be overridden.
     """
+    # Captured ONCE at registration: the name of the function's first
+    # parameter, so keyword-style calls (the MCP dispatch path calls
+    # ``func(**arguments)``) yield the same payload as positional calls.
+    try:
+        first_param = next(iter(inspect.signature(func).parameters), None)
+    except (TypeError, ValueError):  # exotic callables — fall back gracefully
+        first_param = None
 
     @functools.wraps(func)
     def wrapper(*args: Any, approved: bool = False, **kwargs: Any) -> Any:
-        payload = _payload_of(cap_name, args, kwargs)
+        payload = _payload_of(cap_name, args, kwargs, first_param)
         result = _policy.evaluate(
             name=cap_name,
             effect=effect,

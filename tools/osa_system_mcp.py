@@ -35,6 +35,7 @@ from core.constitution import ApprovalRequired, ConstitutionViolation
 # Importing domain modules self-registers their capabilities (15b–15d domains
 # join this import list as they land).
 from tools.system import macos_mcp  # noqa: F401
+from tools.system import fs_mcp  # noqa: F401  (Phase 15b — filesystem domain)
 from tools.system._harness import REGISTRY
 
 SERVER_NAME = "osa-system-mcp"

@@ -23,6 +23,14 @@ constitution:
       description: "Downloading a new local model (multi-GB)"
     - action: macos.run_command
       description: "Running a non-allowlisted terminal command on this Mac"
+    - action: fs.write_file
+      description: "Writing a file outside the OSA scratch root"
+    - action: fs.append
+      description: "Appending to a file outside the OSA scratch root"
+    - action: fs.move
+      description: "Moving/renaming a file or directory (irreversible)"
+    - action: fs.delete
+      description: "Deleting a file or empty directory (irreversible)"
 
   # Hard limits
   limits:
@@ -104,4 +112,13 @@ constitution:
         - "> /dev/"
         - ":(){"
         - "chmod 777 /"
+    # Phase 15b — filesystem capability scoping (design §4.2 / §5.2).
+    # Paths are symlink-resolved before the root check; outside these roots
+    # is a hard deny (approval cannot override). Writes inside scratch_root
+    # auto-run even in strict mode.
+    fs:
+      allowed_roots:
+        - ~/Codehome
+        - ~/Brain2
+      scratch_root: ~/Codehome/AgenticOS/data/osa_scratch
 

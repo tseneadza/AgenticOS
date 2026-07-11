@@ -1,3 +1,38 @@
+## 2026-07-11 — Phase 15b SHIPPED: filesystem domain + harness kwargs-payload security fix
+
+- **`tools/system/fs_mcp.py`** (new): seven root-scoped capabilities —
+  `fs.read_file` / `fs.list_dir` / `fs.search` (read, auto), `fs.write_file` /
+  `fs.append` (mutate, gated — auto inside `scratch_root`), `fs.move` /
+  `fs.delete` (irreversible, always gated; delete refuses non-empty dirs;
+  move's DESTINATION is re-checked in the body so an approved move cannot
+  land outside the roots). Deliberate deviation from the design's "wraps
+  filesystem_tool.py" line documented in the module docstring (that module is
+  the vault write path with a different allowlist).
+- **`tools/system/_policy.py`**: `resolve_path` (expanduser + symlink
+  resolution — escape-proof by construction) + `under_any_root`; `fs.*`
+  branch — outside `allowed_roots` is a hard DENY approval cannot override in
+  BOTH modes; writes inside `scratch_root` auto-run; everything else falls
+  through to the mode ladder.
+- **SECURITY FIX — `tools/system/_harness.py` kwargs-payload hole:**
+  `_payload_of` only saw positional payloads while `dispatch()` calls
+  capabilities with `func(**arguments)` — every keyword-style call produced
+  an EMPTY payload, so root scoping and the denylist silently saw nothing
+  (e.g. `fs.read_file(path="/etc/passwd")` over MCP would have run
+  unguarded). The guard now captures the function's first parameter name at
+  registration and extracts the payload from kwargs by that name. Regression
+  tests pin both doors.
+- **Config**: `system_mcp.fs` block (allowed_roots: ~/Codehome, ~/Brain2;
+  scratch_root: data/osa_scratch) in `constitution.yaml` + defaults/merge in
+  `core/constitution.py`; four `fs.*` entries in `approval_required`
+  (documentation-of-intent, per the 15a pattern).
+- **Aggregator**: `fs_mcp` imported in `tools/osa_system_mcp.py` — 10 tools
+  now listed; live-verified `/etc/passwd` read over dispatch → blocked.
+- Tests: `gui/sidecar/tests/test_phase15b_fs_mcp.py` (32) — policy scoping
+  incl. symlink escape + effect-mode, kwargs regression class, guarded
+  capabilities both approval paths, dispatch parity + self-approval strip.
+  Two 15a placeholder assertions (pre-fs `fs.*` names with /tmp payloads)
+  updated to a neutral domain. **Suite: pytest 602 green.**
+
 ## 2026-07-11 — Phase 15a SHIPPED: OSA System MCP spine (harness + macOS/terminal + stdio server)
 
 - **`tools/system/` package** (new): `_harness.py` — decorator-driven capability

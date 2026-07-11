@@ -95,6 +95,16 @@ DEFAULT_SYSTEM_MCP: dict = {
             "chmod 777 /",
         ],
     },
+    # Phase 15b — filesystem capability scoping (design §4.2 / §5.2).
+    # Reads/writes are confined to allowed_roots (symlink-resolved); writes
+    # inside scratch_root auto-run even in strict mode.
+    "fs": {
+        "allowed_roots": [
+            "~/Codehome",
+            "~/Brain2",
+        ],
+        "scratch_root": "~/Codehome/AgenticOS/data/osa_scratch",
+    },
 }
 
 
@@ -110,6 +120,10 @@ def _merge_system_mcp(raw_block: dict | None) -> dict:
     merged["terminal"] = {
         **DEFAULT_SYSTEM_MCP["terminal"],
         **(raw_block.get("terminal") or {}),
+    }
+    merged["fs"] = {
+        **DEFAULT_SYSTEM_MCP["fs"],
+        **(raw_block.get("fs") or {}),
     }
     return merged
 

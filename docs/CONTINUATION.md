@@ -1,3 +1,70 @@
+# ⏹ SESSION 2026-07-11 (day) — PHASE 15b SHIPPED ✅ (fs domain) + HARNESS SECURITY FIX
+
+Started from a SURPRISE: partial 15b work (fs_mcp.py + policy/constitution
+diffs, no tests, uncommitted) was found in the tree — the auto-continue
+runner had NOT run (no lock/log/process), origin unclear (likely a Claude
+Code session). Tony chose: review it, then finish from it. Review found the
+work high-quality AND a **critical security hole it exposed in 15a's
+harness**. Suite: pytest **602** green (+32). Committed + pushed.
+
+## 🔒 SECURITY FIX (the review's payoff)
+`_harness._payload_of` only saw positional payloads (`args[0]` /
+`kwargs["command"]`) while `dispatch()` calls `cap.func(**arguments)` — so
+EVERY keyword-style call produced an empty payload and root-scoping +
+denylist saw nothing. `fs.read_file(path="/etc/passwd")` over MCP would
+have run unguarded. **Fix:** the guard captures the function's FIRST
+PARAMETER NAME at registration (`inspect.signature`) and extracts the
+payload from kwargs by that name. Live-verified: /etc/passwd read over
+dispatch → `blocked: true`. Rule encoded in `skills/osa-system-mcp`
+("Payload rule" section): first param MUST be the side-effect payload;
+every new domain needs a kwargs-form regression test.
+
+## What shipped (15b)
+- **`tools/system/fs_mcp.py`**: fs.read_file/list_dir/search (read, auto),
+  fs.write_file/append (mutate, gated; auto inside scratch_root), fs.move/
+  delete (irreversible, gated; delete refuses non-empty dirs; move's DST
+  re-checked in the body — approval can't smuggle data outside roots).
+  Documented deviation: does NOT wrap filesystem_tool.py (that's the vault
+  write path, different allowlist).
+- **`_policy.py`**: `resolve_path` (expanduser+symlink resolve) +
+  `under_any_root`; fs branch — outside allowed_roots = hard DENY both
+  modes; scratch writes allow; else mode ladder.
+- **Config**: `system_mcp.fs` block (roots ~/Codehome + ~/Brain2, scratch
+  data/osa_scratch) in yaml + DEFAULT_SYSTEM_MCP merge; 4 fs.* entries in
+  approval_required (doc-of-intent, 15a pattern).
+- **Aggregator**: fs_mcp imported — 10 tools listed.
+- **Tests**: test_phase15b_fs_mcp.py (32) — policy scoping incl. symlink
+  escape + effect-mode, KWARGS REGRESSION class, both approval paths,
+  dispatch parity + self-approval strip. Two 15a placeholder assertions
+  (pre-fs `fs.*` names w/ /tmp payloads) updated to neutral `mail.*`.
+- **Docs same-change**: CHANGELOG, roadmap 15b ✅, GLOSSARY +2 (Allowed
+  roots, Scratch root) Brain2-mirrored MD5 d1a9641cddf5ffae9f2a758db13cbf55,
+  skill Payload-rule section.
+
+## ▶ RESUME HERE — 15c (iMessage domain)
+0. Read `skills/osa-system-mcp` (note the new Payload rule) FIRST.
+1. **15c**: `tools/system/messages_mcp.py` — chat.db reads (read, needs
+   FDA grant on-device BEFORE it can run live) + AppleScript send SPIKE
+   (design flagged reliability unknown — spike first, don't build on
+   sand). First param = the side-effect payload (recipient/handle for
+   send); kwargs regression test mandatory.
+2. OSA toolbox wiring for fs.* deliberately NOT done (design §10 open Q —
+   curated subset). Decide with Tony whether OSA gets fs caps and which.
+3. Human-only items for Tony (unchanged from 15a):
+   - Add `osa-system` to Claude Desktop mcpServers (snippet in skill).
+   - Grant FDA + Automation (blocks 15c/15d live runs).
+   - Live test: ask OSA "what time is it" / "run git status" (needs
+     sidecar restart: kill ALL gui.sidecar PIDs, nohup relaunch, re-arm wake).
+
+## ⚠️ Carried open items (unchanged)
+- Auto-continue runner armed, has NOT yet produced a run — watch
+  ~/.agentic-os/auto_continue.log for its first cycle.
+- Voice pin verify ("Osa, give me a status report" full-sentence test).
+- Orb visual pass on-device (`npm run tauri dev`).
+- Parked: `docs/OSAORB_IDEAS.md`, templated-vs-LLM greeting, voice-IN backlog.
+
+---
+
 # ⏹ SESSION 2026-07-11 (night) — PHASE 15a SHIPPED ✅ (System MCP spine) + AUTO-CONTINUE RUNNER LIVE
 
 Phase 15 implementation started. Interview-locked with Tony: **inline build**,

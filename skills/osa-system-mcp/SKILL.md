@@ -86,6 +86,26 @@ review: edits are versioned, never guessed at runtime.
 - Test the MCP self-approval strip (`approved: true` in dispatch arguments
   must NOT bypass the gate).
 
+## Payload rule (learned 15b — security-critical)
+
+The guard's policy payload is the capability's **first parameter** —
+captured by name from the function signature at registration, so it is
+extracted whether the call is positional OR keyword (`dispatch` calls
+`func(**arguments)`). Consequences when adding a capability:
+
+- **The first parameter must be the side-effect payload** (the command,
+  the path, the recipient). Never bury it in a later arg — the policy
+  won't see it.
+- Multi-path capabilities must enforce SECONDARY paths in the body with
+  the same resolver (`fs.move`'s destination is the template — raise
+  `ConstitutionViolation` so approval can't smuggle data out).
+- Every new domain's test file needs a kwargs-form regression test
+  (call `cap(param=malicious)` and assert it's gated) — the original 15a
+  harness only saw positional payloads and keyword calls bypassed root
+  scoping entirely.
+- fs scoping: paths symlink-resolve BEFORE the root check; outside
+  `allowed_roots` = hard deny both modes; `scratch_root` writes auto-run.
+
 ## Gotchas (learned 15a)
 
 - **`hub_mcp.py`'s `_serve_mcp` is a broken reference** — it passes the

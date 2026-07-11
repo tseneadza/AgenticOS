@@ -23,6 +23,7 @@ unchanged). Pass a ``Constitution`` explicitly for tests.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from core.constitution import Constitution
 
@@ -43,6 +44,27 @@ def _match_denylist(payload: str, patterns: list[str]) -> str | None:
         if pattern and pattern in payload:
             return pattern
     return None
+
+
+def resolve_path(path: str) -> Path:
+    """Expand ``~`` and resolve symlinks — the canonical form roots are checked
+    against. A symlink inside an allowed root that points outside it resolves
+    outside and is treated as outside (escape-proof by construction)."""
+    return Path(path).expanduser().resolve()
+
+
+def under_any_root(path: str, roots: list[str]) -> bool:
+    """Whether ``path`` (symlink-resolved) sits under any of ``roots``."""
+    if not path:
+        return False
+    p = resolve_path(path)
+    for root in roots:
+        root = (root or "").strip()
+        if not root:
+            continue
+        if p.is_relative_to(resolve_path(root)):
+            return True
+    return False
 
 
 def _match_allowlist(command: str, allowlist: list[str]) -> bool:
@@ -105,7 +127,28 @@ def evaluate(
             return PolicyResult("allow", "command is allowlisted")
         return PolicyResult("approve", "non-allowlisted terminal command")
 
-    # 3. Everything else by mode.
+    # 3. Filesystem capabilities — root-scoped in BOTH modes (payload = the
+    #    primary path). Outside allowed_roots is a hard deny that approval
+    #    cannot override; writes inside scratch_root auto-run. fs.move's
+    #    destination is enforced in the capability body (same resolver).
+    if name.startswith("fs."):
+        fs_cfg = cfg.get("fs", {})
+        if not payload.strip():
+            # Let the capability body return its own clean "path required"
+            # error instead of gating an empty string (run_command precedent).
+            return PolicyResult("allow", "empty path (no-op)")
+        if not under_any_root(payload, fs_cfg.get("allowed_roots", [])):
+            return PolicyResult(
+                "deny", f"path outside allowed filesystem roots: {payload}"
+            )
+        if name in ("fs.write_file", "fs.append") and under_any_root(
+            payload, [fs_cfg.get("scratch_root", "")]
+        ):
+            return PolicyResult("allow", "write inside scratch_root")
+        # fall through: reads are auto=True (allow below); writes/moves/
+        # deletes hit the mode ladder (approve).
+
+    # 4. Everything else by mode.
     if mode == "effect":
         if effect == "read":
             return PolicyResult("allow", "read capability (effect mode)")

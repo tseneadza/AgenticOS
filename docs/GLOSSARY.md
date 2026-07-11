@@ -160,6 +160,12 @@ coupling. Current agents: `brain2`, `hub`, `briefing`, `governor`, and
 names in `workflows.yaml` to their `ACTIONS` dicts. Adding an action means
 adding a function to that dict — no other wiring.
 
+**Allowed roots (System MCP)** — The directory allowlist confining every
+`fs.*` capability (`system_mcp.fs.allowed_roots`; default `~/Codehome` +
+`~/Brain2`). Paths are symlink-resolved before the check, so a link inside
+a root pointing outside resolves outside. Outside the roots is a hard DENY
+that approval cannot override — in both strict and effect modes. Phase 15b.
+
 **Capability (System MCP)** — One guarded, registered system function in
 `tools/system/` (e.g. `macos.run_command`). Registered via the
 `@capability` decorator in `_harness.py`, which applies the Constitution
@@ -219,6 +225,12 @@ apps.
 **Runner** — `gui/sidecar/runner.py`. Executes workflows in worker threads
 on behalf of the GUI, parking `requires_approval` interrupts on the
 Approval Queue (the GUI equivalent of the CLI's `input()` loop).
+
+**Scratch root (System MCP)** — A carve-out inside the allowed roots
+(`system_mcp.fs.scratch_root`, default `data/osa_scratch`) where
+`fs.write_file`/`fs.append` auto-run without approval even in strict mode —
+OSA's free workspace. Writes anywhere else inside the roots still halt to
+approval. Phase 15b.
 
 **StateGraph** — LangGraph's typed graph primitive. State is a
 `TypedDict`; nodes are pure functions; edges connect them.
