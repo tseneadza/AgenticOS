@@ -1,3 +1,77 @@
+# ⏹ SESSION 2026-07-10 (night) — PHASE 15 DESIGNED: OSA System MCP (local machine mgmt) ✅ doc committed
+
+Design-only session (NO code). Tony asked whether he could build an MCP server
+for OSA to manage this Mac (tell the time, run terminal commands). Answer: yes —
+and much of the foundation already exists (`mcp_server.py`, dual-mode
+`tools/hub_mcp.py`, Constitution-gated `tools/iterm2_tool.py`,
+`tools/filesystem_tool.py`, OSA's `OSAToolbox`). Interviewed → locked the design
+→ wrote + committed the design doc. Resolves the MCP-server thread in
+`Brain2/01 - Projects/OSA issues 1.md` (the origin note).
+
+## Locked decisions (interview)
+1. **Consumer = Both, via dual-mode** — one Python fn per capability, imported by
+   OSA in-process AND served over ONE stdio MCP server for Claude Desktop/Code.
+   Local-first (executes on this Mac; only the *decision* to call may be cloud).
+2. **Governance at the capability layer**, not OSA's wrapper — the registration
+   decorator applies the Constitution guard, so OSA and external clients are
+   equally gated. One guard, both doors. Mirrors `iterm2_tool.py`.
+3. **Safety: strict → effect** — start allowlist (safe auto-runs, else HITL
+   approve); migrate to read/mutate/irreversible classification.
+   `system_mcp.mode` config flag.
+4. **Terminal substrate per-command** — `run_command(cmd, surface="pane"|
+   "subprocess")`: pane reuses `iterm2_tool.py` (visible/abortable), subprocess =
+   guarded headless.
+5. **Scope = full suite, sequenced** — 15a macOS+terminal → 15b fs → 15c iMessage
+   → 15d mail → 15e harden + effect-migration.
+
+## What shipped
+- **`docs/PHASE15_OSA_SYSTEM_MCP.md`** (369 lines) — full design: dual-mode +
+  capability-layer guard; `tools/system/` layout (`_harness.py` registry
+  replacing hub_mcp's if/elif dispatch, `_policy.py`, four domain modules);
+  safety ladder + `constitution.yaml` `system_mcp` block; per-capability effect
+  classes; OSA + Claude Desktop/Code exposure; TCC/FDA permissions; 15a–15e
+  checklist; tests; open questions. **Committed `d3f49d9`, pushed to `main`.**
+- **Brain2 `01 - Projects/OSA issues 1.md`** — added the doc link ("How This
+  Connects To") + a "Claude's Analysis" entry marking the MCP thread designed.
+  (Separate vault — saved to disk, not committed from the repo.)
+
+## Live state / open
+- Design only — NO code in flight. **15a is the first build.**
+- Open design Qs deferred to build: `run_command` `shell=True` vs arg-list (15a);
+  OSA all-caps vs curated subset (§6.1); iMessage AppleScript send reliability
+  (15c spike); effect-classifier (15e); FDA+Automation grants block 15c/15d until
+  granted on-device.
+- Duplicate `Brain2/00 - Raw/OSA issues 1.md` left untouched (offered to
+  mirror-link or archive).
+
+## ▶ RESUME HERE
+0. **Build 15a — the spine.** Read `tools/hub_mcp.py` server setup FIRST and
+   reuse the mcp-SDK framework verbatim. Then `_harness.py` (registry +
+   capability guard), `_policy.py` (strict mode + allow/deny),
+   `osa_system_mcp.py` aggregator/stdio server, `macos_mcp.py` (`get_time`,
+   `system_info`, `run_command` both surfaces), `constitution.yaml` `system_mcp`
+   block, wire curated caps into OSA `OSAToolbox`, tests (allow/approve/deny per
+   mode; registry↔list_tools parity; iTerm2 mocked). Glossary + CHANGELOG +
+   roadmap same-change; new `osa-system-mcp` skill.
+1. **Subagent vs inline** — Tony's call before 15a (recent sessions lean inline
+   on the spend limit).
+2. Rest of the OSA issues note still to discuss → PRDs/FRs (now that MCP is
+   settled): visual chat log/display; conversation smoothness (latency +
+   word-stepping/barge-in); "Brief Me" purpose + clearable.
+
+## ⚠️ STILL OPEN from prior sessions (NOT touched here — see entries below)
+- **Voice pin UNVERIFIED** — Tony never confirmed the MacBook-mic pin test
+  ("Osa, give me a status report" → full sentence + reply audible). Wake OFF
+  after restart by design.
+- **Orb fix awaiting on-device visual pass** (`npm run tauri dev`).
+- **Big uncommitted working tree** — the entire 2026-07-09 presence session +
+  orb-fix files are STILL uncommitted (two-commit plan in the entry below). This
+  session's `d3f49d9` committed ONLY the design doc + a CONTINUATION checkpoint
+  and did NOT touch that work. Execute the two-commit plan after Tony's visual
+  pass (or on request).
+
+---
+
 # ⏹ SESSION 2026-07-10 (part 2) — HEADPHONE VOICE SAGA: mic pinned to MacBook ⚠️ VERIFY PENDING
 
 Tony put on wired headphones → "OSA can't hear me." Three-act diagnosis:
