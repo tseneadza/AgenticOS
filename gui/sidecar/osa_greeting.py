@@ -33,10 +33,10 @@ _POOLS: dict[str, tuple[str, ...]] = {
         "Evening, Tony — welcome back.",
     ),
     "late night": (
-        "It's past midnight, Tony. This is a lifestyle now.",
-        "Late one, Sir. I admire the commitment.",
-        "Nearly the small hours, Tony. Bed's an option — after this.",
-        "Burning the candle, Tony. Respect.",
+        "Back at the helm, Tony. Where else would you be at this hour.",
+        "Evening, Sir. The good work happens now — let's get into it.",
+        "Right on schedule, Tony — small hours, big plans.",
+        "Nice to see you, Sir. Are we taking over the world tonight?",
     ),
 }
 
