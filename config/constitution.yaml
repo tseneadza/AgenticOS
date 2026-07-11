@@ -121,4 +121,10 @@ constitution:
         - ~/Codehome
         - ~/Brain2
       scratch_root: ~/Codehome/AgenticOS/data/osa_scratch
+    # Phase 15c — iMessage read (chat.db). db_path is CONFIG (never a caller
+    # arg), so an MCP client can't repoint the reader. Reading needs Full Disk
+    # Access for the running process.
+    messages:
+      db_path: ~/Library/Messages/chat.db
+      max_limit: 200
 

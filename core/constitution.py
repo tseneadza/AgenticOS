@@ -105,6 +105,12 @@ DEFAULT_SYSTEM_MCP: dict = {
         ],
         "scratch_root": "~/Codehome/AgenticOS/data/osa_scratch",
     },
+    # Phase 15c — iMessage read (chat.db). db_path is CONFIG, never a caller
+    # arg, so an MCP client can't repoint the reader at another SQLite file.
+    "messages": {
+        "db_path": "~/Library/Messages/chat.db",
+        "max_limit": 200,
+    },
 }
 
 
@@ -124,6 +130,10 @@ def _merge_system_mcp(raw_block: dict | None) -> dict:
     merged["fs"] = {
         **DEFAULT_SYSTEM_MCP["fs"],
         **(raw_block.get("fs") or {}),
+    }
+    merged["messages"] = {
+        **DEFAULT_SYSTEM_MCP["messages"],
+        **(raw_block.get("messages") or {}),
     }
     return merged
 

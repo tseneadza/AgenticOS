@@ -36,6 +36,7 @@ from core.constitution import ApprovalRequired, ConstitutionViolation
 # join this import list as they land).
 from tools.system import macos_mcp  # noqa: F401
 from tools.system import fs_mcp  # noqa: F401  (Phase 15b — filesystem domain)
+from tools.system import messages_mcp  # noqa: F401  (Phase 15c — iMessage read)
 from tools.system._harness import REGISTRY
 
 SERVER_NAME = "osa-system-mcp"

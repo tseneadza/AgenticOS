@@ -111,14 +111,16 @@ def evaluate(
     mode = cfg.get("mode", "strict")
     terminal = cfg.get("terminal", {})
 
-    # 1. Denylist — always deny, both modes, approval can't override.
-    hit = _match_denylist(payload, terminal.get("denylist_patterns", []))
-    if hit:
-        return PolicyResult("deny", f"payload contains denylisted pattern '{hit}'")
-
-    # 2. Terminal commands — the allowlist governs in BOTH modes (effect-mode
-    #    relaxation of run_command is a 15e decision, not automatic).
+    # 1. Terminal commands — denylist (always deny; approval can't override)
+    #    then the allowlist ladder. Denylist patterns are SHELL fragments
+    #    ("rm -rf", "| sh", "> /dev/"), meaningful ONLY for run_command, so
+    #    they are scoped here (15c): a message search or file path that merely
+    #    contains "sudo" is no longer falsely denied. fs safety comes from
+    #    root-scoping (below), never the denylist.
     if name == "macos.run_command":
+        hit = _match_denylist(payload, terminal.get("denylist_patterns", []))
+        if hit:
+            return PolicyResult("deny", f"command contains denylisted pattern '{hit}'")
         if not payload.strip():
             # Nothing can execute — let the capability body return its own
             # clean "empty command" error instead of asking approval for ''.
