@@ -15,10 +15,10 @@ from datetime import datetime
 #: Hour buckets -> label. Late night wraps midnight (22:00-04:59).
 _POOLS: dict[str, tuple[str, ...]] = {
     "morning": (
-        "Well, look who's vertical. Morning, Tony.",
-        "Morning, Tony — the place survived the night.",
-        "He lives. Morning, Sir.",
-        "Morning, Tony. Coffee first, heroics after.",
+        "Up before noon, Tony? You must've had nothing on last night.",
+        "Morning, Sir — awake at this hour, hunting my attention already?",
+        "Well, look who's vertical early. Slow night, or couldn't stay away?",
+        "Morning, Tony. A rare daylight sighting — savor it.",
     ),
     "afternoon": (
         "Afternoon, Tony. I kept things running without adult supervision.",
@@ -33,10 +33,10 @@ _POOLS: dict[str, tuple[str, ...]] = {
         "Evening, Tony — welcome back.",
     ),
     "late night": (
-        "Back at the helm, Tony. Where else would you be at this hour.",
-        "Evening, Sir. The good work happens now — let's get into it.",
-        "Right on schedule, Tony — small hours, big plans.",
-        "Nice to see you, Sir. Are we taking over the world tonight?",
+        "No warm bed calling tonight, Tony? Their loss — let's work.",
+        "Struck out tonight, did we? Relax, I'm better company anyway.",
+        "Insomnia, or did you just miss me? Either way — back to it.",
+        "Right on time, Sir. The small hours are where you do your best work.",
     ),
 }
 
