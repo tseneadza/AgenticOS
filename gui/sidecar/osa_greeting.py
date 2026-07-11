@@ -19,6 +19,7 @@ _POOLS: dict[str, tuple[str, ...]] = {
         "Morning, Sir — awake at this hour, hunting my attention already?",
         "Well, look who's vertical early. Slow night, or couldn't stay away?",
         "Morning, Tony. A rare daylight sighting — savor it.",
+        "Up early, Tony? I'm touched — you must have missed me.",
     ),
     "afternoon": (
         "Afternoon, Tony. I kept things running without adult supervision.",
