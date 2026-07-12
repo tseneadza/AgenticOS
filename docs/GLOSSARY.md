@@ -311,19 +311,15 @@ SQLite for new tests).
 **SQLAlchemy** — The Python ORM/DB-toolkit AgenticOS uses. Models live in
 `gui/sidecar/models.py`; sessions/engines in `gui/sidecar/db.py`.
 
-**SQLite** — File-based DB. **Retired** for AgenticOS state as of Phase
-13a. `data/state.db` is gone. Only lingering references are in legacy
-modules (`news_db.py`, `tasks_db.py`, some test files) queued for
-migration in Phase 13f.
+**SQLite** — File-based DB. **Fully retired for AgenticOS state** (Phase 13a):
+MySQL (`agenticos` schema) is the one and only store, `data/state.db` is gone,
+and the LangGraph checkpointer is `PyMySQLSaver`. The ONLY `sqlite3` use left in
+the codebase is READING Apple's external Messages `chat.db` (Phase 15c,
+read-only) — that is macOS's file format, NOT AgenticOS persistence.
 
 **TTL** — "Time To Live." How long a cached value stays fresh before
 refresh. `app_registry.py` uses a 60-second TTL cache for Codehome app
 discovery.
-
-**WAL** — "Write-Ahead Logging." A SQLite journaling mode where writes land in
-a separate `-wal` file before folding back into the main DB. Relevant to
-reading macOS `chat.db`: opening it `immutable=1` (lock-free) can miss messages
-still in an un-checkpointed WAL — an accepted trade for a read-only snapshot.
 
 ---
 
@@ -542,6 +538,12 @@ to the launcher (Terminal / the app), not just the python binary.
 **Venv** — Python virtual environment. AgenticOS uses `./.venv/`; managed
 Codehome apps get their venv Python rewritten in-place when launched via
 `ProcessManager`.
+
+**WAL** — "Write-Ahead Logging," a SQLite journaling mode (writes land in a
+separate `-wal` file first). Comes up ONLY because the iMessage reader opens
+Apple's external `chat.db` — macOS's own SQLite file, not AgenticOS storage
+(AgenticOS state is MySQL-only). Opening it `immutable=1` (lock-free) can miss
+messages still in an un-checkpointed WAL — an accepted read-only trade.
 
 **zsh** — Tony's default shell. Configured with Powerlevel10k / Starship
 prompt switching.
