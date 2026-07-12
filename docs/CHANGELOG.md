@@ -1,3 +1,7 @@
+## 2026-07-12 — glossary: +afplay, AppleScript/osascript, Dual-mode, OSA System MCP, ponytail, stdio, TCC, WAL, YAGNI
+
+- Added 9 not-widely-known terms/acronyms to `docs/GLOSSARY.md` (Brain2 mirror synced).
+
 ## 2026-07-12 — Phase 15c (read half): OSA System MCP iMessage READ
 
 Read-only iMessage domain. Built inline; tests via the test-author subagent;

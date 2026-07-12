@@ -96,6 +96,11 @@ word is "OSA". Working expansion: *Orchestrated System Assistant*
 Fully local voice pipeline: openWakeWord → faster-whisper → Piper. See
 [PHASE14_OSA_ASSISTANT.md](PHASE14_OSA_ASSISTANT.md).
 
+**OSA System MCP** — The Phase 15 capability layer (`tools/system/`, stdio
+server `tools/osa_system_mcp.py`) giving OSA and Claude Desktop/Code governed
+access to Tony's Mac — terminal, filesystem, iMessage, mail — dual-mode and
+Constitution-guarded at the capability layer. See `skills/osa-system-mcp`.
+
 **Sidecar** — The FastAPI Python service that is the OS's beating heart.
 Listens on port **5130**. Serves the workflow runner, panel data APIs,
 AGUI WebSocket, PTY WebSocket, `/api/apps`, `/api/osa/*`, and everything
@@ -106,6 +111,12 @@ Source: `gui/sidecar/`.
 (`config/Soul.md`, `config/Memory.md`) injected into every LLM turn by
 `core/soul.py`. Soul is the persona (voice, values); Memory is
 accumulated context.
+
+**ponytail** — A Claude Code/Cowork skill (external plugin) that forces the
+laziest solution that actually works: question whether code needs to exist
+(YAGNI), reach for stdlib/native before dependencies, prefer the shortest
+working diff. Tony runs it to conserve tokens and avoid over-engineering
+(levels: lite / full / ultra).
 
 **`promote-to-system`** — A reusable Claude skill that graduates a shipped
 project from `01 - Projects/` to `08 - Systems/` in Brain2 and creates the
@@ -147,6 +158,10 @@ one change.
 TR-10) but describing an implementation constraint rather than a user
 feature. TR-10 is "sidecar on port 5130." Grep for `TR-\d+`.
 
+**YAGNI** — "You Aren't Gonna Need It." Don't build functionality until it's
+actually required — speculative generality is waste. The first rung of the
+`ponytail` ladder ("does this need to exist at all?").
+
 ---
 
 ## 3. Architecture and runtime
@@ -186,6 +201,11 @@ mode only auto-marked capabilities and allowlisted terminal commands run
 without approval; in `effect` mode (15e migration) reads auto-run and
 mutates/irreversibles halt to approval. Denylist patterns deny in BOTH
 modes. Config: `constitution.yaml` `system_mcp` block.
+
+**Dual-mode** — The OSA System MCP principle: every capability is a plain
+Python function OSA imports in-process AND the same function served over one
+stdio MCP server to Claude Desktop/Code. One guard governs both doors — never
+build a capability that only works through the server.
 
 **FastAPI** — The Python web framework that hosts the sidecar. Async,
 Pydantic-based, generates OpenAPI automatically at `/openapi.json`.
@@ -299,6 +319,11 @@ migration in Phase 13f.
 **TTL** — "Time To Live." How long a cached value stays fresh before
 refresh. `app_registry.py` uses a 60-second TTL cache for Codehome app
 discovery.
+
+**WAL** — "Write-Ahead Logging." A SQLite journaling mode where writes land in
+a separate `-wal` file before folding back into the main DB. Relevant to
+reading macOS `chat.db`: opening it `immutable=1` (lock-free) can miss messages
+still in an un-checkpointed WAL — an accepted trade for a read-only snapshot.
 
 ---
 
@@ -455,10 +480,20 @@ headless (`claude -p`, full-auto per Tony's choice) every 5 hours against
 Lock file prevents overlap; kill switch = `touch data/.auto_continue_off`;
 logs at `~/.agentic-os/auto_continue.log`.
 
+**afplay** — macOS's built-in command-line audio player (`/usr/bin/afplay`).
+OSA's voice-OUT plays Piper-synthesized WAVs through it. As a child of the
+sidecar, whether its sound reaches the speakers depends on the launch session
+(see `skills/osa-sidecar-lifecycle`).
+
 **Apple epoch** — The reference date Apple's Cocoa timestamps count from:
 2001-01-01 00:00:00 UTC (978307200 s after the Unix epoch). macOS `chat.db`
 stores `message.date` as *nanoseconds* since this epoch;
 `messages_mcp._apple_to_iso` converts it to ISO-8601.
+
+**AppleScript / osascript** — Apple's automation scripting language and the
+`osascript` CLI that runs it. The Phase 15c/15d plan drives Messages.app and
+Mail.app sends via AppleScript (needs macOS **Automation** permission);
+Messages scripting is historically flaky, so the design spikes it first.
 
 **attributedBody** — A BLOB column in Messages `chat.db` holding a message's
 rich text as a serialized `NSAttributedString` (typedstream). On modern macOS
@@ -497,6 +532,12 @@ after a SIGTERM grace period.
 **SIGTERM** — Unix signal (15) requesting graceful shutdown. Process can
 catch it and clean up. AgenticOS sends this first when stopping managed
 apps.
+
+**TCC** — "Transparency, Consent, and Control," the macOS privacy framework
+behind permission prompts (Full Disk Access, Automation, Microphone, …). TCC
+attaches a permission to the *responsible* process, so a CLI tool launched by
+Terminal inherits Terminal's grants — which is why FDA for `chat.db` is granted
+to the launcher (Terminal / the app), not just the python binary.
 
 **Venv** — Python virtual environment. AgenticOS uses `./.venv/`; managed
 Codehome apps get their venv Python rewritten in-place when launched via
@@ -548,6 +589,11 @@ uses — resource nouns, HTTP verbs, JSON payloads.
 
 **RSS** — "Really Simple Syndication." The XML feed format Web News
 ingests. Feed catalogue lives in MySQL (`news_feeds` / `news_categories`).
+
+**stdio** — "Standard input/output." The pipe-based transport MCP servers use
+to talk to a host: `tools/osa_system_mcp.py` runs as a stdio MCP server
+(`python -m tools.osa_system_mcp`) that Claude Desktop/Code launch and speak to
+over stdin/stdout — contrast the sidecar's HTTP/WebSocket transport.
 
 **URL** — "Uniform Resource Locator." A web address.
 
