@@ -118,6 +118,24 @@ extracted whether the call is positional OR keyword (`dispatch` calls
 - `shell=True` is a locked decision (Tony, 2026-07-11) — do not "fix" it to
   an arg-list; the guard + allowlist + denylist are the mitigation.
 
+## Messages domain (15c — read-only)
+
+`tools/system/messages_mcp.py` — `read_thread` / `search_messages` /
+`list_recent_chats` read `chat.db` read-only (`effect=read`, `auto=True`). The
+`db_path` is CONFIG (`system_mcp.messages.db_path`), NEVER a caller arg — an
+MCP client cannot repoint the reader. Reading needs **Full Disk Access**.
+`attributedBody` is decoded by a deserialization-free printable scan (never
+`NSKeyedUnarchiver`). SEND (AppleScript) is deferred — spike its reliability
+first (design flags it flaky).
+
+- **Denylist scoping (15c):** the terminal denylist applies ONLY to
+  `macos.run_command` — its patterns are shell fragments, so a message search
+  for "sudo" is no longer falsely denied. fs safety is root-scoping, not the
+  denylist.
+- **Read posture (Tony, 2026-07-12):** message reads stay AUTO (no approval)
+  even over stdio. If you add a MORE sensitive read domain, revisit whether it
+  should gate to `approve` instead of inheriting this.
+
 ## Claude Desktop / Claude Code registration
 
 ```json

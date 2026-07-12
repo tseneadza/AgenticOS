@@ -1,3 +1,29 @@
+## 2026-07-12 — Phase 15c (read half): OSA System MCP iMessage READ
+
+Read-only iMessage domain. Built inline; tests via the test-author subagent;
+security-verifier PASS (no blockers); full suite 624 green.
+
+- **`tools/system/messages_mcp.py`** — `messages.read_thread(contact)`,
+  `search_messages(query)`, `list_recent_chats()` read `chat.db` read-only
+  (`mode=ro&immutable=1`). `db_path` is CONFIG (`system_mcp.messages.db_path`),
+  NEVER a caller arg, so an MCP client can't repoint the reader. Apple-epoch
+  dates → ISO; `attributedBody` recovered by a deserialization-free printable
+  scan; missing FDA / bad db fail closed to error dicts (never raise).
+- **Denylist scoped to `run_command`** (`tools/system/_policy.py`) — the
+  terminal denylist (`sudo`, `rm -rf`, …) was a GLOBAL pre-check that falsely
+  denied a message search for "sudo". It now applies only to
+  `macos.run_command` (its patterns are shell fragments); fs safety is
+  root-scoping, unaffected. No spine test regressed (65 green).
+- **Config** — `system_mcp.messages` block (`db_path`, `max_limit`) + two-level
+  merge in `core/constitution.py`.
+- **Posture (Tony's explicit call):** message reads stay AUTO (no approval),
+  even over stdio to Claude Desktop/Code — accepted after the security review
+  flagged the dual-mode exposure.
+- **Deferred:** AppleScript SEND (spike reliability first) + OSA-toolbox wiring
+  (curated-subset question, design §10).
+- Tests: `test_phase15c_messages_mcp.py` (22, hermetic fixture chat.db,
+  denylist regression, config-only db_path). security-verifier verdict: SAFE.
+
 ## 2026-07-11 — Testing subagents established (.claude/agents/ + CLAUDE.md rule)
 
 - **`.claude/agents/test-author.md`** (new): repo-versioned Claude Code

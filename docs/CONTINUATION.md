@@ -1,3 +1,41 @@
+# ⏹ SESSION 2026-07-12 — PHASE 15c READ SHIPPED ✅ (iMessage read-only) · send spike NEXT
+
+iMessage READ half of 15c. Production built inline; test file via the
+test-author subagent (22, hermetic fixture chat.db); security-verifier PASS —
+no blockers. Full suite 624 green. Committed + pushed.
+
+## What shipped
+- `tools/system/messages_mcp.py` — `read_thread` / `search_messages` /
+  `list_recent_chats` (chat.db read-only; db_path config-only; Apple-epoch +
+  deserialization-free attributedBody decode; fail-closed on missing FDA).
+- Denylist scoped to `macos.run_command` in `_policy.py` (was a global
+  pre-check that falsely denied a message search for "sudo"). fs unaffected
+  (root-scoping). 65 spine tests green.
+- Config: `system_mcp.messages` block + two-level merge. Docs: CHANGELOG,
+  roadmap 15c 🟨, GLOSSARY (+Apple epoch, attributedBody, chat.db, FDA)
+  Brain2-mirrored, skill messages-domain note.
+
+## Decisions (Tony)
+- Read first, send next. Message reads stay AUTO (no approval) even over stdio
+  — accepted after the security-verifier flagged the dual-mode exposure.
+
+## ▶ RESUME HERE — 15c send half + wiring
+1. **AppleScript SEND spike** (design §5.3 flags reliability). Throwaway
+   `osascript` send to Messages.app, validate on-device (Automation permission),
+   THEN build `messages.send_message(to, text)` — irreversible, gated,
+   first-param = recipient, kwargs regression test. security-verifier mandatory.
+2. OSA-toolbox wiring for `messages.*` / `fs.*` — curated-subset question
+   (design §10) — decide WITH Tony which caps OSA gets.
+3. Human items: **grant FDA** to the .venv python for a LIVE read (System
+   Settings → Privacy & Security → Full Disk Access → + `.venv/bin/python*`);
+   Automation permission later for send.
+
+## Nits parked (security-verifier, non-blocking)
+- `search_messages` LIKE `%`/`_` not escaped (functional quirk); searches
+  `m.text` only (misses attributedBody-only messages).
+
+---
+
 # ⏹ SESSION 2026-07-11 (day, part 2) — TESTING SUBAGENTS ESTABLISHED ✅
 
 Tony's ask: "start using subagents to do the testing." Tradeoffs discussed

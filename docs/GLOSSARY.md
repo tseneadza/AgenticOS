@@ -455,6 +455,29 @@ headless (`claude -p`, full-auto per Tony's choice) every 5 hours against
 Lock file prevents overlap; kill switch = `touch data/.auto_continue_off`;
 logs at `~/.agentic-os/auto_continue.log`.
 
+**Apple epoch** — The reference date Apple's Cocoa timestamps count from:
+2001-01-01 00:00:00 UTC (978307200 s after the Unix epoch). macOS `chat.db`
+stores `message.date` as *nanoseconds* since this epoch;
+`messages_mcp._apple_to_iso` converts it to ISO-8601.
+
+**attributedBody** — A BLOB column in Messages `chat.db` holding a message's
+rich text as a serialized `NSAttributedString` (typedstream). On modern macOS
+`message.text` is often NULL and the body lives here. `messages_mcp._body_text`
+recovers plain text with a deserialization-FREE printable-byte scan (never
+`NSKeyedUnarchiver`), so a hostile blob can't execute code.
+
+**chat.db** — The macOS Messages SQLite database at
+`~/Library/Messages/chat.db` (tables `message`, `handle`, `chat`,
+`chat_message_join`). The System MCP's iMessage domain
+(`tools/system/messages_mcp.py`, Phase 15c) reads it **read-only**; the path is
+config-pinned (`system_mcp.messages.db_path`), never a caller arg. Reading
+requires Full Disk Access.
+
+**Full Disk Access (FDA)** — A macOS privacy permission (System Settings →
+Privacy & Security → Full Disk Access) a process needs to read protected stores
+like `chat.db` and Mail. Without it, SQLite returns "unable to open database
+file." Granted per-executable — for AgenticOS, the `.venv` python / the sidecar.
+
 **launchd** — macOS's system-wide daemon manager (analog of systemd). Runs
 Tony's Brain2 vault-index job and other scheduled tasks. Configured via
 `.plist` files.
