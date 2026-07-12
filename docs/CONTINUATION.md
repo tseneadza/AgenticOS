@@ -1,3 +1,24 @@
+# ⏹ SESSION 2026-07-12 (cont.) — OSA WIRED TO THE SYSTEM MCP ✅ (fs + messages, full set)
+
+Resolved design §10 with Tony: OSA gets the FULL fs+messages set (reads + writes
++ move/delete, every mutation gated). Wired into `OSAToolbox`
+(`agents/osa_agent.py`) — 21 tools now. Smoke + 6 wiring tests + full suite 624
+green. Committed + pushed.
+
+## Verified (smoke)
+reads + scratch writes auto-run; write/move/delete outside scratch DENY on "no"
+and RUN on "yes"; outside `allowed_roots` hard-BLOCKED even with approval.
+
+## ▶ DEMO pending (Tony)
+`osa-restart`, then ask OSA e.g. "list the files in my AgenticOS tools folder"
+(list_dir), "read <file>" (read_file), "save a note to scratch" (write_file).
+iMessage tools work once **Full Disk Access** is granted.
+
+## Next real build
+15c AppleScript SEND spike (design §5.3 — flaky, spike first) → 15d Mail.
+
+---
+
 # ⏹ SESSION 2026-07-12 — PHASE 15c READ SHIPPED ✅ (iMessage read-only) · send spike NEXT
 
 iMessage READ half of 15c. Production built inline; test file via the

@@ -272,6 +272,6 @@ capability layer by the registration decorator.
 |-----------|-------|--------|
 | 15a | Spine: `_harness.py` registry+guard, `_policy.py` strict ladder, `macos_mcp.py` (get_time / system_info / run_command both surfaces), `osa_system_mcp.py` stdio server, constitution `system_mcp` block, OSA wiring, tests | ✅ 2026-07-11 (33 tests; suite 570 green; stdio end-to-end verified; MCP self-approval hole closed) |
 | 15b | Filesystem: `fs_mcp.py`, `allowed_roots`/`scratch_root`, read auto / write+delete gated | ✅ 2026-07-11 (32 tests; suite 602 green; harness kwargs-payload hole found+closed — dispatch keyword calls now hit the same guard) |
-| 15c | iMessage: `messages_mcp.py` — chat.db reads (needs FDA) + AppleScript send spike | 🟨 READ shipped 2026-07-12 (22 tests; suite 624; denylist scoped to run_command; reads AUTO per Tony; security-verifier SAFE) — AppleScript send spike still ⏳ |
+| 15c | iMessage: `messages_mcp.py` — chat.db reads (needs FDA) + AppleScript send spike | 🟨 READ shipped 2026-07-12 (22 tests; suite 624; denylist scoped to run_command; reads AUTO per Tony; security-verifier SAFE) · OSA toolbox wired to fs+messages (full set, 21 tools) 2026-07-12 — AppleScript send spike still ⏳ |
 | 15d | Mail: `mail_mcp.py` — transport decision (AppleScript vs IMAP), read/send gated | ⏳ |
 | 15e | Harden: effect-mode migration, classifier, permissions runbook | ⏳ |

@@ -74,7 +74,7 @@ OSA_SYSTEM = (
     "-> run_command; 'remember that ...' -> "
     "remember; 'switch to Sonnet' / 'use your local brain' / 'back to auto' "
     "-> switch_model; 'pull llama3.3' / 'download a model' / 'add a new local "
-    "model' -> pull_model. Any full claude-* id (e.g. 'claude-opus-4-8') is "
+    "model' -> pull_model. Files (inside ~/Codehome and ~/Brain2): 'read <file>' -> read_file; 'list <dir>' -> list_dir; 'find <files>' -> search_files; 'save/write to <file>' -> write_file; 'append to <file>' -> append_file; 'move/rename <file>' -> move_file; 'delete <file>' -> delete_file. Messages (iMessage, needs Full Disk Access): 'read my messages with <person>' -> read_messages; 'search messages for <text>' -> search_messages; 'recent chats' / 'who have I messaged' -> list_recent_chats. Any full claude-* id (e.g. 'claude-opus-4-8') is "
     "switchable even if not on the shelf; a bare cloud family name you don't "
     "recognize -> ask Tony for the full id rather than guessing one.\n"
     "- Your own brain is stated in the 'Brain status' line at the end of this "
@@ -529,6 +529,102 @@ class OSAToolbox:
             lambda **kw: macos_mcp.run_command(command, **kw),
         )
 
+    # ------------------------------------------------- filesystem (15b, scoped)
+    def read_file(self, path: str) -> str:
+        """Read a text file inside the allowed roots (~/Codehome, ~/Brain2). Read-only.
+
+        Use for 'read <file>', 'show me <file>', 'what's in <path>'. Returns
+        JSON with the (capped) content — summarize aloud, don't read verbatim.
+        """
+        from tools.system import fs_mcp
+
+        return self._run_capability("fs.read_file", path, lambda **kw: fs_mcp.read_file(path, **kw))
+
+    def list_dir(self, path: str) -> str:
+        """List a directory inside the allowed roots. Read-only.
+
+        Use for 'list <dir>', 'what's in <folder>', 'show my Codehome files'.
+        """
+        from tools.system import fs_mcp
+
+        return self._run_capability("fs.list_dir", path, lambda **kw: fs_mcp.list_dir(path, **kw))
+
+    def search_files(self, root: str, pattern: str) -> str:
+        """Find files by name glob under a directory in the allowed roots. Read-only.
+
+        Use for 'find <pattern> files', 'search for *.md under <dir>'.
+        """
+        from tools.system import fs_mcp
+
+        return self._run_capability("fs.search", root, lambda **kw: fs_mcp.search(root, pattern, **kw))
+
+    def write_file(self, path: str, content: str) -> str:
+        """Write a text file in the allowed roots. Guarded — auto only inside scratch.
+
+        Use for 'save this to <file>', 'write <content> to <path>'. Outside the
+        scratch folder it needs Tony's OK first — say what you'll write and ask
+        him to confirm (a plain 'yes' works).
+        """
+        from tools.system import fs_mcp
+
+        return self._run_capability("fs.write_file", path, lambda **kw: fs_mcp.write_file(path, content, **kw))
+
+    def append_file(self, path: str, content: str) -> str:
+        """Append text to a file in the allowed roots. Guarded (auto inside scratch).
+
+        Use for 'append <text> to <file>', 'add a line to <path>'.
+        """
+        from tools.system import fs_mcp
+
+        return self._run_capability("fs.append", path, lambda **kw: fs_mcp.append(path, content, **kw))
+
+    def move_file(self, src: str, dst: str) -> str:
+        """Move/rename a file inside the allowed roots. Irreversible — needs Tony's OK.
+
+        Use for 'move <a> to <b>', 'rename <file>'. Both ends must be inside
+        the allowed roots. Say what you'll move and ask him to confirm.
+        """
+        from tools.system import fs_mcp
+
+        return self._run_capability("fs.move", src, lambda **kw: fs_mcp.move(src, dst, **kw))
+
+    def delete_file(self, path: str) -> str:
+        """Delete a file or EMPTY directory in the allowed roots. Irreversible — needs Tony's OK.
+
+        Use for 'delete <file>', 'remove <path>'. Ask him to confirm first.
+        """
+        from tools.system import fs_mcp
+
+        return self._run_capability("fs.delete", path, lambda **kw: fs_mcp.delete(path, **kw))
+
+    # ------------------------------------------------- iMessage reads (15c)
+    def read_messages(self, contact: str) -> str:
+        """Read recent iMessages with a contact (phone/email handle). Read-only. Needs Full Disk Access.
+
+        Use for 'read my messages with <person>', 'what did <handle> say'.
+        """
+        from tools.system import messages_mcp
+
+        return self._run_capability("messages.read_thread", contact, lambda **kw: messages_mcp.read_thread(contact, **kw))
+
+    def search_messages(self, query: str) -> str:
+        """Search iMessage text for a substring. Read-only. Needs Full Disk Access.
+
+        Use for 'search my messages for <text>', 'did anyone mention <x>'.
+        """
+        from tools.system import messages_mcp
+
+        return self._run_capability("messages.search_messages", query, lambda **kw: messages_mcp.search_messages(query, **kw))
+
+    def list_recent_chats(self) -> str:
+        """List recent iMessage conversations. Read-only. Needs Full Disk Access.
+
+        Use for 'what are my recent chats', 'who have I been messaging'.
+        """
+        from tools.system import messages_mcp
+
+        return self._run_capability("messages.list_recent_chats", "", messages_mcp.list_recent_chats)
+
     # ------------------------------------------------------------ monitoring
     def system_health(self) -> str:
         """Report live system health — CPU, RAM, disk. Read-only.
@@ -953,6 +1049,16 @@ def build_tools(toolbox: OSAToolbox) -> list:
         (toolbox.pull_model, "pull_model"),
         (toolbox.get_time, "get_time"),
         (toolbox.run_command, "run_command"),
+        (toolbox.read_file, "read_file"),
+        (toolbox.list_dir, "list_dir"),
+        (toolbox.search_files, "search_files"),
+        (toolbox.write_file, "write_file"),
+        (toolbox.append_file, "append_file"),
+        (toolbox.move_file, "move_file"),
+        (toolbox.delete_file, "delete_file"),
+        (toolbox.read_messages, "read_messages"),
+        (toolbox.search_messages, "search_messages"),
+        (toolbox.list_recent_chats, "list_recent_chats"),
     ]
     return [
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())

@@ -1,3 +1,21 @@
+## 2026-07-12 — 15c: OSA wired to use the System MCP (fs + messages, full set)
+
+OSA now calls the fs and iMessage capabilities as its OWN tools — the design §10
+"curated subset" question, resolved with Tony as the FULL set (reads + writes +
+move/delete, all mutations gated). OSA tool count 11 → 21.
+
+- `agents/osa_agent.py` — 10 new OSAToolbox methods (read_file / list_dir /
+  search_files / write_file / append_file / move_file / delete_file +
+  read_messages / search_messages / list_recent_chats), each bridged via
+  `_run_capability` so a gated op raises ApprovalRequired → OSA's two-turn
+  confirm → retry with approved=True. Registered in build_tools; request→tool
+  phrasing added to OSA_SYSTEM.
+- Reads + scratch writes auto-run; write outside scratch, move, delete need a
+  "yes"; outside `allowed_roots` is a hard BLOCK approval can't override.
+- Tests: `test_phase15c_osa_wiring.py` (6, hermetic tmp dirs; inline per the
+  spend-limit fallback — no security-spine change). Full suite 624 green.
+- messages reads still need Full Disk Access to run live (not yet granted).
+
 ## 2026-07-12 — glossary: +afplay, AppleScript/osascript, Dual-mode, OSA System MCP, ponytail, stdio, TCC, WAL, YAGNI
 
 - Added 9 not-widely-known terms/acronyms to `docs/GLOSSARY.md` (Brain2 mirror synced).
