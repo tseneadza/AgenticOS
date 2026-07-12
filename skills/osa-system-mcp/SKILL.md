@@ -54,7 +54,9 @@ def verb(...) -> dict:
   `self._run_capability(name, payload, callable)` — it bridges
   `ApprovalRequired` to the two-turn confirm and retries with
   `approved=True`. Register in `build_tools` specs + map the phrasing in
-  `OSA_SYSTEM`.
+  `OSA_SYSTEM`. As of 2026-07-12 the FULL fs + messages set is wired into OSA
+  (21 tools). The two-turn confirm has real model-behavior pitfalls — read
+  `osa-gated-confirm` BEFORE touching destructive-tool wiring or the confirm flow.
 
 ## Guard semantics (memorize)
 

@@ -1,3 +1,34 @@
+# ⏹ SESSION 2026-07-12 (close) — OSA USES THE MCP + gated-confirm FIXED ✅ · NEXT: 15c send spike
+
+Session goal met: OSA now uses the OSA System MCP live. Wired the FULL fs+messages
+set into OSA (21 tools), demoed a read (`list_dir` → real files) and a gated
+`delete_file` end-to-end, and fixed TWO live-found confirm bugs. All committed +
+pushed (through `ebfe5e4`). Suite 630 green.
+
+New skill this session: `skills/osa-gated-confirm` — the two-turn confirm flow +
+its model-behavior failure modes (call-tool-first, escalate-the-yes-to-cloud,
+never bypass the guard). The detail blocks below have the 15c read + wiring work.
+
+## Operational prereqs (or OSA chat won't run)
+- **MySQL UP**: `sudo /usr/local/mysql/support-files/mysql.server start`. The
+  `~/Library/LaunchAgents` health-check can't restart it (runs as user, needs
+  root) — real follow-up: a root LaunchDaemon.
+- **Sidecar restarted** after any Python/prompt/config change (`osa-restart`;
+  see `osa-sidecar-lifecycle`).
+- **iMessage tools**: grant Full Disk Access to Terminal for a live read.
+
+## ▶ RESUME HERE — next session
+1. **15c AppleScript SEND spike** (design §5.3, flagged flaky): throwaway
+   `osascript` send to Messages.app, validate on-device (Automation permission),
+   THEN build `messages.send_message(to, text)` — irreversible, gated, first
+   param = recipient, kwargs regression test, security-verifier MANDATORY.
+   Read `skills/osa-system-mcp` + `skills/osa-gated-confirm` first.
+2. Then **15d Mail**; **15e** harden + effect-mode migration.
+3. Parked: root LaunchDaemon for MySQL auto-restart; OSAOrb enhancements
+   (`docs/OSAORB_IDEAS.md`); iMessage FDA grant for a live message read.
+
+---
+
 # ⏹ SESSION 2026-07-12 (cont.) — OSA WIRED TO THE SYSTEM MCP ✅ (fs + messages, full set)
 
 Resolved design §10 with Tony: OSA gets the FULL fs+messages set (reads + writes
