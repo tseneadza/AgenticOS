@@ -272,6 +272,12 @@ def osa_chat(body: OSAChat) -> dict:
     # Decision #6: route this turn (pin-aware), honoring Ollama availability,
     # then resolve the alias/id to a concrete model id for the graph.
     chosen = osa_agent.pick_model(message, ollama_ready=ollama_ready, pin=pin)
+    # Confirm-approval escalation (2026-07-12, live-found): a "yes" with a live
+    # pending confirm RE-ISSUES the guarded tool. "yes" looks like chit-chat to
+    # the router, so it lands local — but local 7B models thrash on the tool
+    # retry. Force the cloud brain (unless a cloud model is explicitly pinned).
+    if get_pending(thread_id) is not None and is_affirmative(message):
+        chosen = pin if (pin and not osa_agent._pin_is_local(pin)) else "default"
     model_id = llm.resolve(chosen)
     # The route badge keys off local vs cloud of what the turn ACTUALLY used.
     # Discovered (uncurated) Ollama pins aren't in the registry — fall back to

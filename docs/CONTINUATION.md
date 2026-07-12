@@ -9,10 +9,15 @@ green. Committed + pushed.
 reads + scratch writes auto-run; write/move/delete outside scratch DENY on "no"
 and RUN on "yes"; outside `allowed_roots` hard-BLOCKED even with approval.
 
-## ▶ DEMO pending (Tony)
-`osa-restart`, then ask OSA e.g. "list the files in my AgenticOS tools folder"
-(list_dir), "read <file>" (read_file), "save a note to scratch" (write_file).
-iMessage tools work once **Full Disk Access** is granted.
+## ▶ Live demo DONE (2026-07-12) + gated-confirm flow FIXED
+Proved OSA using the MCP live: `list_dir` returned the real tools/system files;
+a gated `delete_file` ran the full loop (guard DENIES + arms confirm → "yes" →
+Claude re-calls the tool → file deleted). The demo surfaced + fixed TWO sync-
+path confirm bugs (CHANGELOG 2026-07-12): OSA must CALL the tool first (not ask
+in prose), and a "yes" approval turn escalates to the cloud brain. Also caught:
+OSA offered an `rm` workaround around its own guard — now forbidden in the
+prompt. iMessage tools still need **Full Disk Access** to run live.
+NOTE: MySQL must be running (Tony starts it: sudo /usr/local/mysql/support-files/mysql.server start).
 
 ## Next real build
 15c AppleScript SEND spike (design §5.3 — flaky, spike first) → 15d Mail.

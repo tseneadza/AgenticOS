@@ -1,3 +1,21 @@
+## 2026-07-12 — fix: OSA gated-confirm flow (live-found in the first MCP demo)
+
+The first live delete-through-OSA exposed two bugs in the sync chat path's
+two-turn confirm; both fixed + verified end-to-end (delete gated on turn 1,
+executed on "yes", file actually removed). Suite 630 green.
+
+- **Confirm never armed** — OSA (Claude) asked permission in PROSE before
+  calling the tool, so no pending-confirm was recorded and the follow-up "yes"
+  looped. Fix (`OSA_SYSTEM` in `agents/osa_agent.py`): CALL the destructive
+  tool FIRST — the guard's DENIED is the confirm signal; never ask without
+  calling. Plus a hard rule: NEVER work around the guard (no run_command/rm
+  substitute for a denied op — OSA had suggested exactly that).
+- **Approval turn routed local** — a bare "yes" looks like chit-chat, so the
+  router sent the tool-RE-issuing turn to a local 7B model, which thrashed
+  (get_time ×15, no delete). Fix (`gui/sidecar/routes/api_osa.py`): when a live
+  pending confirm is being approved, escalate to the cloud brain (unless a
+  cloud model is pinned).
+
 ## 2026-07-12 — 15c: OSA wired to use the System MCP (fs + messages, full set)
 
 OSA now calls the fs and iMessage capabilities as its OWN tools — the design §10
