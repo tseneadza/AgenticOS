@@ -48,7 +48,19 @@ tools.
 `chosen` to the cloud brain (`"default"`) unless a cloud model is pinned.
 **Verify:** turn 2 `model` is a `claude-*` id and `tool_trace` re-issues the tool.
 
-## Pitfall 3 — OSA tries to route AROUND its own guard
+## Pitfall 3 — the human's approval WORDING isn't recognized
+
+**Symptom:** the confirm is armed, the human clearly approves ("I approve"),
+but OSA re-denies and asks again — only the literal word "yes" unlocks it.
+**Cause:** `is_affirmative` (`api_osa.py`) is an allowlist of phrasings; a
+natural approval outside it reads as a non-affirmative turn, which re-arms
+the pending instead of approving. (Live-hit 2026-07-12: "I approve" bounced.)
+**Fix:** widen `_AFFIRMATIVES` / `_AFFIRM_FIRST_WORDS` / the prefix list —
+with WORD-BOUNDARY-safe prefixes (`p + " "`), or "i approved it last week"
+becomes a false approve. Add every new phrasing to the
+test_phase14b_osa.py parametrize lists in the same change.
+
+## Pitfall 4 — OSA tries to route AROUND its own guard
 
 A denied destructive action must NEVER be re-attempted by another route (e.g.
 `run_command` / `rm`). OSA once suggested `rm` to work around a denied delete.

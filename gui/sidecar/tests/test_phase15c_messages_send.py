@@ -49,11 +49,20 @@ class _FakeProc:
 
 @pytest.fixture()
 def osascript_spy(monkeypatch):
-    """Record every osascript invocation; scriptable per-call results."""
+    """Record every OSASCRIPT invocation; scriptable per-call results.
+
+    ``open -ga <App>`` pre-launch calls (the -600 fix) are answered rc=0 and
+    NOT recorded — assertions stay about osascript. time.sleep is stubbed so
+    the cold-launch settle wait doesn't slow the suite.
+    """
     calls = []
     results = []
+    opens = []
 
     def fake_run(cmd, **kwargs):
+        if cmd and cmd[0] == "open":
+            opens.append(cmd)
+            return _FakeProc()
         calls.append({"cmd": cmd, "kwargs": kwargs})
         if results:
             r = results.pop(0)
@@ -63,6 +72,7 @@ def osascript_spy(monkeypatch):
         return _FakeProc()
 
     monkeypatch.setattr(messages_mcp.subprocess, "run", fake_run)
+    monkeypatch.setattr(messages_mcp.time, "sleep", lambda *_: None)
     return calls, results
 
 
@@ -176,6 +186,26 @@ class TestSendBody:
         results.append(subprocess.TimeoutExpired(cmd="osascript", timeout=30))
         out = messages_mcp.send_message(_HANDLE, "hi", approved=True)
         assert out["ok"] is False and "timed out" in out["error"]
+
+    def test_target_app_is_prelaunched(self, monkeypatch):
+        """-600 regression (live-found 2026-07-12): 'tell application' can't
+        LAUNCH an app from the sidecar's background context — each osascript
+        must be preceded by an 'open -ga <App>' for its target app."""
+        seq = []
+
+        def fake_run(cmd, **kwargs):
+            seq.append(cmd[0:3])
+            return _FakeProc()
+
+        monkeypatch.setattr(messages_mcp.subprocess, "run", fake_run)
+        monkeypatch.setattr(messages_mcp.time, "sleep", lambda *_: None)
+        messages_mcp.send_message(_HANDLE, "hi", approved=True)
+        assert seq[0] == ["open", "-ga", "Messages"]
+        assert seq[1][0] == "osascript"
+        seq.clear()
+        messages_mcp.resolve_contact("Mom")
+        assert seq[0] == ["open", "-ga", "Contacts"]
+        assert seq[1][0] == "osascript"
 
 
 # --------------------------------------------------------------------------- #

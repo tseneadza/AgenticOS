@@ -1,3 +1,25 @@
+## 2026-07-12 — fix: two live-found 15c send defects (first real-user session)
+
+Tony's first live send session surfaced two defects (transcript-driven):
+
+- **-600 app-launch failure** — `tell application` can ATTACH to a running
+  app from the sidecar's background context but cannot LAUNCH one
+  (`Contacts got an error: Application isn't running. (-600)`). Fix:
+  `_osascript` pre-launches the target app via `open -ga <App>` (background,
+  LaunchServices — works from background contexts) with a 1s settle;
+  `send_message` → Messages, `resolve_contact` → Contacts. Live-verified
+  with Contacts closed.
+- **"I approve" not affirmative** — the confirm matcher bounced Tony's
+  natural approval until he said the literal word "yes". Widened:
+  approve/approved/i approve/approve it/send it/i confirm, with
+  word-boundary-safe prefix matching ("i approved it last week" does NOT
+  match — same boundary lesson as the ls/lsof allowlist).
+
+Suite 669 green (+10: pre-launch regression + widened matcher cases).
+Also resolved from the same transcript, no code change: OSA's 9:17 PM "I
+don't have a send tool" was TRUE — the sidecar restart landed at 9:21 PM;
+turns before it ran pre-15c-send code.
+
 ## 2026-07-12 — Phase 15c COMPLETE: iMessage SEND shipped (spike-validated)
 
 The send half of the messages domain. AppleScript reliability was spiked LIVE

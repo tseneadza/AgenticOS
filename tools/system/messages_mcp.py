@@ -271,6 +271,7 @@ def list_recent_chats(limit: int = _DEFAULT_LIMIT) -> dict:
 # --------------------------------------------------------------------------- #
 import re
 import subprocess
+import time
 
 _SEND_TIMEOUT_S = 30
 _RESOLVE_TIMEOUT_S = 20
@@ -326,13 +327,25 @@ def _is_handle(to: str) -> bool:
     return bool(_EMAIL_RE.match(to) or _PHONE_RE.match(to))
 
 
-def _osascript(script: str, args: list[str], timeout: int):
+def _osascript(script: str, args: list[str], timeout: int, app: str | None = None):
     """Run one AppleScript with argv-delivered user data.
 
     Returns ``(completed_process, error_dict)`` — exactly one is truthy.
     User strings ride argv (after ``--``) so they can never alter the script.
+
+    ``app``: the target application to pre-launch via ``open -ga`` (background,
+    no focus steal). Needed because ``tell application`` can ATTACH to a
+    running app from the sidecar's background context but cannot LAUNCH one —
+    it fails with ``-600 Application isn't running`` (live-found 2026-07-12
+    when Contacts wasn't open). ``open`` goes through LaunchServices and works
+    from background contexts; a short settle wait follows a cold launch.
     """
     try:
+        if app:
+            pre = subprocess.run(["open", "-ga", app], capture_output=True, timeout=10)
+            if pre.returncode == 0:
+                # Attach can still race a cold launch; a brief settle is cheap.
+                time.sleep(1.0)
         proc = subprocess.run(
             ["osascript", "-e", script, "--", *args],
             capture_output=True, text=True, timeout=timeout,
@@ -362,7 +375,7 @@ def resolve_contact(name: str) -> dict:
     name = (name or "").strip()
     if not name:
         return {"ok": False, "error": "name required"}
-    proc, err = _osascript(_RESOLVE_SCRIPT, [name], _RESOLVE_TIMEOUT_S)
+    proc, err = _osascript(_RESOLVE_SCRIPT, [name], _RESOLVE_TIMEOUT_S, app="Contacts")
     if err:
         return err
     if proc.returncode != 0:
@@ -409,7 +422,7 @@ def send_message(to: str, text: str) -> dict:
     # iMessage first, SMS fallback (spike: both accounts enabled on this Mac).
     attempts = []
     for service in ("imessage", "sms"):
-        proc, err = _osascript(_SEND_SCRIPT, [to, text, service], _SEND_TIMEOUT_S)
+        proc, err = _osascript(_SEND_SCRIPT, [to, text, service], _SEND_TIMEOUT_S, app="Messages")
         if err:
             attempts.append(f"{service}: {err['error']}")
             continue

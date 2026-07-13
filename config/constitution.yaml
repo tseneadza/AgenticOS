@@ -104,6 +104,7 @@ constitution:
         - df
         - "git status"
         - "git log"
+        - osascript
       denylist_patterns:            # ALWAYS deny, regardless of mode/approval
         - "rm -rf"
         - "sudo"

@@ -86,6 +86,7 @@ _AFFIRMATIVES = frozenset({
     "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm",
     "confirmed", "do it", "go ahead", "go for it", "proceed", "affirmative",
     "yes sir", "yes please", "please do", "absolutely", "of course",
+    "approve", "approved", "i approve", "approve it", "send it",
 })
 _NEGATIVES = frozenset({
     "no", "n", "nope", "nah", "cancel", "stop", "don't", "dont",
@@ -100,7 +101,7 @@ def _normalize(message: str) -> str:
 
 _AFFIRM_FIRST_WORDS = frozenset({
     "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm",
-    "confirmed", "proceed", "affirmative", "absolutely",
+    "confirmed", "proceed", "affirmative", "absolutely", "approve", "approved",
 })
 _NEG_FIRST_WORDS = frozenset({
     "no", "n", "nope", "nah", "cancel", "abort", "negative", "dont",
@@ -127,9 +128,13 @@ def is_affirmative(message: str) -> bool:
         return True
     if _first_word(norm) in _AFFIRM_FIRST_WORDS:
         return True
-    return any(norm.startswith(p) for p in (
-        "do it", "go ahead", "go for it", "please do", "of course",
-    ))
+    return any(
+        norm == p or norm.startswith(p + " ") or norm.startswith(p + ",")
+        for p in (
+            "do it", "go ahead", "go for it", "please do", "of course",
+            "i approve", "i confirm", "send it", "approve it",
+        )
+    )
 
 
 def is_negative(message: str) -> bool:
