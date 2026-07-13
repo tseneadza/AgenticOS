@@ -74,7 +74,7 @@ OSA_SYSTEM = (
     "-> run_command; 'remember that ...' -> "
     "remember; 'switch to Sonnet' / 'use your local brain' / 'back to auto' "
     "-> switch_model; 'pull llama3.3' / 'download a model' / 'add a new local "
-    "model' -> pull_model. Files (inside ~/Codehome and ~/Brain2): 'read <file>' -> read_file; 'list <dir>' -> list_dir; 'find <files>' -> search_files; 'save/write to <file>' -> write_file; 'append to <file>' -> append_file; 'move/rename <file>' -> move_file; 'delete <file>' -> delete_file. Messages (iMessage, needs Full Disk Access): 'read my messages with <person>' -> read_messages; 'search messages for <text>' -> search_messages; 'recent chats' / 'who have I messaged' -> list_recent_chats. Any full claude-* id (e.g. 'claude-opus-4-8') is "
+    "model' -> pull_model. Files (inside ~/Codehome and ~/Brain2): 'read <file>' -> read_file; 'list <dir>' -> list_dir; 'find <files>' -> search_files; 'save/write to <file>' -> write_file; 'append to <file>' -> append_file; 'move/rename <file>' -> move_file; 'delete <file>' -> delete_file. Messages (iMessage, needs Full Disk Access): 'read my messages with <person>' -> read_messages; 'search messages for <text>' -> search_messages; 'recent chats' / 'who have I messaged' -> list_recent_chats; 'text/message <person>' -> resolve_contact (if given a NAME) then send_message with the RAW handle — sends always need Tony's OK and the confirm must show the actual handle, never just the name. Any full claude-* id (e.g. 'claude-opus-4-8') is "
     "switchable even if not on the shelf; a bare cloud family name you don't "
     "recognize -> ask Tony for the full id rather than guessing one.\n"
     "- Your own brain is stated in the 'Brain status' line at the end of this "
@@ -630,6 +630,31 @@ class OSAToolbox:
 
         return self._run_capability("messages.list_recent_chats", "", messages_mcp.list_recent_chats)
 
+    # ------------------------------------------------- iMessage send (15c)
+    def resolve_contact(self, name: str) -> str:
+        """Look up a contact's phone/email handles by name via Contacts.app. Read-only.
+
+        Use BEFORE send_message whenever Tony names a PERSON ('text Mom') —
+        sends require a raw handle. If several handles come back, ask Tony
+        which one; never guess.
+        """
+        from tools.system import messages_mcp
+
+        return self._run_capability("messages.resolve_contact", name, lambda **kw: messages_mcp.resolve_contact(name, **kw))
+
+    def send_message(self, to: str, text: str) -> str:
+        """Send an iMessage/SMS from this Mac. IRREVERSIBLE — always needs Tony's OK.
+
+        'to' MUST be a raw handle (phone like +15551234567, or email) — if
+        Tony gave a name, call resolve_contact first and confirm the handle.
+        CALL THIS TOOL to arm the confirm; the guard's DENIED is the signal.
+        Falls back to SMS if iMessage fails. Success means queued, not
+        delivered.
+        """
+        from tools.system import messages_mcp
+
+        return self._run_capability("messages.send_message", to, lambda **kw: messages_mcp.send_message(to, text, **kw))
+
     # ------------------------------------------------------------ monitoring
     def system_health(self) -> str:
         """Report live system health — CPU, RAM, disk. Read-only.
@@ -1064,6 +1089,8 @@ def build_tools(toolbox: OSAToolbox) -> list:
         (toolbox.read_messages, "read_messages"),
         (toolbox.search_messages, "search_messages"),
         (toolbox.list_recent_chats, "list_recent_chats"),
+        (toolbox.resolve_contact, "resolve_contact"),
+        (toolbox.send_message, "send_message"),
     ]
     return [
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())

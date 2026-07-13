@@ -1,3 +1,68 @@
+# ⏹ SESSION 2026-07-12 (later) — PHASE 15c COMPLETE ✅ (send spike + send_message shipped) · NEXT: 15d Mail
+
+The send half of 15c, done in one session: spike → build → test → live-verify
+→ docs → commit+push. Suite **659 green** (+29). Built via claude.ai (mobile
+filesystem/shell tools) — subagents unavailable in that surface, so the
+documented INLINE fallback was used (tests authored in-session; adversarial
+security pass done by the supervisor — verdict PASS).
+
+## Spike (design §5.3 ANSWERED — reliability adequate)
+- Modern `participant <handle> of <account>` + `send` syntax works; sent live
+  to Tony's own handle (tony_seneadza@yahoo.com) successfully.
+- **Participant resolution is LAZY** — garbage handles "resolve" without
+  error; AppleScript will NOT validate recipients. Capability validates
+  handle shape itself; send-time errors = failure.
+- SMS account CONNECTED (Text Message Forwarding live) → fallback viable.
+- Automation permission granted live for Messages AND Contacts (shell host).
+
+## What shipped
+- **`messages.send_message(to, text)`** — irreversible, gated; iMessage→SMS
+  fallback; HANDLES ONLY (names rejected → resolve_contact) so the approval
+  payload (first param) is always the REAL target; success = "queued,
+  delivery not verified". **Injection defense:** user strings ride osascript
+  ARGV after `--`, never script interpolation — live-verified against the
+  real binary.
+- **`messages.resolve_contact(name)`** — read/auto Contacts.app lookup
+  (max 10 people). Live-verified (6 handles for "Tony").
+- Config: `messages.send_message` → approval_required (doc-of-intent).
+- OSA wiring: +2 tools (23 total) + OSA_SYSTEM prompt mapping ('text
+  <person>' → resolve if a name, then send with the raw handle).
+- Tests: `test_phase15c_messages_send.py` (29) — kwargs-payload regression,
+  handles-only, argv injection canary, SMS fallback, dispatch self-approval
+  strip, parity. osascript fully mocked; no test sends.
+- Docs same-change: CHANGELOG, roadmap 15c ✅, GLOSSARY +Text Message
+  Forwarding (Brain2 mirror MD5 51e4dae6240f31d903b3bbd305c82a65), skill
+  osa-system-mcp Messages section rewritten (send + spike findings +
+  argv rule for ALL AppleScript capabilities incl. 15d).
+
+## Live verification (production path, not just tests)
+Unapproved send → ApprovalRequired w/ real handle in payload ✓ · name
+recipient refused pre-osascript ✓ · approved self-send delivered via
+iMessage ✓ · resolve_contact returned real handles ✓.
+
+## Security review notes (inline verifier, PASS)
+- Posture flag: `resolve_contact` is AUTO over stdio — an external MCP
+  client can enumerate contacts without approval. Mirrors Tony's recorded
+  "message reads stay AUTO" decision; revisit both together if tightening.
+- `--` argv terminator behavior live-verified (mocks can't prove it).
+
+## ▶ RESUME HERE — next session
+1. **15d Mail** (`mail_mcp.py`): FIRST decide the transport with Tony
+   (AppleScript vs IMAP — design §5.4). If AppleScript: reuse the argv
+   pattern verbatim. Reads auto (ask Tony if the messages read-posture
+   carries over), send/reply irreversible+gated, kwargs regression test,
+   security review for the yaml touch. Then **15e** harden + effect-mode
+   migration.
+2. **Live OSA end-to-end for send** (needs sidecar restart + MySQL up):
+   "Osa, text me a hello" → resolve → confirm shows the handle → yes →
+   sent. Sidecar's python will hit its OWN Automation prompt on first
+   send — TCC is per host process; approve it once.
+3. Parked (unchanged): root LaunchDaemon for MySQL auto-restart; OSAOrb
+   enhancements (`docs/OSAORB_IDEAS.md`); FDA grant for the .venv python
+   (message READS still need it for live runs).
+
+---
+
 # ⏹ SESSION 2026-07-12 (close) — OSA USES THE MCP + gated-confirm FIXED ✅ · NEXT: 15c send spike
 
 Session goal met: OSA now uses the OSA System MCP live. Wired the FULL fs+messages

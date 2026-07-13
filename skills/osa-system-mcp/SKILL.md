@@ -120,23 +120,47 @@ extracted whether the call is positional OR keyword (`dispatch` calls
 - `shell=True` is a locked decision (Tony, 2026-07-11) — do not "fix" it to
   an arg-list; the guard + allowlist + denylist are the mitigation.
 
-## Messages domain (15c — read-only)
+## Messages domain (15c — COMPLETE: reads + send)
 
 `tools/system/messages_mcp.py` — `read_thread` / `search_messages` /
 `list_recent_chats` read `chat.db` read-only (`effect=read`, `auto=True`). The
 `db_path` is CONFIG (`system_mcp.messages.db_path`), NEVER a caller arg — an
 MCP client cannot repoint the reader. Reading needs **Full Disk Access**.
 `attributedBody` is decoded by a deserialization-free printable scan (never
-`NSKeyedUnarchiver`). SEND (AppleScript) is deferred — spike its reliability
-first (design flags it flaky).
+`NSKeyedUnarchiver`).
+
+**SEND (shipped 2026-07-12, spike-validated live first):**
+
+- `messages.send_message(to, text)` — `effect=irreversible`, gated always.
+  First param = the recipient (payload rule). iMessage-first, SMS fallback.
+  Success means "queued to Messages.app" — delivery is async and NOT verified.
+- `messages.resolve_contact(name)` — read/auto; Contacts.app lookup, name →
+  handles (max 10 people). Needs Automation permission for Contacts.
+- **Handles-only rule:** `send_message` REJECTS contact names (points to
+  `resolve_contact`). Reason: the guard's approval payload is the FIRST param,
+  so the human must confirm the REAL handle — never an unresolved alias.
+  Resolution is deliberately a separate read capability, not a body step.
+- **AppleScript injection defense:** user strings ride `osascript` ARGV
+  (`on run argv`, invoked as `osascript -e SCRIPT -- <args>`), never
+  interpolated into script source. Verified live: `--` is consumed by option
+  parsing; quotes and `-e` inside the text are inert. Keep this pattern for
+  ALL AppleScript capabilities (15d mail included).
+- **Spike findings (design §5.3 answered):** the modern
+  `participant <handle> of <account>` + `send` syntax is reliable; the legacy
+  `buddy of service` form is avoided. Participant resolution is LAZY — a
+  garbage handle "resolves" without error, so AppleScript will NOT validate
+  recipients; validate handle shape yourself and treat send-time errors as
+  failure. Both iMessage and SMS accounts are enabled on this Mac (Text
+  Message Forwarding), making the fallback real.
 
 - **Denylist scoping (15c):** the terminal denylist applies ONLY to
   `macos.run_command` — its patterns are shell fragments, so a message search
   for "sudo" is no longer falsely denied. fs safety is root-scoping, not the
   denylist.
 - **Read posture (Tony, 2026-07-12):** message reads stay AUTO (no approval)
-  even over stdio. If you add a MORE sensitive read domain, revisit whether it
-  should gate to `approve` instead of inheriting this.
+  even over stdio. `resolve_contact` inherits this posture (external clients
+  can enumerate contacts without approval) — flagged in the 15c security
+  review; revisit BOTH together if the posture ever tightens.
 
 ## Claude Desktop / Claude Code registration
 

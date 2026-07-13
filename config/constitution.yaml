@@ -31,6 +31,8 @@ constitution:
       description: "Moving/renaming a file or directory (irreversible)"
     - action: fs.delete
       description: "Deleting a file or empty directory (irreversible)"
+    - action: messages.send_message
+      description: "Sending an iMessage/SMS from this Mac (irreversible)"
 
   # Hard limits
   limits:

@@ -535,6 +535,13 @@ attaches a permission to the *responsible* process, so a CLI tool launched by
 Terminal inherits Terminal's grants — which is why FDA for `chat.db` is granted
 to the launcher (Terminal / the app), not just the python binary.
 
+**Text Message Forwarding** — the iPhone→Mac relay that lets Messages.app on
+the Mac send/receive plain SMS through the paired iPhone (Settings → Messages
+→ Text Message Forwarding on the phone). It's what makes the `SMS` account in
+Messages *connected*, and therefore what makes `messages.send_message`'s
+iMessage→SMS fallback viable (spike-verified 2026-07-12). Without it, sends to
+non-iMessage numbers fail cleanly.
+
 **Venv** — Python virtual environment. AgenticOS uses `./.venv/`; managed
 Codehome apps get their venv Python rewritten in-place when launched via
 `ProcessManager`.

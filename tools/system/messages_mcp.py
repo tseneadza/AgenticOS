@@ -244,3 +244,180 @@ def list_recent_chats(limit: int = _DEFAULT_LIMIT) -> dict:
         return err
     return {"ok": True, "count": len(rows),
             "chats": [{"chat": r["chat"], "name": r["name"], "last": _apple_to_iso(r["last"])} for r in rows]}
+
+
+# --------------------------------------------------------------------------- #
+# SEND half — 15c (spike-validated live 2026-07-12)
+#
+# Spike findings that shape this code:
+#   * The modern ``participant <handle> of <account>`` + ``send`` AppleScript
+#     syntax works reliably; the legacy ``buddy of service`` form is avoided.
+#   * Participant resolution is LAZY — a garbage handle "resolves" without
+#     error, so AppleScript will NOT validate recipients for us. We validate
+#     the handle shape ourselves and treat send-time errors as failure.
+#   * Both an iMessage and an SMS account are enabled on this Mac (Text
+#     Message Forwarding), so iMessage-then-SMS fallback is viable.
+#
+# SECURITY:
+#   * ``send_message`` accepts RAW HANDLES ONLY (phone/email). Contact names
+#     are rejected with a pointer to ``resolve_contact`` — the guard's
+#     approval payload is the FIRST parameter, so the human must always be
+#     confirming the REAL target, never an unresolved alias.
+#   * User text/handles are passed to ``osascript`` as ARGV (``on run argv``),
+#     never interpolated into the script source — AppleScript injection via
+#     quotes in the message text is structurally impossible.
+#   * Delivery is NOT verified (Messages hands off asynchronously); a success
+#     result means "queued to Messages.app", and says so.
+# --------------------------------------------------------------------------- #
+import re
+import subprocess
+
+_SEND_TIMEOUT_S = 30
+_RESOLVE_TIMEOUT_S = 20
+_MAX_TEXT_LEN = 4000
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_PHONE_RE = re.compile(r"^\+?[\d\s().-]{7,20}$")
+
+# argv: 1=handle, 2=text, 3=service ("imessage" | "sms")
+_SEND_SCRIPT = '''\
+on run argv
+    set theHandle to item 1 of argv
+    set theText to item 2 of argv
+    set theService to item 3 of argv
+    tell application "Messages"
+        if theService is "sms" then
+            set acc to 1st account whose service type = SMS and enabled = true
+        else
+            set acc to 1st account whose service type = iMessage and enabled = true
+        end if
+        set p to participant theHandle of acc
+        send theText to p
+    end tell
+    return "sent"
+end run
+'''
+
+# argv: 1=name fragment. Emits "name|kind|handle" lines (max 10 people).
+_RESOLVE_SCRIPT = '''\
+on run argv
+    set theName to item 1 of argv
+    set out to ""
+    tell application "Contacts"
+        set matches to (every person whose name contains theName)
+        if (count of matches) > 10 then set matches to items 1 thru 10 of matches
+        repeat with p in matches
+            set nm to name of p
+            repeat with ph in phones of p
+                set out to out & nm & "|phone|" & (value of ph) & linefeed
+            end repeat
+            repeat with em in emails of p
+                set out to out & nm & "|email|" & (value of em) & linefeed
+            end repeat
+        end repeat
+    end tell
+    return out
+end run
+'''
+
+
+def _is_handle(to: str) -> bool:
+    """Whether ``to`` is a raw messaging handle: an email or a phone number."""
+    return bool(_EMAIL_RE.match(to) or _PHONE_RE.match(to))
+
+
+def _osascript(script: str, args: list[str], timeout: int):
+    """Run one AppleScript with argv-delivered user data.
+
+    Returns ``(completed_process, error_dict)`` — exactly one is truthy.
+    User strings ride argv (after ``--``) so they can never alter the script.
+    """
+    try:
+        proc = subprocess.run(
+            ["osascript", "-e", script, "--", *args],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return proc, None
+    except subprocess.TimeoutExpired:
+        return None, {"ok": False, "error": f"osascript timed out after {timeout}s"}
+    except FileNotFoundError:
+        return None, {"ok": False, "error": "osascript not found — is this macOS?"}
+
+
+@capability(
+    "messages.resolve_contact",
+    domain="messages",
+    effect="read",
+    auto=True,
+    schema={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "Contact name (or fragment) to look up in Contacts.app."},
+        },
+        "required": ["name"],
+    },
+)
+def resolve_contact(name: str) -> dict:
+    """Resolve a contact name to phone/email handles via Contacts.app (read-only)."""
+    name = (name or "").strip()
+    if not name:
+        return {"ok": False, "error": "name required"}
+    proc, err = _osascript(_RESOLVE_SCRIPT, [name], _RESOLVE_TIMEOUT_S)
+    if err:
+        return err
+    if proc.returncode != 0:
+        return {"ok": False,
+                "error": f"Contacts lookup failed ({(proc.stderr or '').strip()}) — "
+                         "the host process may need Automation permission for Contacts"}
+    handles = []
+    for line in (proc.stdout or "").splitlines():
+        parts = line.split("|", 2)
+        if len(parts) == 3 and parts[2].strip():
+            handles.append({"name": parts[0], "kind": parts[1], "handle": parts[2].strip()})
+    return {"ok": True, "query": name, "count": len(handles), "handles": handles}
+
+
+@capability(
+    "messages.send_message",
+    domain="messages",
+    effect="irreversible",
+    auto=False,
+    schema={
+        "type": "object",
+        "properties": {
+            "to": {"type": "string", "description": "Recipient handle: phone (+15551234567) or email. Names are rejected — resolve_contact first."},
+            "text": {"type": "string", "description": "Message body to send."},
+        },
+        "required": ["to", "text"],
+    },
+)
+def send_message(to: str, text: str) -> dict:
+    """Send an iMessage (SMS fallback) from this Mac. Irreversible — always gated."""
+    to = (to or "").strip()
+    text = (text or "").strip()
+    if not to:
+        return {"ok": False, "error": "recipient handle required"}
+    if not text:
+        return {"ok": False, "error": "message text required"}
+    if len(text) > _MAX_TEXT_LEN:
+        return {"ok": False, "error": f"message too long ({len(text)} > {_MAX_TEXT_LEN} chars)"}
+    if not _is_handle(to):
+        return {"ok": False,
+                "error": f"'{to}' is not a phone/email handle — use resolve_contact "
+                         "to look the person up, then send to the returned handle"}
+
+    # iMessage first, SMS fallback (spike: both accounts enabled on this Mac).
+    attempts = []
+    for service in ("imessage", "sms"):
+        proc, err = _osascript(_SEND_SCRIPT, [to, text, service], _SEND_TIMEOUT_S)
+        if err:
+            attempts.append(f"{service}: {err['error']}")
+            continue
+        if proc.returncode == 0:
+            return {"ok": True, "to": to,
+                    "service": "iMessage" if service == "imessage" else "SMS",
+                    "note": "queued to Messages.app — delivery is not verified"}
+        attempts.append(f"{service}: {(proc.stderr or '').strip() or f'rc={proc.returncode}'}")
+    return {"ok": False,
+            "error": "send failed on both services — " + "; ".join(attempts)
+                     + ". The host process may need Automation permission for Messages."}

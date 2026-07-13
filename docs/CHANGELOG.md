@@ -1,3 +1,36 @@
+## 2026-07-12 — Phase 15c COMPLETE: iMessage SEND shipped (spike-validated)
+
+The send half of the messages domain. AppleScript reliability was spiked LIVE
+first (design §5.3 flagged it flaky): the modern `participant <handle> of
+<account>` + `send` syntax works; participant resolution is LAZY (garbage
+handles "resolve" without error — AppleScript will not validate recipients);
+both iMessage and SMS accounts are enabled (Text Message Forwarding live).
+Verdict: build. Suite 659 green (+29). Live-verified end-to-end: gated
+unapproved call, name rejected pre-osascript, approved self-send delivered.
+
+- **`messages.send_message(to, text)`** (`tools/system/messages_mcp.py`) —
+  irreversible, gated, iMessage-first with SMS fallback. **Handles only**: a
+  contact NAME is rejected with a pointer to `resolve_contact`, because the
+  guard's approval payload is the FIRST param — the human always confirms the
+  REAL handle, never an unresolved alias. Success means "queued to
+  Messages.app", stated explicitly (delivery is async and unverified).
+- **`messages.resolve_contact(name)`** — read/auto; Contacts.app lookup via
+  AppleScript, name → phone/email handles (capped 10 people). Needs
+  Automation permission for Contacts (granted for the shell host this session).
+- **AppleScript injection defense**: user text/handles ride `osascript` ARGV
+  (`on run argv`, after `--`) and are never interpolated into script source.
+  Verified live against the real binary (quotes + `-e` in text are inert).
+- Config: `messages.send_message` added to `approval_required`
+  (doc-of-intent, fs pattern). OSA toolbox wired (+2 → 23 tools) with
+  prompt mapping ('text <person>' → resolve then send with the raw handle).
+- Tests: `test_phase15c_messages_send.py` (29) — kwargs-payload regression,
+  handles-only validation, argv injection canary, SMS fallback, dispatch
+  self-approval strip, parity. osascript fully mocked — no test sends.
+- Security review (inline, mandatory for the yaml spine touch): PASS.
+  Posture note: `resolve_contact` is auto over stdio (external clients can
+  enumerate contacts without approval) — consistent with the recorded
+  "message reads stay AUTO" decision; revisit alongside it if ever tightened.
+
 ## 2026-07-12 — fix: OSA gated-confirm flow (live-found in the first MCP demo)
 
 The first live delete-through-OSA exposed two bugs in the sync chat path's
