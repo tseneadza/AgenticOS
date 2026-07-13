@@ -1,4 +1,50 @@
-# ⏹ SESSION 2026-07-12 (later) — PHASE 15c COMPLETE ✅ (send spike + send_message shipped) · NEXT: 15d Mail
+# ⏹ SESSION 2026-07-12/13 (close) — 15c SEND LIVE-HARDENED: 3 real-user defects fixed ✅ · NEXT: 15d Mail
+
+Tony's first real send session broke things the demo didn't. All fixed,
+verified live, pushed (d1a471b, 7deed93+2497f6e). Suite **671 green**.
+
+## The three live-found defects (all from one transcript)
+1. **-600 app launch** — sidecar's background context can ATTACH to a
+   running app but can't LAUNCH one. Fix: `_osascript` pre-launches via
+   `open -ga <App>` + 1s settle (Messages/Contacts).
+2. **"I approve" not affirmative** (sync path) — matcher widened
+   (approve/approved/i approve/send it/i confirm), word-boundary-safe
+   prefixes. Skill Pitfall 3.
+3. **THE BIG ONE — gated capabilities were DEAD over the app's WS path**:
+   `_run_capability`'s broad `except Exception` swallowed the
+   GraphInterrupt from `_ws_approval_fn`; model saw "ERROR running…",
+   no Allow/Deny ever rendered, OSA confabulated "hard system block".
+   Fix: `except GraphBubbleUp: raise`. Live WS verify: tool_start →
+   awaiting_confirm (parked) → resume approve → sent. Skill Pitfall 4:
+   audit every broad except between interrupt() and the graph; WS-test
+   gated tools — curl only exercises the sync path.
+
+## Delivery question CLOSED
+All three test texts to +16784678669 arrived on Tony's phone — the 9:23
+"didn't go through" was thread-placement confusion, NOT async delivery
+failure. Lazy-resolution delivery check stays a 15e nice-to-have, not a bug.
+
+## ⚠ Auto-continue runner
+Still failing every cycle (`Not logged in` — pi-node claude binary needs
+`/login`) AND its safety-net committed/pushed half-finished edits
+mid-session (7deed93, 23:03). Recommended to Tony: `launchctl unload`
+com.agenticos.auto-continue until login is fixed — awaiting his call.
+
+## ▶ RESUME HERE — next session
+1. **15d Mail** (`mail_mcp.py`): FIRST interview Tony on transport
+   (AppleScript vs IMAP — design §5.4). If AppleScript: reuse the argv
+   pattern AND the `open -ga` pre-launch verbatim; add the GraphBubbleUp
+   re-raise check to any new wrap layer; WS-test the gated send, not just
+   curl. Reads auto (ask if messages read-posture carries over), send/reply
+   irreversible+gated, kwargs regression, security review for the yaml touch.
+2. **15e** harden + effect-mode migration (+ optional chat.db post-send
+   delivery check — needs FDA).
+3. Human items: /login for the pi-node claude (auto-continue), decide on
+   pausing the runner, FDA for .venv python (message reads live).
+
+---
+
+# ⏹ SESSION 2026-07-12 (later) — PHASE 15c COMPLETE ✅ (send spike + send_message shipped)
 
 The send half of 15c, done in one session: spike → build → test → live-verify
 → docs → commit+push. Suite **659 green** (+29). Built via claude.ai (mobile
