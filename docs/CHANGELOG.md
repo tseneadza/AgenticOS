@@ -1,3 +1,23 @@
+## 2026-07-12 — fix: gated capabilities were DEAD over the app's WebSocket path
+
+Third live-found defect from Tony's send session, and the real reason "yes"
+and "approved" kept failing in the app: `_run_capability`'s broad
+`except Exception` swallowed the `GraphInterrupt` that `_ws_approval_fn`
+raises to park the graph. The model saw `ERROR running 'messages.send_message'
+...` instead, no Allow/Deny ever appeared, and OSA invented explanations
+("hard system block"). Same bug class as the earlier streaming-runner
+GraphInterrupt swallow — now fixed at the toolbox bridge too: `except
+GraphBubbleUp: raise` ahead of the generic clause. `_guarded` never had the
+bug (its approval_fn call sits outside the swallowing try), which is why
+legacy gated tools worked over WS while every Phase-15 capability failed.
+WS + gated capability had never been live-tested — the 15c demo used curl.
+
+Live-verified over a real websocket: tool_start → awaiting_confirm (parked)
+→ resume approve → tool_end ok → "Sent, Sir." Suite 671 green (+2:
+interrupt-propagation regression + sync-deny unchanged). LESSON, now twice
+paid: audit EVERY broad `except` on the path between `interrupt()` and the
+graph runner whenever adding a new tool-execution layer.
+
 ## 2026-07-12 — fix: two live-found 15c send defects (first real-user session)
 
 Tony's first live send session surfaced two defects (transcript-driven):

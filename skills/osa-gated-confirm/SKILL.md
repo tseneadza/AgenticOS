@@ -48,7 +48,7 @@ tools.
 `chosen` to the cloud brain (`"default"`) unless a cloud model is pinned.
 **Verify:** turn 2 `model` is a `claude-*` id and `tool_trace` re-issues the tool.
 
-## Pitfall 3 — the human's approval WORDING isn't recognized
+## Pitfall 3 — the human's approval WORDING isn't recognized (sync path)
 
 **Symptom:** the confirm is armed, the human clearly approves ("I approve"),
 but OSA re-denies and asks again — only the literal word "yes" unlocks it.
@@ -60,7 +60,24 @@ with WORD-BOUNDARY-safe prefixes (`p + " "`), or "i approved it last week"
 becomes a false approve. Add every new phrasing to the
 test_phase14b_osa.py parametrize lists in the same change.
 
-## Pitfall 4 — OSA tries to route AROUND its own guard
+## Pitfall 4 — a broad `except` between interrupt() and the graph
+
+**Symptom (WS path):** the tool IS called, but instead of an
+`awaiting_confirm` frame the model receives `ERROR running '<cap>': ...` and
+confabulates ("hard system block", "deeper permission issue"); no Allow/Deny
+renders. **Cause:** `interrupt()` works by RAISING `GraphInterrupt`
+(subclass of `GraphBubbleUp`, subclass of `Exception`) from the approval fn
+all the way to the graph runner. ANY broad `except Exception` on that path
+swallows it. Paid TWICE now: the streaming runner (14x) and `_run_capability`
+(15c live, 2026-07-12 — gated capabilities were dead over the app's primary
+WS path while legacy `_guarded` tools worked, because `_guarded`'s
+approval_fn call sits outside its swallowing try). **Rule:** every layer that
+wraps tool execution gets `except GraphBubbleUp: raise` ABOVE its generic
+handler, plus a propagation regression test
+(`TestWsInterruptPropagation` pattern). And live-test new gated tools over
+the WS route, not just curl — curl only exercises the sync path.
+
+## Pitfall 5 — OSA tries to route AROUND its own guard
 
 A denied destructive action must NEVER be re-attempted by another route (e.g.
 `run_command` / `rm`). OSA once suggested `rm` to work around a denied delete.
