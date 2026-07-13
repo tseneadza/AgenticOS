@@ -33,6 +33,8 @@ import re
 import threading
 from typing import Any, Callable
 
+from langgraph.errors import GraphBubbleUp
+
 from core.constitution import (
     ApprovalRequired,
     Constitution,
@@ -493,6 +495,16 @@ class OSAToolbox:
             text = result if isinstance(result, str) else json.dumps(result, default=str)
             self.event_fn("end", cap_name, {"ok": True})
             return text
+        except GraphBubbleUp:
+            # WS-mode approval parks the run on a LangGraph interrupt():
+            # _ws_approval_fn RAISES GraphInterrupt through here and the
+            # ToolNode re-raises it to checkpoint+pause the graph. Swallowing
+            # it (the pre-fix behavior) broke every gated capability over the
+            # app's primary WebSocket path — the model saw "ERROR running
+            # ..." and no Allow/Deny ever appeared (live-found 2026-07-12).
+            # _guarded never had this bug: its approval_fn call sits outside
+            # the swallowing try. NEVER catch bubble-up control flow.
+            raise
         except ConstitutionViolation as cv:
             self.event_fn("end", cap_name, {"ok": False, "blocked": True})
             return f"BLOCKED: {cv}"

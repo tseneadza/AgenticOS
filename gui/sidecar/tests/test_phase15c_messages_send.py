@@ -279,3 +279,30 @@ class TestDispatch:
         tools = {t["name"]: t for t in osa_system_mcp.build_tool_list()}
         for name in ("messages.send_message", "messages.resolve_contact"):
             assert name in tools and tools[name]["inputSchema"].get("type") == "object"
+
+
+# --------------------------------------------------------------------------- #
+# 6. WS interrupt propagation — the toolbox bridge must NEVER swallow
+#    GraphInterrupt (live-found 2026-07-12: every gated capability over the
+#    app's primary WebSocket path returned "ERROR running ..." instead of
+#    parking the graph, so Allow/Deny never appeared).
+# --------------------------------------------------------------------------- #
+class TestWsInterruptPropagation:
+    def test_graph_interrupt_from_approval_fn_propagates(self, osascript_spy):
+        from langgraph.errors import GraphInterrupt
+        from agents import osa_agent
+
+        def ws_style_approval_fn(action_type, description):
+            raise GraphInterrupt()  # what _ws_approval_fn's interrupt() does
+
+        box = osa_agent.OSAToolbox(approval_fn=ws_style_approval_fn)
+        with pytest.raises(GraphInterrupt):
+            box.send_message(_HANDLE, "hi")
+
+    def test_sync_deny_path_still_returns_denied_string(self, osascript_spy):
+        """The sync route's approval_fn RETURNS a decision — unchanged."""
+        from agents import osa_agent
+
+        box = osa_agent.OSAToolbox(approval_fn=lambda a, d: "denied")
+        out = box.send_message(_HANDLE, "hi")
+        assert out.startswith("DENIED:")
