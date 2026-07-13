@@ -104,3 +104,13 @@ HTTP/WS connection) — no app relaunch needed for backend changes. Frontend
    happen — never treat HTTP 200 as proof the effect occurred.
 4. Background-launched processes can have no audio route. Launch context matters
    for anything touching the speakers/mic.
+5. (2026-07-12) A stale sidecar makes OSA truthfully DENY having tools you
+   just built — "I don't have a send_message tool" was accurate for six
+   hours because the process predated the commit. After adding/wiring ANY
+   tool, restart before judging model behavior; check `ps -o lstart` vs the
+   commit time when OSA's claims and the code disagree.
+6. (2026-07-12) Launch context also sets AppleScript reach and TCC: a
+   background-launched sidecar can't LAUNCH apps via `tell application`
+   (error -600 — hence the `open -ga` pre-launch rule in osa-system-mcp) and
+   inherits Automation grants from its launching host — a sidecar launched
+   from a different host will re-prompt on first Messages/Contacts use.

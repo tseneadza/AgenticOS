@@ -117,6 +117,18 @@ does NOT catch two calls that start at the same instant (both still synthesizing
 
 When adding confirm-related behavior, respect which mechanism the path uses.
 
+**Gated TOOLS are dual-path too (live-found 2026-07-12):** a new gated tool
+can work perfectly over curl (sync pending-confirm) while being completely
+DEAD over the app's WS path — `interrupt()` works by RAISING GraphInterrupt
+through every layer between the approval fn and the graph runner, and one
+broad `except Exception` on that path (it was `_run_capability`) swallows it
+into an "ERROR running …" string: no `awaiting_confirm`, no Allow/Deny, and
+the model confabulates. Rules: every tool-execution wrap layer needs
+`except GraphBubbleUp: raise` above its generic handler; every NEW gated
+tool gets one live WS drive (websockets client: expect tool_start →
+awaiting_confirm → resume → tool_end ok) before calling it shipped. See
+osa-gated-confirm Pitfall 4.
+
 ## Key learnings (2026-07-08)
 
 1. "Works in curl, silent in the app" = you touched POST but the app uses the

@@ -145,6 +145,14 @@ MCP client cannot repoint the reader. Reading needs **Full Disk Access**.
   interpolated into script source. Verified live: `--` is consumed by option
   parsing; quotes and `-e` inside the text are inert. Keep this pattern for
   ALL AppleScript capabilities (15d mail included).
+- **Pre-launch rule (-600, live-found 2026-07-12):** from the sidecar's
+  background context, `tell application` can ATTACH to a running app but
+  cannot LAUNCH one (`error -600: Application isn't running`). Every
+  AppleScript capability must pre-launch its target app first — `_osascript`
+  takes `app="Messages"|"Contacts"|…` and runs `open -ga <App>` (background,
+  LaunchServices, works from background contexts) with a 1s settle. Reuse
+  the parameter for every new AppleScript domain; never call `osascript`
+  bare against an app that might be closed.
 - **Spike findings (design §5.3 answered):** the modern
   `participant <handle> of <account>` + `send` syntax is reliable; the legacy
   `buddy of service` form is avoided. Participant resolution is LAZY — a
