@@ -1,3 +1,65 @@
+# ⏹ SESSION 2026-07-14 — PHASE 15e COMPLETE ✅ (harden + flip to effect mode) · PHASE 15 DONE 🎉
+
+15e shipped in one session: interview → subagent build → **supervisor adversarial
+security review (caught + closed 2 escapes)** → suite green → commit+push
+(**1cafdf6**). Suite **802 green** (+~90). `system_mcp.mode` is now **effect**
+LIVE. Phase 15 (OSA System MCP) is COMPLETE. Built with a subagent (Tony's call)
+for the implementation; supervisor did the security pass + the fixes + commit.
+
+## Decisions (Tony, interviewed 2026-07-14)
+- **Effect classifier = fail-closed heuristic verb-list, NO model call.** Static
+  code-reviewed `READ_ONLY_VERBS` table; unknown/ambiguous → gate.
+- **Flip strict → effect THIS session** (not deferred). Reads auto-run now.
+- **Attempt the FDA-blocked optional items** (chat.db delivery check + .emlx
+  body reads) — both wired + degrade cleanly; real FDA grant is a human step.
+- **Build via subagent** per standing preference.
+- **osascript stays allowlisted (ACCEPTED RISK)** — a live OSA flow needs it
+  un-gated even though it auto-runs arbitrary AppleScript. Documented at config.
+
+## What shipped
+- `_policy.classify_command(cmd) -> read|mutate|unknown`: read ONLY when every
+  pipeline segment's leading token is a confirmed read verb (git subcommand-
+  aware) AND no mutating shell feature. Wired into the run_command branch AFTER
+  the allowlist, **effect mode only**. Ladder: denylist(deny) → allowlist(allow)
+  → classifier(effect) → approve.
+- Flipped `system_mcp.mode: effect`; denylist +`|sh`/`| bash`/`|bash`.
+- FDA best-effort: `messages._verify_last_sent` (chat.db, config `db_path`) →
+  `send_message` result `delivery_check`, send never depends on it; 
+  `mail._read_emlx_body` (config `emlx_root`) → `read_message` prefers .emlx,
+  degrades to the 40s AppleScript body fetch. Both no-op cleanly w/o FDA.
+- `docs/TCC_PERMISSIONS_RUNBOOK.md` (Brain2-mirrored, MD5 MATCH).
+
+## Supervisor security review — 2 escapes CLOSED (were live holes)
+1. **Allowlist prefix-chaining (since 15a):** `ls && rm x`, `ls; rm x`,
+   `ls | rm x`, `ls $(rm x)`, `ls > /etc/x` rode the `ls ` prefix and AUTO-RAN
+   in both modes (denylist only catches specific worst-cases). Fix: allowlist
+   now rejects any command with shell control/redirect/subst operators →
+   falls to classifier/approval. Tightens strict mode, fail-closed = correct.
+2. **Newline classifier bypass (found by the new test):** `ls \n rm x` gated at
+   the allowlist but the classifier read it as `read` — shlex COLLAPSES `\n`, so
+   it tokenized as `ls rm x`, while `shell=True` runs `rm x`. Fix: classifier
+   gates on any `\n`/`\r`. Lesson: shlex ≠ the shell; test newline-smuggling on
+   any command classifier.
+
+Broad-except audit: `osa_agent.py:498 except GraphBubbleUp: raise` intact +
+ordered first; `tools/system/*` broad excepts are INSIDE capability bodies
+(post-guard); `osa_system_mcp.py:dispatch` catches ApprovalRequired/Violation
+explicitly first + is the stdio door only. No swallower on the interrupt path.
+
+## ▶ RESUME HERE — next session
+1. **Live effect-mode smoke** against OSA (needs sidecar restart + MySQL up):
+   confirm a read-only `run_command` (e.g. `ps aux`, `git diff`) auto-runs and a
+   mutating one still gates, over the WS path — the classifier has unit coverage
+   but no live OSA run yet this session.
+2. **Human items (unchanged):** FDA grant for the `.venv` python (activates the
+   chat.db delivery check + .emlx fast body reads — runbook has the steps);
+   `/login` for the pi-node claude (auto-continue runner still UNLOADED).
+3. **Phase 15 is done** — pick the next phase (16?) from `docs/roadmap.md`. If
+   the osascript-via-run_command flow is ever retired, remove it from the
+   allowlist (accepted-risk note at the config marks the spot).
+
+---
+
 # ⏹ SESSION 2026-07-13 (close) — PHASE 15d COMPLETE ✅ (Mail domain shipped + live-hardened) · NEXT: 15e
 
 One session: interview → spike → build → security review → live checkout →
