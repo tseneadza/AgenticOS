@@ -1,3 +1,63 @@
+# ⏹ SESSION 2026-07-13 (close) — PHASE 15d COMPLETE ✅ (Mail domain shipped + live-hardened) · NEXT: 15e
+
+One session: interview → spike → build → security review → live checkout →
+2 live-found defects fixed → commit+push (**44106f4**). Suite **707 green**
+(+36). Registry 21 capabilities; OSA **29 tools**. Built via claude.ai —
+subagents unavailable, documented INLINE fallback used (tests in-session,
+adversarial security pass by supervisor — verdict PASS with one finding
+closed).
+
+## Decisions (Tony, interviewed)
+- **Transport: AppleScript → Mail.app** (not IMAP) — reuses 15c patterns, no
+  stored credentials. One account: iCloud (tseneadza@icloud.com / @me.com).
+- **Mail reads AUTO** — same posture as message reads, even over stdio.
+- **reply = Option B**: first param is the sender address the human confirms,
+  body-verified against where Mail ACTUALLY sends (fs.move pattern).
+- **Auto-continue runner UNLOADED** (com.agenticos.auto-continue) — stays off
+  until the pi-node claude `/login` is fixed.
+
+## Spike findings (design §5.4 ANSWERED)
+- Headers fast/reliable; **`content of <msg>` BLOCKS 40s+** when bodies
+  aren't local (iCloud) → read_message: headers always, body in a SEPARATE
+  osascript call behind `mail.body_timeout_s` (10s), clean degrade.
+- `.emlx` disk fallback FDA-blocked → 15e candidate.
+- `reply m without opening window` works; **Mail sets the recipient itself**
+  → enabled the re-check (read back actual recipient; mismatch = delete
+  draft + ConstitutionViolation; approval can NEVER redirect a reply).
+  Fail-closed: unreadable recipient counts as mismatch.
+- Mailbox index order NOT guaranteed — list_recent compares end dates, walks
+  from the newest end. Tony's INBOX was empty; Archive held the mail.
+
+## Live-found defects (both fixed + verified)
+1. **Cold-launch DOUBLE-SEND**: a send fired into freshly-launched,
+   still-syncing Mail was delivered TWICE + left an autosaved draft; warm
+   Mail clean. Fix: `_osascript` pgrep-checks Mail — warm calls never sleep
+   (reads got faster), cold settles 1s reads / **6s before sends**
+   (`_COLD_SETTLE_SEND_S`). Rule extends to ANY future AppleScript domain
+   with irreversible acts.
+2. **Header-row forgery** (security review): hostile subject with
+   linefeed+`\x1f` could inject a fake sender row into list/search output.
+   Parser drops non-numeric ids; residual is display-only, backstopped by
+   the reply re-check + send confirm. Listed senders ≠ verified identity.
+
+## Live checkout results
+Self-send delivered ONCE (post-fix); threaded reply (Re:) delivered ONCE,
+zero draft residue; mismatch REFUSED live (named actual recipient, deleted
+draft, nothing sent). Delivery VERIFIED end-to-end (first domain where we
+could — the mail landed back in INBOX).
+
+## ▶ RESUME HERE — next session
+1. **15e — harden + migrate**: flip `system_mcp.mode: strict → effect`;
+   effect classifier; TCC permissions runbook (mirror to Brain2); optional
+   chat.db post-send delivery check; consider `.emlx` body reads once FDA
+   granted. Audit any new broad excepts (twice-paid lesson).
+2. **Human items**: `/login` for pi-node claude (runner stays unloaded until
+   then); FDA for `.venv` python (chat.db reads + would unlock .emlx).
+3. Sidecar restart needed before OSA can use the 6 new mail tools live
+   (WS path already regression-tested for GraphInterrupt propagation).
+
+---
+
 # ⏹ SESSION 2026-07-12/13 (close) — 15c SEND LIVE-HARDENED: 3 real-user defects fixed ✅ · NEXT: 15d Mail
 
 Tony's first real send session broke things the demo didn't. All fixed,
