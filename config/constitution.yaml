@@ -25,6 +25,10 @@ constitution:
       description: "Running a non-allowlisted terminal command on this Mac"
     - action: fs.write_file
       description: "Writing a file outside the OSA scratch root"
+    - action: mail.send_mail
+      description: "Sending an email from this Mac"
+    - action: mail.reply
+      description: "Replying to an email from this Mac"
     - action: fs.append
       description: "Appending to a file outside the OSA scratch root"
     - action: fs.move
@@ -130,4 +134,11 @@ constitution:
     messages:
       db_path: ~/Library/Messages/chat.db
       max_limit: 200
+    # Phase 15d — Mail (AppleScript transport, locked 2026-07-13). Account is
+    # config-anchored so an MCP client can't repoint reads at another account.
+    mail:
+      account: iCloud
+      default_mailbox: INBOX
+      max_limit: 100
+      body_timeout_s: 10
 

@@ -509,6 +509,22 @@ Privacy & Security → Full Disk Access) a process needs to read protected store
 like `chat.db` and Mail. Without it, SQLite returns "unable to open database
 file." Granted per-executable — for AgenticOS, the `.venv` python / the sidecar.
 
+**Mail domain (mail_mcp.py)** — Phase 15d capabilities driving Mail.app over
+AppleScript (transport locked 2026-07-13; no IMAP, no stored credentials).
+Four auto reads (`list_mailboxes`, `list_recent`, `search_mail`,
+`read_message`) plus two gated irreversibles (`send_mail`, `reply`). Headers
+are reliable; message BODIES may block when not downloaded locally, so
+`read_message` fetches the body behind a short timeout and degrades to
+headers + a note. The account name is config-anchored
+(`system_mcp.mail.account`), never a caller argument.
+
+**Reply recipient re-check** — `mail.reply`'s safety property (fs.move
+pattern): Mail itself decides where a reply goes, so the capability reads
+back the constructed reply's ACTUAL recipient and, if it differs from the
+human-approved `to`, deletes the draft and raises `ConstitutionViolation` —
+an approved call can never be redirected, and a forged sender in a listing
+can never receive a reply.
+
 **launchd** — macOS's system-wide daemon manager (analog of systemd). Runs
 Tony's Brain2 vault-index job and other scheduled tasks. Configured via
 `.plist` files.

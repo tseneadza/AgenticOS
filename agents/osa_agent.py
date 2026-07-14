@@ -76,7 +76,7 @@ OSA_SYSTEM = (
     "-> run_command; 'remember that ...' -> "
     "remember; 'switch to Sonnet' / 'use your local brain' / 'back to auto' "
     "-> switch_model; 'pull llama3.3' / 'download a model' / 'add a new local "
-    "model' -> pull_model. Files (inside ~/Codehome and ~/Brain2): 'read <file>' -> read_file; 'list <dir>' -> list_dir; 'find <files>' -> search_files; 'save/write to <file>' -> write_file; 'append to <file>' -> append_file; 'move/rename <file>' -> move_file; 'delete <file>' -> delete_file. Messages (iMessage, needs Full Disk Access): 'read my messages with <person>' -> read_messages; 'search messages for <text>' -> search_messages; 'recent chats' / 'who have I messaged' -> list_recent_chats; 'text/message <person>' -> resolve_contact (if given a NAME) then send_message with the RAW handle — sends always need Tony's OK and the confirm must show the actual handle, never just the name. Any full claude-* id (e.g. 'claude-opus-4-8') is "
+    "model' -> pull_model. Files (inside ~/Codehome and ~/Brain2): 'read <file>' -> read_file; 'list <dir>' -> list_dir; 'find <files>' -> search_files; 'save/write to <file>' -> write_file; 'append to <file>' -> append_file; 'move/rename <file>' -> move_file; 'delete <file>' -> delete_file. Messages (iMessage, needs Full Disk Access): 'read my messages with <person>' -> read_messages; 'search messages for <text>' -> search_messages; 'recent chats' / 'who have I messaged' -> list_recent_chats; 'text/message <person>' -> resolve_contact (if given a NAME) then send_message with the RAW handle — sends always need Tony's OK and the confirm must show the actual handle, never just the name. Mail (Mail.app): 'check my email' / 'recent mail' -> list_recent_mail; 'which mailboxes' -> list_mailboxes; 'find the email from <x>' -> search_mail; 'read that email' -> read_email; 'email <address>' -> send_mail; 'reply to it' -> read_email first, then reply_mail with the sender's ADDRESS — mail sends/replies always need Tony's OK and the confirm must show the actual address. Any full claude-* id (e.g. 'claude-opus-4-8') is "
     "switchable even if not on the shelf; a bare cloud family name you don't "
     "recognize -> ask Tony for the full id rather than guessing one.\n"
     "- Your own brain is stated in the 'Brain status' line at the end of this "
@@ -667,6 +667,69 @@ class OSAToolbox:
 
         return self._run_capability("messages.send_message", to, lambda **kw: messages_mcp.send_message(to, text, **kw))
 
+    # ------------------------------------------------------- Mail (15d)
+    def list_mailboxes(self) -> str:
+        """List Tony's mail account's mailboxes with message counts. Read-only.
+
+        Use FIRST when unsure which mailbox holds something — his INBOX may be
+        empty while Archive is live.
+        """
+        from tools.system import mail_mcp
+
+        return self._run_capability("mail.list_mailboxes", "", mail_mcp.list_mailboxes)
+
+    def list_recent_mail(self, mailbox: str = "") -> str:
+        """List recent email headers in a mailbox, newest first. Read-only.
+
+        Use for 'check my email', 'any new mail', 'what's in <mailbox>'.
+        Empty mailbox = the default. Headers only — use read_email for a body.
+        """
+        from tools.system import mail_mcp
+
+        return self._run_capability("mail.list_recent", mailbox, lambda **kw: mail_mcp.list_recent(mailbox, **kw))
+
+    def search_mail(self, query: str, mailbox: str = "") -> str:
+        """Search a mailbox by subject or sender substring. Read-only.
+
+        Use for 'find the email from <sender>', 'search mail for <topic>'.
+        Matches subject/sender only (bodies aren't searchable).
+        """
+        from tools.system import mail_mcp
+
+        return self._run_capability("mail.search_mail", query, lambda **kw: mail_mcp.search_mail(query, mailbox, **kw))
+
+    def read_email(self, message_id: int, mailbox: str = "") -> str:
+        """Read one email by id (from list/search results). Read-only.
+
+        Headers always come back; the body may be unavailable if not
+        downloaded locally — say so plainly instead of guessing content.
+        """
+        from tools.system import mail_mcp
+
+        return self._run_capability("mail.read_message", str(message_id), lambda **kw: mail_mcp.read_message(message_id, mailbox, **kw))
+
+    def send_mail(self, to: str, subject: str, body: str) -> str:
+        """Send an email from this Mac. IRREVERSIBLE — always needs Tony's OK.
+
+        'to' MUST be an email address; the confirm must show the actual
+        address, subject, and body gist. CALL THIS TOOL to arm the confirm.
+        Success means handed to Mail.app, not delivered.
+        """
+        from tools.system import mail_mcp
+
+        return self._run_capability("mail.send_mail", to, lambda **kw: mail_mcp.send_mail(to, subject, body, **kw))
+
+    def reply_mail(self, to: str, message_id: int, body: str, mailbox: str = "") -> str:
+        """Reply to an email (threaded). IRREVERSIBLE — always needs Tony's OK.
+
+        'to' MUST be the ORIGINAL SENDER's address (read the message first).
+        The system re-verifies the recipient against the actual message and
+        refuses on mismatch — nothing is sent. Confirm must show the address.
+        """
+        from tools.system import mail_mcp
+
+        return self._run_capability("mail.reply", to, lambda **kw: mail_mcp.reply(to, message_id, body, mailbox, **kw))
+
     # ------------------------------------------------------------ monitoring
     def system_health(self) -> str:
         """Report live system health — CPU, RAM, disk. Read-only.
@@ -1103,6 +1166,12 @@ def build_tools(toolbox: OSAToolbox) -> list:
         (toolbox.list_recent_chats, "list_recent_chats"),
         (toolbox.resolve_contact, "resolve_contact"),
         (toolbox.send_message, "send_message"),
+        (toolbox.list_mailboxes, "list_mailboxes"),
+        (toolbox.list_recent_mail, "list_recent_mail"),
+        (toolbox.search_mail, "search_mail"),
+        (toolbox.read_email, "read_email"),
+        (toolbox.send_mail, "send_mail"),
+        (toolbox.reply_mail, "reply_mail"),
     ]
     return [
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())

@@ -111,6 +111,15 @@ DEFAULT_SYSTEM_MCP: dict = {
         "db_path": "~/Library/Messages/chat.db",
         "max_limit": 200,
     },
+    # Phase 15d — Mail (AppleScript → Mail.app; transport locked 2026-07-13).
+    # The account is CONFIG, never a caller arg (db_path precedent). Body
+    # fetch runs behind its own short timeout — see tools/system/mail_mcp.py.
+    "mail": {
+        "account": "iCloud",
+        "default_mailbox": "INBOX",
+        "max_limit": 100,
+        "body_timeout_s": 10,
+    },
 }
 
 
@@ -134,6 +143,10 @@ def _merge_system_mcp(raw_block: dict | None) -> dict:
     merged["messages"] = {
         **DEFAULT_SYSTEM_MCP["messages"],
         **(raw_block.get("messages") or {}),
+    }
+    merged["mail"] = {
+        **DEFAULT_SYSTEM_MCP["mail"],
+        **(raw_block.get("mail") or {}),
     }
     return merged
 

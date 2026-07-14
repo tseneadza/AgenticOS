@@ -1,3 +1,49 @@
+## 2026-07-13 — Phase 15d: Mail domain (AppleScript transport)
+
+Transport locked by Tony (interview): **AppleScript → Mail.app**, not IMAP —
+reuses every 15c-hardened pattern (argv injection defense, `open -ga`
+pre-launch for -600, TCC Automation) and stores no mail credentials.
+
+Spike-first (design doctrine) answered §5.4 before code:
+- **Headers fast/reliable**; **body fetch (`content of`) blocks 40s+** when
+  bodies aren't downloaded locally (iCloud) — `read_message` returns headers
+  ALWAYS and fetches the body in a separate osascript call behind a short
+  configurable timeout (`mail.body_timeout_s`), degrading cleanly.
+- Disk `.emlx` fallback blocked by the pending FDA grant — 15e candidate.
+- `reply <msg> without opening window` verified via construct→inspect→delete
+  (no send): **Mail itself sets the reply recipient from the sender**.
+
+Six capabilities in `tools/system/mail_mcp.py` (registry total 29):
+- Reads (auto — posture matches messages, Tony 2026-07-13): `list_mailboxes`,
+  `list_recent` (walks from the NEWEST end — index order isn't guaranteed),
+  `search_mail` (subject/sender only), `read_message` (headers + best-effort
+  body).
+- Irreversible (gated): `send_mail(to, subject, body)` — payload rule: the
+  human confirms the real address; `reply(to, message_id, body)` — **recipient
+  re-check** (fs.move pattern): the constructed reply's ACTUAL recipient is
+  read back and a mismatch with the approved `to` deletes the draft and
+  raises `ConstitutionViolation` — approval can never redirect a reply.
+
+Security review (inline — claude.ai session, subagent fallback documented):
+found + closed a header-row forgery vector (hostile subject with linefeed +
+field separators could inject a fake sender row into list/search output) —
+parser now drops non-numeric ids; residual is display-only and backstopped by
+the reply re-check + send confirm. Account is CONFIG-anchored (db_path
+precedent). 34 new tests incl. kwargs gating, dispatch approval-strip, body
+timeout degrade, forged-row drop, and WS GraphInterrupt propagation for both
+send paths (the twice-paid lesson). OSA wired: 29 tools.
+
+Live checkout (Tony-approved self-sends) found + fixed a 4th-class defect:
+**a send fired into a freshly-launched, still-syncing Mail was delivered
+TWICE and left an autosaved-draft residue** (matches the known Ventura+ Mail
+double-send reports); the identical send against warm Mail was clean. Fix:
+`_osascript` now pgrep-checks whether Mail was already running — warm calls
+skip the settle entirely (reads got faster), cold launches settle 1s for
+reads and 6s (`_COLD_SETTLE_SEND_S`) before any irreversible send. Verified
+live: send delivered once; threaded reply delivered once; the reply
+recipient re-check REFUSED a wrong `to` live, named the actual recipient,
+and deleted the draft. Suite 707 green.
+
 ## 2026-07-12 — fix: gated capabilities were DEAD over the app's WebSocket path
 
 Third live-found defect from Tony's send session, and the real reason "yes"

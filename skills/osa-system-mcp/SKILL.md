@@ -170,6 +170,48 @@ MCP client cannot repoint the reader. Reading needs **Full Disk Access**.
   can enumerate contacts without approval) — flagged in the 15c security
   review; revisit BOTH together if the posture ever tightens.
 
+## Mail domain (15d — COMPLETE: reads + send/reply)
+
+`tools/system/mail_mcp.py` — AppleScript → Mail.app (transport locked by Tony
+2026-07-13; no IMAP, no stored credentials). Reuses the 15c rules verbatim:
+argv-after-`--`, `open -ga Mail` pre-launch, account is CONFIG
+(`system_mcp.mail.account`) never a caller arg.
+
+- **Reads (auto, matching the messages posture):** `list_mailboxes`,
+  `list_recent`, `search_mail` (subject/sender only), `read_message`.
+- **Spike law (2026-07-13): headers are fast; `content of <message>` can
+  BLOCK indefinitely** when bodies aren't downloaded locally (iCloud
+  optimize-storage). `read_message` therefore makes TWO osascript calls —
+  headers (reliable) then body behind `mail.body_timeout_s` — and returns
+  headers + `body_note` on timeout. Never fold body fetch into a header
+  script; never raise the body timeout to "fix" missing bodies. The disk
+  `.emlx` path is an FDA-blocked 15e candidate.
+- **Mailbox index order is NOT guaranteed** — `list_recent` compares the
+  dates at both ends and walks from the newest end. Don't assume message 1
+  is newest.
+- **Sends (irreversible, gated):** `send_mail(to, subject, body)` — first
+  param is the recipient (payload rule), email-shape validated.
+  `reply(to, message_id, body)` — first param is the sender address the
+  human confirms; the script constructs the reply (`reply m without opening
+  window` — Mail sets the recipient itself), reads back the ACTUAL
+  recipient, and on mismatch deletes the draft and returns a MISMATCH
+  marker the capability turns into `ConstitutionViolation`. Approval can
+  never redirect a reply. Fail-closed: an unreadable recipient counts as a
+  mismatch.
+- **Field protocol:** list/search scripts emit `id␟subject␟sender␟date`
+  using the ASCII unit separator (0x1f). Header fields are ATTACKER
+  CONTROLLED (incoming mail); the parser drops rows with non-numeric ids
+  (linefeed-forgery defense) and listed senders are never verified identity
+  — the reply re-check and the send confirm are the real backstops.
+- **Cold-launch settle rule (live-found 2026-07-13):** a send fired into a
+  freshly-launched, still-syncing Mail was DELIVERED TWICE (+ draft residue);
+  warm Mail was clean. `_osascript` pgrep-checks Mail first — warm calls
+  never sleep, cold launches settle 1s (reads) / `_COLD_SETTLE_SEND_S`=6s
+  (sends). Never remove the pgrep check or shrink the send settle; extend
+  this rule to any future AppleScript domain that performs irreversible acts.
+- Both send paths have WS GraphInterrupt-propagation tests
+  (`test_phase15d_mail_mcp.py`) — keep them when touching the toolbox bridge.
+
 ## Claude Desktop / Claude Code registration
 
 ```json
