@@ -97,7 +97,7 @@ constitution:
   # list is code review, not a runtime guess — edits here are versioned.
   # Flip mode to "effect" only after 15e (read/mutate/irreversible classifier).
   system_mcp:
-    mode: strict                    # strict | effect
+    mode: effect                    # strict | effect  (flipped to effect in 15e, 2026-07-14)
     terminal:
       allowlist:                    # auto-run (prefix or exact match)
         - date
@@ -108,6 +108,11 @@ constitution:
         - df
         - "git status"
         - "git log"
+        # ACCEPTED RISK (Tony, 2026-07-14): osascript auto-runs via run_command
+        # so a live OSA flow can drive AppleScript un-gated. This means
+        # `osascript -e '... do shell script ...'` is arbitrary code without
+        # approval; the denylist below is the only backstop on that path.
+        # Revisit if the flow that needs it is retired.
         - osascript
       denylist_patterns:            # ALWAYS deny, regardless of mode/approval
         - "rm -rf"
@@ -116,6 +121,9 @@ constitution:
         - "mkfs"
         - "curl | sh"
         - "| sh"
+        - "|sh"                     # 15e: close the no-space pipe-to-shell gap
+        - "| bash"
+        - "|bash"
         - "> /dev/"
         - ":(){"
         - "chmod 777 /"
@@ -141,4 +149,8 @@ constitution:
       default_mailbox: INBOX
       max_limit: 100
       body_timeout_s: 10
+      # Phase 15e — on-disk .emlx body fallback root (FDA-dependent, config
+      # only). read_message prefers this fast disk read, degrading to the
+      # AppleScript content fetch if the file can't be read (FDA missing).
+      emlx_root: ~/Library/Mail
 

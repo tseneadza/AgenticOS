@@ -66,10 +66,39 @@ def verb(...) -> dict:
 | approve | raises `ApprovalRequired` (pass `approved=True` after HITL yes) | `{"needs_approval": true}` error — external clients CANNOT self-approve; `dispatch` strips any client-supplied `approved` arg |
 | deny (denylist hit) | raises `ConstitutionViolation` — `approved=True` does NOT override | `{"blocked": true}` error |
 
-Strict mode (current): `auto=True` capabilities run; `macos.run_command`
-runs only if the command matches the terminal allowlist (exact or
-word-boundary prefix — `ls -la` matches, `lsof` does NOT); everything else
-approves. Effect mode is a 15e migration — flip `system_mcp.mode` only then.
+Strict mode: `auto=True` capabilities run; `macos.run_command` runs only if
+the command matches the terminal allowlist (exact or word-boundary prefix —
+`ls -la` matches, `lsof` does NOT); everything else approves.
+
+**Effect mode (LIVE since 15e, `system_mcp.mode: effect`).** Reads auto-run;
+mutate/irreversible gate. For `macos.run_command` the ladder is: denylist
+(always deny, wins first) → allowlist (allow) → **effect classifier** →
+approve. Strict mode NEVER consults the classifier (its non-allowlisted path
+still approves), so strict behavior is unchanged.
+
+### Effect classifier (`_policy.classify_command`, 15e)
+
+A PURE, fail-closed heuristic — **no model call**. Returns `"read"` ONLY when
+every pipeline segment's leading token is a code-reviewed read-only binary
+(`READ_ONLY_VERBS`) or a read-only `git` subcommand, AND no mutating shell
+feature is present. Everything else → `"unknown"` → gate. The bias is
+deliberate: over-gating a read (needs approval) is fine; auto-running a
+mutate is not.
+
+- **Gate triggers (any → not read):** redirection (`>` `>>` `2>` `&>` `<`),
+  command/process substitution (`$(` backtick), background `&`, chaining
+  (`;` `&&` `||`) or a pipe where any segment isn't a read verb,
+  env-assignment prefix (`FOO=bar cmd`), unbalanced quotes.
+- **Deliberately EXCLUDED from the read set (fail-closed):** `sed`/`awk`
+  (`-i`/`system()` can write), `tee`, `xargs`, network tools; `env` with
+  args, `find` with `-exec`/`-delete`, `sort -o`, and non-read `git`
+  subcommands are rejected per-verb.
+- **git is subcommand-aware:** a bare `git` is not read; `status/log/diff/
+  show/blame/...` are read; `config` needs `--get`/`--list`; `branch` reads
+  only when listing (no operand/write flag); `remote` only bare/`show`.
+- **Known gap (flagged 15e):** the allowlist prefix match runs BEFORE the
+  classifier, so `ls && rm x` rides the `ls` prefix and allows in BOTH modes.
+  Tightening it is a strict-mode behavior change → owner's call, not yet done.
 
 ## Config
 

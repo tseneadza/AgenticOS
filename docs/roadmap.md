@@ -261,7 +261,7 @@ and the presence/greeting polish. Detail lives in `docs/CHANGELOG.md` — this
 section added retroactively 2026-07-11 (the phase outgrew its roadmap entry).
 
 
-## Phase 15 — OSA System MCP (local machine management) 🟨 IN PROGRESS
+## Phase 15 — OSA System MCP (local machine management) ✅ COMPLETE 2026-07-14
 
 Dual-mode MCP giving OSA — and Claude Desktop/Code over stdio — governed
 access to this Mac. Design: `docs/PHASE15_OSA_SYSTEM_MCP.md` (locked
@@ -274,4 +274,4 @@ capability layer by the registration decorator.
 | 15b | Filesystem: `fs_mcp.py`, `allowed_roots`/`scratch_root`, read auto / write+delete gated | ✅ 2026-07-11 (32 tests; suite 602 green; harness kwargs-payload hole found+closed — dispatch keyword calls now hit the same guard) |
 | 15c | iMessage: `messages_mcp.py` — chat.db reads (needs FDA) + AppleScript send spike | ✅ COMPLETE 2026-07-12 — READ (22 tests) + SEND (29 tests: `send_message` gated/irreversible, handles-only, iMessage→SMS fallback, argv injection defense; `resolve_contact` read/auto). Spike validated live; suite 659; security review PASS. OSA wired — 23 tools |
 | 15d | Mail: `mail_mcp.py` — transport decision (AppleScript vs IMAP), read/send gated | ✅ 2026-07-13 — AppleScript transport (Tony); 6 capabilities (4 reads auto, send_mail+reply gated); reply recipient re-check (approval can't redirect); body fetch best-effort behind timeout (spike: blocks when not local); 36 tests; suite 707 green; OSA 29 tools. Live-verified: send + threaded reply delivered once each, mismatch refused live; cold-launch double-send found+fixed (pgrep warm check + 6s send settle) |
-| 15e | Harden: effect-mode migration, classifier, permissions runbook | ⏳ |
+| 15e | Harden: effect-mode migration, classifier, permissions runbook | ✅ 2026-07-14 — flipped `system_mcp.mode: strict → effect` LIVE; fail-closed `run_command` effect classifier (`_policy.classify_command`, no model call) auto-runs provably read-only commands, gates everything else (ladder: denylist→allowlist→classifier→approve); strict unchanged. FDA-optional items wired + degrade cleanly: chat.db post-send delivery check, Mail `.emlx` disk body fallback (config-anchored `mail.emlx_root`). `docs/TCC_PERMISSIONS_RUNBOOK.md` (Brain2-mirrored). Broad-except audit: GraphBubbleUp re-raise intact, no interrupt-path swallowers. Suite 797 green. Flagged: allowlist prefix-chaining gap (`ls && rm x`) predates 15e — owner's call to tighten |

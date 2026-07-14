@@ -158,8 +158,13 @@ class TestSendBody:
     def test_imessage_success_reports_service(self, osascript_spy):
         calls, _ = osascript_spy
         out = messages_mcp.send_message(_HANDLE, "hi", approved=True)
-        assert out == {"ok": True, "to": _HANDLE, "service": "iMessage",
-                       "note": "queued to Messages.app — delivery is not verified"}
+        # 15e adds an OPTIONAL best-effort delivery_check (chat.db); the core
+        # send contract is unchanged. The check degrades cleanly here (no FDA
+        # / no real chat.db in the test env).
+        assert {k: out[k] for k in ("ok", "to", "service", "note")} == {
+            "ok": True, "to": _HANDLE, "service": "iMessage",
+            "note": "queued to Messages.app — delivery is not verified"}
+        assert "delivery_check" in out
         assert len(calls) == 1
 
     def test_sms_fallback_on_imessage_error(self, osascript_spy):

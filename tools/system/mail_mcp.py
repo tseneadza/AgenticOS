@@ -46,9 +46,11 @@ SECURITY (payload rule — see the osa-system-mcp skill):
 """
 from __future__ import annotations
 
+import email
 import re
 import subprocess
 import time
+from pathlib import Path
 
 from core.constitution import ConstitutionViolation
 
@@ -92,6 +94,64 @@ def _body_timeout() -> int:
         return max(2, int(_mail_cfg().get("body_timeout_s", _DEFAULT_BODY_TIMEOUT_S)))
     except (TypeError, ValueError):
         return _DEFAULT_BODY_TIMEOUT_S
+
+
+def _emlx_root() -> Path:
+    return Path(_mail_cfg().get("emlx_root", "~/Library/Mail")).expanduser()
+
+
+def _emlx_plain_text(raw: str) -> str:
+    """Extract the text/plain body from a raw ``.emlx`` file's contents.
+
+    An ``.emlx`` is ``<byte-count>\\n<RFC-822 message>\\n<plist trailer>``; the
+    leading count line is dropped, then Python's ``email`` parser walks MIME
+    parts for text/plain. Returns ``""`` when nothing readable is found.
+    """
+    nl = raw.find("\n")
+    if nl != -1 and raw[:nl].strip().isdigit():
+        raw = raw[nl + 1:]
+    try:
+        msg = email.message_from_string(raw)
+    except Exception:  # noqa: BLE001 — a malformed emlx must never crash a read
+        return ""
+    chunks: list[str] = []
+    for part in msg.walk():
+        if part.get_content_type() != "text/plain":
+            continue
+        try:
+            payload = part.get_payload(decode=True)
+            if payload is None:
+                continue
+            chunks.append(payload.decode(part.get_content_charset() or "utf-8", "replace"))
+        except Exception:  # noqa: BLE001
+            continue
+    return "\n".join(c.strip() for c in chunks if c and c.strip()).strip()
+
+
+def _read_emlx_body(message_id: int, max_chars: int) -> dict:
+    """Fast on-disk body read from Mail's ``.emlx`` store — Phase 15e.
+
+    FDA-dependent and STRICTLY OPTIONAL: ``read_message`` falls back to the
+    AppleScript ``content of <msg>`` fetch when this can't read the file. The
+    root is CONFIG-anchored (``_emlx_root`` — never a caller arg). NEVER raises;
+    returns ``{"ok": False, "reason": ...}`` when Full Disk Access is missing or
+    no ``.emlx`` exists for the id. Mail names each file ``<message id>.emlx``.
+    """
+    root = _emlx_root()
+    try:
+        matches = list(root.glob(f"**/{int(message_id)}.emlx"))
+    except (OSError, ValueError) as e:
+        return {"ok": False, "reason": f"emlx scan failed ({e}) — Full Disk Access may be missing"}
+    if not matches:
+        return {"ok": False, "reason": "no .emlx on disk for this id"}
+    try:
+        raw = matches[0].read_text(errors="replace")
+    except OSError as e:
+        return {"ok": False, "reason": f"emlx read failed ({e}) — Full Disk Access may be missing"}
+    body = _emlx_plain_text(raw)
+    if not body:
+        return {"ok": False, "reason": "no readable text/plain part in .emlx"}
+    return {"ok": True, "body": body[:max_chars]}
 
 
 def _cap_limit(limit) -> int:
@@ -437,16 +497,28 @@ def read_message(message_id: int, mailbox: str = "") -> dict:
               "subject": parts[1], "sender": parts[2], "date": parts[3],
               "read": parts[4] == "true"}
 
-    # Body: separate call, short timeout — content fetch can block when the
-    # body isn't downloaded locally (spike 2026-07-13). Headers never hang.
+    # Body: prefer the FAST on-disk .emlx read (15e) — the AppleScript
+    # ``content of <msg>`` fetch hung 40s+ in the 15d spike. Degrade cleanly to
+    # AppleScript when FDA is missing / no .emlx exists.
+    emlx = _read_emlx_body(mid, _MAX_BODY_LEN)
+    if emlx.get("ok"):
+        result["body"] = emlx["body"]
+        result["body_source"] = "emlx"
+        return result
+
+    # Fallback: separate AppleScript call, short timeout — content fetch can
+    # block when the body isn't downloaded locally. Headers never hang.
     bproc, berr = _osascript(_BODY_SCRIPT, [str(mid), mb, acct, str(_MAX_BODY_LEN)],
                              _body_timeout())
     if berr or bproc.returncode != 0:
         result["body"] = None
-        result["body_note"] = ("body unavailable — not downloaded locally or fetch "
-                               f"timed out after {_body_timeout()}s (headers are complete)")
+        result["body_source"] = "unavailable"
+        result["body_note"] = ("body unavailable — .emlx not readable "
+                               f"({emlx.get('reason')}) and AppleScript fetch failed "
+                               f"or timed out after {_body_timeout()}s (headers are complete)")
     else:
         result["body"] = (bproc.stdout or "").strip()
+        result["body_source"] = "applescript"
     return result
 
 

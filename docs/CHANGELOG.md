@@ -1,3 +1,80 @@
+## 2026-07-14 — Phase 15e: Harden + effect-mode migration
+
+Flipped `system_mcp.mode: strict → effect` LIVE in `config/constitution.yaml`.
+Phase 15 (OSA System MCP) is now **complete**.
+
+**Effect classifier (the core work).** New `_policy.classify_command(cmd) ->
+"read" | "mutate" | "unknown"` — a PURE, fail-closed heuristic with **no model
+call** (locked decision, Tony 2026-07-14). Wired into the `macos.run_command`
+branch so the ladder is now: denylist (always deny, wins first) → allowlist
+(allow) → **classifier (effect mode only)** → approve. In effect mode a
+non-allowlisted command the classifier *proves* read-only auto-runs; anything
+unknown or mutating still gates. **Strict mode is unchanged** — it never
+consults the classifier.
+- `READ_ONLY_VERBS`: a code-reviewed static table of read-only binaries
+  (`cat/grep/ls/stat/find/ps/df/git`-reads/…). Returns `"read"` ONLY when
+  every pipeline segment's leading token is a confirmed read verb AND no
+  mutating shell feature is present.
+- Fail-closed exclusions: `sed`/`awk` (can write in place / `system()`),
+  `tee`/`xargs`, network tools; per-verb guards reject `env <args>`,
+  `find -exec/-delete`, `sort -o`; `git` is subcommand-aware (bare `git` and
+  unknown/write subcommands → not read; `config` needs `--get`, `branch` only
+  when listing, `remote` only bare/`show`).
+- Gates on any redirection (`>` `>>` `2>` `&>` `<`), command/process
+  substitution, background `&`, chaining/pipe with a non-read segment,
+  env-assignment prefix, or unbalanced quotes.
+
+**FDA-dependent optional items (best-effort, degrade cleanly).**
+- `messages._verify_last_sent` — post-send delivery check querying `chat.db`
+  (config-anchored `db_path`, never a caller arg) for the outgoing row.
+  OPTIONAL: attached to `send_message`'s result as `delivery_check`; the send
+  NEVER depends on it; returns `{"checked": false}` when FDA is missing.
+- `mail._read_emlx_body` — fast on-disk `.emlx` body reader (config-anchored
+  `system_mcp.mail.emlx_root`, default `~/Library/Mail`) that `read_message`
+  now prefers, degrading to the AppleScript `content of` fetch (the 40s+ 15d
+  hang) when the file can't be read. Result carries `body_source`.
+
+**Docs/runbook.** New `docs/TCC_PERMISSIONS_RUNBOOK.md` — step-by-step FDA +
+Automation (Messages/Contacts/Mail) grants for the `.venv` python, what each
+unlocks, and verify commands (Brain2-mirrored). GLOSSARY +2 (Effect mode,
+Effect classifier); `osa-system-mcp` skill gains an effect-classifier section.
+
+**Broad-except audit (twice-paid lesson).** Verified `agents/osa_agent.py`
+`except GraphBubbleUp: raise` (L498) intact and correctly ordered before the
+broad except. No swallower on the interrupt path: the `except Exception`s in
+`tools/system/*` sit INSIDE capability bodies (post-guard, can't see
+`ApprovalRequired`); `tools/osa_system_mcp.py:dispatch` catches
+`ApprovalRequired`/`ConstitutionViolation` explicitly first and is the MCP
+stdio door only (the in-process OSA path never routes through it, and no graph
+runs there). No code change needed.
+
+**Security review (supervisor, adversarial) — two escapes CLOSED.**
+- **Allowlist prefix-chaining escape (pre-existing since 15a).** The allowlist
+  prefix match ran before the classifier, so `ls && rm x` / `ls; rm x` /
+  `ls | rm x` / `ls $(rm x)` / `ls > /etc/x` rode the `ls ` prefix and
+  auto-ran in BOTH modes. Fixed: `_match_allowlist` now rejects any command
+  carrying shell control/redirection/substitution operators (`_SHELL_OPERATORS`)
+  — such a command can never be allowlisted and falls through to the classifier
+  (effect) / approval. This tightens strict mode in the correct fail-closed
+  direction (the whole point of a hardening phase).
+- **Newline classifier bypass (found by the new test).** `ls \n rm x` gated at
+  the allowlist but the classifier read it as `read`: shlex COLLAPSES newlines,
+  so it tokenized as `ls rm x` (a benign `ls`), while under `shell=True` the
+  newline runs `rm x`. Fixed: `classify_command` now gates on any `\n`/`\r`.
+- **osascript allowlist — ACCEPTED RISK (Tony, 2026-07-14).** `osascript` stays
+  allowlisted (a live OSA flow needs it un-gated) even though it auto-runs
+  arbitrary AppleScript. Documented at the config. Defense-in-depth: denylist
+  gained `|sh` / `| bash` / `|bash` to close a no-space pipe-to-shell gap.
+
+**Tests.** New `test_phase15e_effect_mode.py` (classifier unit cases +
+effect-vs-strict policy wiring + FDA-item tests with DB/file mocked), incl.
+`test_allowlist_prefix_chaining_is_closed` (the escape above, both modes).
+Updated two pre-15e assertions (`echo hi` now auto-runs in effect mode;
+`send_message` result gains `delivery_check`). Full `gui/sidecar/tests` suite
+**802 green** with mode=effect live.
+
+---
+
 ## 2026-07-13 — Phase 15d: Mail domain (AppleScript transport)
 
 Transport locked by Tony (interview): **AppleScript → Mail.app**, not IMAP —

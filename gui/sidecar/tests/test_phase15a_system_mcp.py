@@ -109,7 +109,12 @@ class TestPolicy:
 
     def test_effect_mode_run_command_still_allowlist_governed(self, effect_constitution):
         assert self._run_cmd("date", effect_constitution) == "allow"
-        assert self._run_cmd("echo hi", effect_constitution) == "approve"
+        # 15e: in effect mode the fail-closed classifier now auto-runs a
+        # non-allowlisted READ ("echo" writes only to stdout); a non-allowlisted
+        # MUTATING command still gates. (Full classifier coverage lives in
+        # test_phase15e_effect_mode.py.)
+        assert self._run_cmd("echo hi", effect_constitution) == "allow"
+        assert self._run_cmd("touch hi", effect_constitution) == "approve"
 
 
 # --------------------------------------------------------------------------- #

@@ -322,6 +322,43 @@ end run
 '''
 
 
+def _verify_last_sent(handle: str, text: str) -> dict:
+    """Best-effort post-send delivery check — Phase 15e (FDA-dependent).
+
+    After a send is queued, look in ``chat.db`` for the most recent OUTGOING
+    message to ``handle`` and whether its body matches ``text``. The DB path is
+    CONFIG-anchored (``_db_path`` — never a caller arg, 15c rule). This is
+    STRICTLY OPTIONAL: sends never depend on it. If Full Disk Access is missing
+    (the DB can't be opened) it returns ``{"checked": False, ...}`` and NEVER
+    raises. On modern macOS an outgoing body often lives in ``attributedBody``
+    (``text`` NULL), so ``matched`` is a soft signal, not a guarantee.
+    """
+    sql = (
+        "SELECT m.text, m.attributedBody, m.date FROM message m "
+        "LEFT JOIN handle h ON m.handle_id = h.ROWID "
+        "WHERE m.is_from_me = 1 AND h.id = ? ORDER BY m.date DESC LIMIT 1"
+    )
+    try:
+        conn = _connect()
+    except FileNotFoundError as e:
+        return {"checked": False, "reason": f"chat.db not found at {e}"}
+    except sqlite3.Error as e:
+        return {"checked": False,
+                "reason": f"cannot open chat.db ({e}) — grant Full Disk Access to verify delivery"}
+    try:
+        row = conn.execute(sql, (handle,)).fetchone()
+    except sqlite3.Error as e:
+        return {"checked": False, "reason": f"chat.db read failed ({e})"}
+    finally:
+        conn.close()
+    if row is None:
+        return {"checked": True, "found": False, "matched": False}
+    body = _body_text(row["text"], row["attributedBody"])
+    matched = bool(text) and (text[:60] in body or body[:60] in text)
+    return {"checked": True, "found": True, "matched": matched,
+            "last_outgoing_date": _apple_to_iso(row["date"])}
+
+
 def _is_handle(to: str) -> bool:
     """Whether ``to`` is a raw messaging handle: an email or a phone number."""
     return bool(_EMAIL_RE.match(to) or _PHONE_RE.match(to))
@@ -429,7 +466,10 @@ def send_message(to: str, text: str) -> dict:
         if proc.returncode == 0:
             return {"ok": True, "to": to,
                     "service": "iMessage" if service == "imessage" else "SMS",
-                    "note": "queued to Messages.app — delivery is not verified"}
+                    "note": "queued to Messages.app — delivery is not verified",
+                    # OPTIONAL post-send confirmation (15e). Never blocks the
+                    # send; degrades cleanly when Full Disk Access is missing.
+                    "delivery_check": _verify_last_sent(to, text)}
         attempts.append(f"{service}: {(proc.stderr or '').strip() or f'rc={proc.returncode}'}")
     return {"ok": False,
             "error": "send failed on both services — " + "; ".join(attempts)

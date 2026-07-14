@@ -198,9 +198,28 @@ restarts.
 **Effect class** — A capability's side-effect severity: `read` /
 `mutate` / `irreversible`. Drives the Phase 15 safety ladder: in `strict`
 mode only auto-marked capabilities and allowlisted terminal commands run
-without approval; in `effect` mode (15e migration) reads auto-run and
+without approval; in `effect` mode reads auto-run and
 mutates/irreversibles halt to approval. Denylist patterns deny in BOTH
 modes. Config: `constitution.yaml` `system_mcp` block.
+
+**Effect mode** — The Phase 15 safety posture live since 15e
+(`system_mcp.mode: effect`, flipped 2026-07-14): read-effect capabilities
+auto-run, mutate/irreversible ones gate to HITL approval, denylist patterns
+always deny. Replaces `strict` mode (where nearly everything non-allowlisted
+gated). For `macos.run_command` the ladder is denylist → allowlist → **Effect
+classifier** → approve; strict mode is untouched (it never runs the
+classifier). The migration target named in the Phase 15 design §4.1.
+
+**Effect classifier** — The pure, fail-closed heuristic
+(`_policy.classify_command`, Phase 15e) that lets **effect mode** auto-run a
+non-allowlisted `run_command` ONLY when it is provably read-only. **No model
+call** (locked decision) — a code-reviewed static table of read-only binaries
+(`READ_ONLY_VERBS`) plus subcommand-aware `git` handling. Returns `"read"`
+only if every pipeline segment's leading token is a confirmed read verb and no
+mutating shell feature (redirection, substitution, background, chaining/pipe
+with a writer, env-assignment prefix) is present; everything unknown or
+mutating returns `"unknown"` and gates. Over-gating a read is acceptable;
+auto-running a mutate is not.
 
 **Dual-mode** — The OSA System MCP principle: every capability is a plain
 Python function OSA imports in-process AND the same function served over one

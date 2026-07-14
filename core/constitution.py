@@ -119,6 +119,10 @@ DEFAULT_SYSTEM_MCP: dict = {
         "default_mailbox": "INBOX",
         "max_limit": 100,
         "body_timeout_s": 10,
+        # Phase 15e — on-disk .emlx body fallback root (FDA-dependent). Config,
+        # never a caller arg (db_path precedent). Faster than the AppleScript
+        # ``content of <msg>`` fetch that hung 40s+ in the 15d spike.
+        "emlx_root": "~/Library/Mail",
     },
 }
 
