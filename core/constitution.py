@@ -60,6 +60,11 @@ DEFAULT_VOICE: dict = {
     # Conversation mode (2026-07-08): after a reply finishes playing, the
     # next utterance within this window needs no wake word (0 disables).
     "followup_window_s": 8.0,
+    # Half-duplex echo guard (2026-07-14): discard any captured utterance
+    # whose recording overlapped OSA's own TTS playback, or that started
+    # within this cooldown after playback ended (swallows the echo tail so
+    # OSA never answers — or re-wakes — itself). 0 effectively disables it.
+    "echo_cooldown_s": 1.0,
     "min_rms": 0.02,             # energy gate for speech frames (0 disables)
     "mute": False,               # global output mute (runtime-flippable)
 }

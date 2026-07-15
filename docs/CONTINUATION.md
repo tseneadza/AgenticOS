@@ -1,3 +1,101 @@
+# ⏹ SESSION 2026-07-14 (night) — OSA VOICE PIPELINE FIXED + UNIFIED TRANSCRIPT ✅ (Tony signed off "ship it")
+
+Voice session: interview-driven diagnosis → 3 fixes (2 via subagents) → suites
+green → Tony live-verified → shipped. Backend **820 green**, frontend **639
+green**. NOT a new phase — voice hardening + one UX feature.
+
+## The report was "OSA can't hear me (wake word + verbal command)" — it was NOT deafness
+Diagnosis flow (see below), three real root causes, none of them a dead mic:
+1. **Supervisor confound (owned + fixed):** the 15e smoke test earlier restarted
+   the sidecar via `nohup` from the automation shell — a launch context WITHOUT
+   mic TCC, so capture went silent. Also spent turns reading the WRONG log
+   (`data/logs/sidecar.log`, my nohup's) — the real sidecar logs to
+   `/tmp/agenticos_sidecar.log`. LESSON: check `lsof -p <pid>` fd 1 for the
+   ACTUAL log; sidecar mic permission is per-launch-context — relaunch from
+   Tony's GUI session, not a background shell.
+2. **Echo feedback loop (the big one):** OSA's TTS reply was captured by the mic
+   and, because conversation mode opens an 8s wake-free follow-up window, OSA
+   treated its OWN voice as the next command → answered itself, cascading
+   ("Tony, you're looping my replies back verbatim now"). The old guard only
+   checked "is audio playing RIGHT NOW" — audio recorded DURING playback
+   finishes just after, slips past.
+3. **Wake mis-hear:** the fast `tiny` STT mangled "Osa" → "Ocer"/"also"/"Hi
+   Mizzard"; the `min_rms` gate also chopped his sentence to one syllable.
+
+## What shipped (all staged + committed this session)
+- **Echo-loop half-duplex guard** (subagent) — `osa_voice/pipeline.py`:
+  `_capture_was_echo(capture_start)` = playing now OR `_last_reply_done >=
+  capture_start - echo_cooldown_s`; stamped `_last_capture_start` at capture
+  top; gated in `_wake_loop` BEFORE `_match_wake` so BOTH the follow-up and
+  wake-match paths drop echo (`echo discard:` log). New config
+  `voice.echo_cooldown_s: 1.0`. Conversation mode KEPT (Tony's call). Barge-in
+  (interrupt OSA by voice) deferred — needs AEC. +8 tests.
+- **Wake recognition tuning** (`config/constitution.yaml`): `wake_stt_model:
+  small` (was default tiny — the root of the drift), `wake_aliases: ["ocer"]`,
+  and `min_rms 0.02 → 0.012`. ⚠️ NOTE: a PRIOR session reverted 0.012 as
+  "noise-only" (see the older entry below). It works NOW because it's paired
+  with the `small` wake model; Tony confirmed capture is reliable. If capture
+  ever degrades to noise-only fragments again, revisit min_rms FIRST.
+- **Unified streamed voice transcript** (subagent) — spoken exchanges now show
+  in the SAME on-screen OSA chat transcript as typed:
+  - `gui/sidecar/osa_active_thread.py` (thread-safe active-thread singleton) +
+    `POST/GET /api/osa/active-thread`. The chat UI registers its thread_id;
+    `_chat_turn` uses it (falls back to the sticky `_voice_thread`) → voice +
+    typed share ONE durable conversation.
+  - Voice turns publish to the AG-UI `bus`: `OSA_VOICE_TURN_STARTED`
+    (transcript) + `OSA_VOICE_TURN_FINISHED` (reply), tagged `source="voice"`.
+  - `App.jsx` subscribes to `/ws/agui` (gated on voiceIn, filtered to
+    source=voice), folds events into `turns` with a 🎤 marker; PTT dedups via a
+    shared `turn_id`. +4 vitest, +10 pytest.
+  - **TURN-LEVEL, not word-by-word** (deliberate fallback): true token
+    streaming would mean reimplementing the 14b confirm flow + routing that
+    live only in the sync `/api/osa/chat` route. The UI ALREADY folds
+    `TEXT_MESSAGE_CONTENT` source=voice deltas, so word-by-word is a
+    BACKEND-ONLY follow-up (emit deltas from the voice path).
+
+## ▶ RESUME HERE — next session
+1. **(Optional) True word-by-word voice streaming** — backend-only: stream the
+   voice reply through the agent (mirror `_pump_stream`) and publish
+   `TEXT_MESSAGE_CONTENT {run_id, delta, source:"voice"}`; the UI needs no
+   change. Deferred tonight (Tony: "turn-level is fine for now").
+2. **Phase 16 still unpicked** — the four Phase-8 placeholder dashboards (Web
+   News, Scripts, Zsh Config Editor, Obsidian Viewer) remain the standing
+   candidates. Interview to scope.
+3. **Human items (unchanged):** FDA grant for the `.venv` python; `/login` for
+   the pi-node claude (auto-continue runner still UNLOADED).
+
+---
+
+# ⏹ SESSION 2026-07-14 (later) — 15e LIVE SMOKE ✅ (effect classifier verified over the OSA WS path)
+
+Resume item #1 CLOSED. Restarted the sidecar (was up since Sun, pre-15e →
+new PID on 5130, startup clean, MySQL live on `/tmp/mysql.sock`). Drove two
+real OSA turns over `/api/osa/ws/chat` (cloud tool turn), asserting on the WS
+frames:
+- **Read-only, CLASSIFIER path (not allowlist):** `ps aux` — OSA called
+  `run_command`, it **auto-ran** (no `awaiting_confirm`), returned live output.
+  Confirms 15e's `_policy.classify_command` read-path is wired into the live
+  effect-mode branch, not just unit-covered. (`ps` is NOT allowlisted, so this
+  exercises the new classifier, not the 15a allowlist.)
+- **Mutating, must gate:** `touch /tmp/osa_smoke_15e.txt` — **gated**
+  (`awaiting_confirm` frame); replied DENY; file was **never created**.
+Verdict: A PASS / B PASS. Test client was throwaway (removed). No code change,
+no commit — verification only.
+
+## ▶ RESUME HERE — next session
+1. **Phase 15 fully done + live-verified.** Pick the next phase (16) — no phase
+   16 is defined in `docs/roadmap.md` yet. Standing candidates: the four
+   placeholder "Coming Soon" dashboards registered back in Phase 8 (Web News,
+   Scripts, Zsh Config Editor, Obsidian Viewer). Interview Tony to scope.
+2. **Human items (unchanged):** FDA grant for the `.venv` python (activates the
+   chat.db delivery check + .emlx fast body reads — see
+   `docs/TCC_PERMISSIONS_RUNBOOK.md`); `/login` for the pi-node claude
+   (auto-continue runner still UNLOADED).
+3. **Accepted-risk marker:** if the osascript-via-`run_command` flow is ever
+   retired, drop it from the terminal allowlist (note at the config).
+
+---
+
 # ⏹ SESSION 2026-07-14 — PHASE 15e COMPLETE ✅ (harden + flip to effect mode) · PHASE 15 DONE 🎉
 
 15e shipped in one session: interview → subagent build → **supervisor adversarial
@@ -47,10 +145,9 @@ ordered first; `tools/system/*` broad excepts are INSIDE capability bodies
 explicitly first + is the stdio door only. No swallower on the interrupt path.
 
 ## ▶ RESUME HERE — next session
-1. **Live effect-mode smoke** against OSA (needs sidecar restart + MySQL up):
-   confirm a read-only `run_command` (e.g. `ps aux`, `git diff`) auto-runs and a
-   mutating one still gates, over the WS path — the classifier has unit coverage
-   but no live OSA run yet this session.
+1. ✅ **DONE 2026-07-14 (later):** live effect-mode smoke over the OSA WS path —
+   read-only `ps aux` auto-ran via the classifier, mutating `touch` gated + was
+   denied. See the session banner at the TOP of this file.
 2. **Human items (unchanged):** FDA grant for the `.venv` python (activates the
    chat.db delivery check + .emlx fast body reads — runbook has the steps);
    `/login` for the pi-node claude (auto-continue runner still UNLOADED).

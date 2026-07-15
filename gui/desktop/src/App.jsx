@@ -1224,6 +1224,10 @@ export function AgentView() {
   const wsRef = useRef(null);
   const threadRef = useRef(threadId);
   threadRef.current = threadId;
+  // 14x: turn_id -> local turn id for SPOKEN turns, shared between the PTT
+  // handler (which appends the caption synchronously) and the /ws/agui voice
+  // subscription (which streams wake turns live) so one exchange renders once.
+  const voiceTurnsRef = useRef(new Map());
 
   const loadState = useCallback(() => {
     get("/api/osa/state")
@@ -1258,6 +1262,58 @@ export function AgentView() {
       })
       .catch(() => { /* degrade silently */ });
   }, []);
+
+  // Unify the on-screen thread with voice (14x): tell the sidecar which thread
+  // the chat is viewing so SPOKEN turns write into THIS conversation instead of
+  // a separate osa-voice-… thread. Best-effort — a failure just means voice
+  // keeps its own sticky thread. Fires on mount (if a thread is restored) and
+  // whenever the thread is minted/switched/cleared.
+  useEffect(() => {
+    post("/api/osa/active-thread", { thread_id: threadId || null }).catch(() => { /* best-effort */ });
+  }, [threadId]);
+
+  // Voice unification (14x): fold SPOKEN turns into THIS transcript, live, from
+  // the AG-UI bus. A dedicated /ws/agui subscription (separate from the App's
+  // workflow events feed) filtered to source==="voice". Only subscribed while
+  // voice is available. Voice turns are keyed by turn_id so START → token
+  // deltas → FINISH land on one turn; PTT captions register their turn_id in
+  // the shared ref so the live stream doesn't double-render them. Replayed
+  // history (events older than this subscription) is ignored so a voice
+  // exchange already in the hydrated transcript isn't re-added.
+  useEffect(() => {
+    if (!voiceIn) return undefined;
+    const mountedAt = Date.now();
+    const byTurn = voiceTurnsRef.current;
+    let stop = () => {};
+    try {
+      stop = connectAgui((evt) => {
+        if (!evt || evt.source !== "voice") return;
+        const tid = evt.turn_id || evt.run_id;
+        if (!tid) return;
+        if (evt.type === "OSA_VOICE_TURN_STARTED") {
+          if (evt.timestamp && evt.timestamp < mountedAt) return; // replayed history
+          if (byTurn.has(tid)) return;                            // already rendered (e.g. PTT caption)
+          const id = ++idRef.current;
+          byTurn.set(tid, id);
+          setTurns((prev) => [...prev, {
+            id, user: evt.user || "", text: "", tools: [], route: null,
+            model: null, status: "streaming", ts: evt.timestamp || Date.now(),
+            voice: true,
+          }]);
+        } else if (evt.type === "TEXT_MESSAGE_CONTENT") {
+          const id = byTurn.get(tid);
+          if (id == null) return;                                 // no known start → ignore stray delta
+          patchTurn(id, (t) => ({ ...t, text: t.text + (evt.delta || "") }));
+        } else if (evt.type === "OSA_VOICE_TURN_FINISHED") {
+          const id = byTurn.get(tid);
+          if (id == null) return;
+          patchTurn(id, (t) => ({ ...t, text: evt.reply || t.text, status: "completed", voice: true }));
+          osaPresence.speak(evt.reply || "");
+        }
+      });
+    } catch { /* no WebSocket in this environment — captions still ride the POST path */ }
+    return () => { try { stop(); } catch { /* already closed */ } };
+  }, [voiceIn]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -1410,10 +1466,16 @@ export function AgentView() {
     osaPresence.setOsaState("thinking");
     post("/api/osa/voice/ptt", {})
       .then((d) => {
+        // The sidecar also publishes this spoken turn to the /ws/agui bus.
+        // Register its turn_id so the live subscription won't append a second
+        // copy, then render the caption synchronously (authoritative + works
+        // even if the bus socket is momentarily down).
         const id = ++idRef.current;
+        if (d.turn_id) voiceTurnsRef.current.set(d.turn_id, id);
         setTurns((prev) => [...prev, {
-          id, user: `\u{1F3A4} ${d.transcript || ""}`, text: d.reply || "",
+          id, user: d.transcript || "", text: d.reply || "",
           tools: [], route: null, model: null, status: "completed", ts: Date.now(),
+          voice: true,
         }]);
         osaPresence.speak(d.reply || "");
       })
@@ -1471,7 +1533,16 @@ export function AgentView() {
         )}
         {turns.map((t) => (
           <div className="agent-turn" key={t.id}>
-            {t.user && <div className="agent-msg user"><div className="bubble">{t.user}</div></div>}
+            {t.user && (
+              <div className="agent-msg user">
+                <div className="bubble">
+                  {t.voice && (
+                    <span className="voice-mic" data-testid="voice-mic" title="Spoken" aria-label="spoken">{"\u{1F3A4}"} </span>
+                  )}
+                  {t.user}
+                </div>
+              </div>
+            )}
             {t.tools.length > 0 && (
               <div className="agent-trace">
                 {t.tools.map((tc, i) => (

@@ -124,6 +124,12 @@ class VoiceService:
         # follow-up window opens — the next utterance inside it needs no wake
         # word. Monotonic stamp of the last completed playback.
         self._last_reply_done: float = 0.0
+        # Half-duplex echo guard (2026-07-14): monotonic stamp of when the
+        # most recent _capture_utterance began recording. Wake turns speak
+        # on a worker thread while the main loop keeps listening, so the mic
+        # captures OSA's own TTS reply; comparing this start against playback
+        # (see _capture_was_echo) lets us drop those self-heard bursts.
+        self._last_capture_start: float = 0.0
 
     # ------------------------------------------------------------------ #
     # Introspection
@@ -294,7 +300,10 @@ class VoiceService:
             # /api/osa/chat turn as typed input. That route speaks the reply
             # itself via _maybe_speak_reply (dual-path rule — side effects live
             # in the routes); here we only return captions.
-            reply = self._chat_turn(text)
+            import uuid
+
+            turn_id = uuid.uuid4().hex
+            reply = self._voice_turn(text, turn_id=turn_id)
             with self._lock:
                 self._state = self._resting_state()
             return {
@@ -303,6 +312,10 @@ class VoiceService:
                 "reason": None,
                 "transcript": text,
                 "reply": reply,
+                # 14x: the UI folds this spoken turn into the shared transcript
+                # live from the bus; the turn_id lets it de-dupe the caption it
+                # also renders synchronously from this response.
+                "turn_id": turn_id,
             }
         except NotImplementedError:
             with self._lock:
@@ -457,6 +470,7 @@ class VoiceService:
         while not self._wake_stop.is_set():
             try:
                 audio = self._capture_utterance()
+                capture_start = self._last_capture_start
                 if self._wake_stop.is_set():
                     break
                 if not audio:
@@ -465,6 +479,18 @@ class VoiceService:
                             self._state = self._resting_state()
                     continue
                 heard = self._transcribe(audio, size=wake_size)
+                # Half-duplex echo guard (2026-07-14): drop any burst whose
+                # recording overlapped OSA's own playback (or its cooldown
+                # tail). Placed BEFORE _match_wake so neither the follow-up
+                # path nor the wake-match path can act on echo-tainted audio
+                # — otherwise OSA answers its own reply (follow-up) or even
+                # re-triggers the wake word from it, cascading indefinitely.
+                if self._capture_was_echo(capture_start):
+                    if heard.strip():
+                        logger.info("echo discard: %r", heard.strip()[:80])
+                    with self._lock:
+                        self._state = self._resting_state()
+                    continue
                 command = self._match_wake(heard)
                 if command is None:
                     # Conversation mode (2026-07-08): inside the follow-up
@@ -556,12 +582,35 @@ class VoiceService:
         wake loop stays alive and listening either way.
         """
         try:
-            reply = self._chat_turn(command)
+            reply = self._voice_turn(command)
             logger.info("wake turn: %r -> %r", command, reply[:80])
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self._last_error = f"wake turn failed: {exc}"
             logger.warning(self._last_error, exc_info=True)
+
+    def _capture_was_echo(self, capture_start: float) -> bool:
+        """True if OSA's own playback overlapped a capture window.
+
+        Half-duplex echo guard (2026-07-14): wake turns speak on a worker
+        thread while the main loop keeps LISTENING, so the mic picks up
+        OSA's TTS reply. An utterance whose recording overlapped playback
+        finishes just AFTER ``_play_proc`` clears, so the live "is audio
+        playing right now" check alone misses it. We therefore also treat a
+        capture that STARTED within ``echo_cooldown_s`` of a completed
+        playback as echo — that both catches the overlap case (playback
+        ended after our start, so ``_last_reply_done >= capture_start``) and
+        swallows the reverberant tail just after playback ends. Callers
+        discard such bursts so OSA can't answer — or re-wake — itself.
+        """
+        cooldown = float(self._config.get("echo_cooldown_s", 1.0))
+        with self._lock:
+            playing = (
+                self._play_proc is not None
+                and self._play_proc.poll() is None
+            )
+            recent = self._last_reply_done >= capture_start - cooldown
+        return playing or recent
 
     def _capture_utterance(self) -> bytes:
         """Capture one utterance until end-of-speech (voice-IN, 2026-07-08).
@@ -581,6 +630,10 @@ class VoiceService:
         Returns:
             Raw PCM bytes of the captured utterance (b"" when nobody spoke).
         """
+        # Half-duplex echo guard (2026-07-14): stamp when recording begins,
+        # before the input stream opens, so the caller can tell whether this
+        # window overlapped OSA's own playback (self-heard echo).
+        self._last_capture_start = time.monotonic()
         import numpy as np
         import sounddevice as sd
         import webrtcvad
@@ -723,6 +776,70 @@ class VoiceService:
         self.mark("text")
         return text
 
+    def _active_thread_id(self) -> str:
+        """Resolve the thread for this voice turn — UNIFIED with the UI.
+
+        Prefers the on-screen chat's active thread (set via
+        ``/api/osa/active-thread``) so spoken turns land in the SAME
+        transcript the user is viewing. Falls back to the pipeline's sticky
+        per-lifetime ``_voice_thread`` when no UI thread is set. Any
+        import/lookup failure falls back defensively — never raises.
+        """
+        import uuid
+
+        with self._lock:
+            if not self._voice_thread:
+                self._voice_thread = f"osa-voice-{uuid.uuid4().hex[:10]}"
+            thread_id = self._voice_thread
+        try:
+            from gui.sidecar.osa_active_thread import get_active_thread
+
+            active = get_active_thread()
+            if active:
+                return active
+        except Exception:  # noqa: BLE001 — never break voice over a thread lookup
+            pass
+        return thread_id
+
+    def _voice_turn(self, text: str, *, turn_id: str | None = None) -> str:
+        """Run one voice turn AND publish it to the AG-UI bus for the UI.
+
+        Wraps the shared ``_chat_turn`` (which POSTs the SAME /api/osa/chat
+        route as typed input, preserving model routing, the 14b confirm flow
+        and TTS via ``_maybe_speak_reply``) with two bus events so the spoken
+        exchange appears live in the on-screen OSA transcript:
+
+          * ``OSA_VOICE_TURN_STARTED`` the moment the transcript is known.
+          * ``OSA_VOICE_TURN_FINISHED`` with the authoritative reply text.
+
+        Every event is tagged ``source="voice"`` so the UI can tell spoken
+        turns apart from workflow AG-UI events on the same bus. Publishing is
+        best-effort — a bus failure never breaks the turn or the reply.
+        """
+        import uuid
+
+        turn_id = turn_id or uuid.uuid4().hex
+        thread_id = self._active_thread_id()
+        self._publish_voice_event(
+            "OSA_VOICE_TURN_STARTED",
+            turn_id=turn_id, thread_id=thread_id, user=text, source="voice",
+        )
+        reply = self._chat_turn(text)
+        self._publish_voice_event(
+            "OSA_VOICE_TURN_FINISHED",
+            turn_id=turn_id, thread_id=thread_id, reply=reply, source="voice",
+        )
+        return reply
+
+    def _publish_voice_event(self, event_type: str, **payload) -> None:
+        """Best-effort publish to the AG-UI bus (lazy import, never raises)."""
+        try:
+            from gui.sidecar.events import bus
+
+            bus.publish(event_type, **payload)
+        except Exception:  # noqa: BLE001 — the bus is a garnish, never a dep
+            pass
+
     def _chat_turn(self, text: str) -> str:
         """Run one agent turn for a transcribed utterance (fixed contract).
 
@@ -739,14 +856,9 @@ class VoiceService:
         Returns:
             OSA's reply text ("" if the route returned none).
         """
-        import uuid
-
         import requests
 
-        with self._lock:
-            if not self._voice_thread:
-                self._voice_thread = f"osa-voice-{uuid.uuid4().hex[:10]}"
-            thread_id = self._voice_thread
+        thread_id = self._active_thread_id()
         try:
             from gui.sidecar.app import SIDECAR_PORT as port
         except Exception:  # noqa: BLE001 — standalone/test use

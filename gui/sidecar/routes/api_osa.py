@@ -426,6 +426,34 @@ def _maybe_speak_reply(reply: str) -> None:
         pass
 
 
+class OSAActiveThread(BaseModel):
+    """Request body for setting the UI's active OSA thread."""
+
+    thread_id: str | None = None
+
+
+@router.post("/api/osa/active-thread")
+def osa_set_active_thread(body: OSAActiveThread) -> dict:
+    """Record the on-screen chat's current thread so voice unifies with it.
+
+    The chat UI POSTs its thread_id here whenever it mounts or mints/switches
+    a conversation. The voice pipeline reads it (best-effort) so spoken turns
+    land in the SAME transcript the user is viewing. Idempotent; empty clears.
+    """
+    from gui.sidecar.osa_active_thread import set_active_thread
+
+    set_active_thread(body.thread_id)
+    return {"thread_id": body.thread_id or None}
+
+
+@router.get("/api/osa/active-thread")
+def osa_get_active_thread() -> dict:
+    """Return the UI's current active OSA thread_id (null when unset)."""
+    from gui.sidecar.osa_active_thread import get_active_thread
+
+    return {"thread_id": get_active_thread()}
+
+
 @router.get("/api/osa/state")
 def osa_state() -> dict:
     """Return lightweight OSA state: active model, Ollama status, ready flag.

@@ -78,15 +78,18 @@ constitution:
   voice:
     enabled: true                   # voice-OUT ON (2026-07-08)
     wake_word: "osa"
+    wake_aliases: ["ocer"]         # 2026-07-14 MacBook-mic drift spelling of "Osa" seen in discards
     stt_model: "small"             # faster-whisper model size
+    wake_stt_model: "small"        # 2026-07-14: tiny mangled "Osa" ("Ocer","also"); small is far more reliable on the wake word (slightly slower per burst — accepted)
     # Voice-OUT (2026-07-08): Piper TTS speaks OSA's replies + announcements.
     piper_voice: "en_GB-alan-medium"   # bare name under voice_dir, or .onnx path
     voice_dir: "~/.agentic-os/voices"  # where Piper .onnx models live
     speak_replies: true             # speak chat replies + announced proactive msgs
     length_scale: 0.6               # speech cadence: 1.0=trained pace, lower=faster (2026-07-08)
     end_silence_ms: 500             # end-of-speech: ms of silence that ends an utterance (snappier, 2026-07-08)
-    min_rms: 0.02                   # energy gate: frames must be this loud to count as speech (TV rejection, calibrated live 2026-07-08 for the MacBook mic — which input_device now pins)
+    min_rms: 0.012                  # energy gate (2026-07-14: 0.02 was chopping Tony's voice into fragments; lowered for reliable capture — raise toward 0.02 if background TV false-triggers)
     followup_window_s: 8            # conversation mode: seconds after a reply when no wake word is needed (0 = off)
+    echo_cooldown_s: 1.0            # half-duplex echo guard: discard any captured utterance whose recording overlapped OSA's TTS playback, or that started within this many seconds after playback ended (swallows the echo tail so OSA never answers/re-wakes itself)
     input_device: "MacBook"         # PIN capture to the built-in mic (2026-07-10: headphone inline mic became default input and delivered fragments/noise — headphones are output-only now)
     push_to_talk_only: true         # voice-IN only; wake word deferred (§9 Q3)
     mute: false

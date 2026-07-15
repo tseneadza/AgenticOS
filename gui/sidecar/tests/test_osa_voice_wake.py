@@ -131,6 +131,7 @@ class TestWakeLoop:
                 svc._wake_stop.set()  # second pass: exit the loop
                 return b""
             calls["captured"] = True
+            svc._last_capture_start = time.monotonic()  # mirror real capture
             return b"\x00\x00" * 480
 
         monkeypatch.setattr(svc, "_capture_utterance", _capture)
@@ -176,10 +177,12 @@ class TestWakeLoop:
 
         def _capture():
             try:
-                return next(captures)
+                nxt = next(captures)
             except StopIteration:
                 svc._wake_stop.set()
                 return b""
+            svc._last_capture_start = time.monotonic()  # mirror real capture
+            return nxt
 
         transcripts = {b"\x01": "Osa", b"\x02": "status report"}
         monkeypatch.setattr(svc, "_capture_utterance", _capture)
@@ -275,6 +278,7 @@ class TestFollowupWindow:
                 svc._wake_stop.set()
                 return b""
             calls["captured"] = True
+            svc._last_capture_start = time.monotonic()  # mirror real capture
             return b"\x00\x00" * 480
 
         monkeypatch.setattr(svc, "_capture_utterance", _capture)
@@ -294,7 +298,8 @@ class TestFollowupWindow:
     def test_wake_free_followup_inside_window(self, monkeypatch):
         svc = _svc()
         svc.start()
-        svc._last_reply_done = time.monotonic()            # reply just ended
+        # Past the echo cooldown but still inside the 8s follow-up window.
+        svc._last_reply_done = time.monotonic() - 3        # reply ended 3s ago
         calls = self._run_pass(svc, monkeypatch, "and what about tomorrow?")
         assert calls["chat"] == ["and what about tomorrow?"]
 
@@ -310,7 +315,7 @@ class TestFollowupWindow:
         become commands even inside the window."""
         svc = _svc()
         svc.start()
-        svc._last_reply_done = time.monotonic()
+        svc._last_reply_done = time.monotonic() - 3        # past echo cooldown
         calls = self._run_pass(svc, monkeypatch, "Thank you.")
         assert calls["chat"] == []
 
@@ -331,6 +336,131 @@ class TestFollowupWindow:
     def test_disabled_window_requires_wake_word(self, monkeypatch):
         svc = _svc(followup_window_s=0)
         svc.start()
-        svc._last_reply_done = time.monotonic()
+        svc._last_reply_done = time.monotonic() - 3        # past echo cooldown
         calls = self._run_pass(svc, monkeypatch, "and what about tomorrow?")
         assert calls["chat"] == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Half-duplex echo guard (2026-07-14) — OSA must never hear its OWN TTS reply
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Wake turns speak on a worker thread while the main loop keeps LISTENING (for
+# latency), so the mic captures OSA's playback. An utterance whose recording
+# OVERLAPPED playback finishes just AFTER _play_proc clears, so the live "is
+# audio playing now" check alone misses it — OSA then answers (or re-wakes on)
+# its own voice, cascading forever. _capture_was_echo drops such bursts.
+
+class _FakePlaying:
+    """Stand-in for a live afplay subprocess (poll() is None == playing)."""
+
+    def poll(self):
+        return None
+
+
+class _FakeDone:
+    """A subprocess that has already exited (poll() returns an int)."""
+
+    def poll(self):
+        return 0
+
+
+class TestCaptureWasEcho:
+    def test_playback_active_now_is_echo(self):
+        svc = _svc()
+        svc._play_proc = _FakePlaying()
+        # Even with no recent _last_reply_done, live playback => echo.
+        assert svc._capture_was_echo(time.monotonic()) is True
+
+    def test_playback_finished_during_capture_is_echo(self):
+        """Recording started, THEN playback ended (overlap): _last_reply_done
+        lands after capture_start, so it reads as echo."""
+        svc = _svc()
+        start = time.monotonic()
+        svc._last_reply_done = start + 0.2      # playback ended after we began
+        assert svc._capture_was_echo(start) is True
+
+    def test_capture_started_within_cooldown_tail_is_echo(self):
+        """Capture began just after playback ended — inside the cooldown that
+        swallows the reverberant echo tail."""
+        svc = _svc(echo_cooldown_s=1.0)
+        now = time.monotonic()
+        svc._last_reply_done = now - 0.5        # ended 0.5s before capture start
+        assert svc._capture_was_echo(now) is True
+
+    def test_no_overlap_no_recent_playback_is_not_echo(self):
+        svc = _svc(echo_cooldown_s=1.0)
+        now = time.monotonic()
+        svc._last_reply_done = now - 5          # old reply, tail long gone
+        svc._play_proc = _FakeDone()            # nothing playing
+        assert svc._capture_was_echo(now) is False
+
+    def test_cooldown_knob_is_honored(self):
+        svc = _svc(echo_cooldown_s=0.0)         # tail guard effectively off
+        now = time.monotonic()
+        svc._last_reply_done = now - 0.5        # 0.5s before start, no overlap
+        assert svc._capture_was_echo(now) is False
+
+
+class TestWakeLoopEchoGating:
+    """_wake_loop must discard echo-tainted bursts on BOTH the follow-up path
+    and the wake-match path, before _match_wake runs."""
+
+    def _run_pass(self, svc, monkeypatch, heard, *, echo):
+        calls = {"chat": []}
+
+        def _capture():
+            if calls.get("captured"):
+                svc._wake_stop.set()
+                return b""
+            calls["captured"] = True
+            svc._last_capture_start = time.monotonic()
+            if echo:
+                # Simulate OSA's reply finishing during/just before this capture.
+                svc._last_reply_done = svc._last_capture_start + 0.1
+            return b"\x00\x00" * 480
+
+        monkeypatch.setattr(svc, "_capture_utterance", _capture)
+        monkeypatch.setattr(
+            svc, "_transcribe", lambda audio, size=None: heard if audio else ""
+        )
+        monkeypatch.setattr(
+            svc, "_chat_turn", lambda text: calls["chat"].append(text) or "ok"
+        )
+        svc._wake_stop.clear()
+        svc._wake_loop()
+        t = svc._turn_thread
+        if t is not None:
+            t.join(timeout=2)
+        return calls
+
+    def test_echo_followup_is_discarded(self, monkeypatch):
+        """A wake-free burst that overlapped playback must not run a turn."""
+        svc = _svc()
+        svc.start()
+        svc._last_reply_done = time.monotonic()            # inside follow-up window
+        calls = self._run_pass(
+            svc, monkeypatch, "and what about tomorrow?", echo=True
+        )
+        assert calls["chat"] == []                         # echo, no turn
+        assert svc.state()["state"] == "idle"
+
+    def test_echo_wake_word_is_discarded(self, monkeypatch):
+        """OSA hearing its own reply as a wake-word command must not self-trigger."""
+        svc = _svc()
+        svc.start()
+        calls = self._run_pass(
+            svc, monkeypatch, "Osa, what time is it?", echo=True
+        )
+        assert calls["chat"] == []                         # would have been a turn
+        assert svc.state()["state"] == "idle"
+
+    def test_clean_followup_still_runs(self, monkeypatch):
+        """No playback overlap and past the cooldown => processed normally."""
+        svc = _svc()
+        svc.start()
+        svc._last_reply_done = time.monotonic() - 3        # past echo cooldown
+        calls = self._run_pass(
+            svc, monkeypatch, "and what about tomorrow?", echo=False
+        )
+        assert calls["chat"] == ["and what about tomorrow?"]
