@@ -1,3 +1,89 @@
+# ⏹ SESSION 2026-07-15 — PHASE 16 DEFINED + DESIGNED: "Brain Scanner" (Obsidian vault viewer) ✅ (design only, awaiting Tony's build go)
+
+Design-only session (NO product code). Interviewed Tony → locked Phase 16 → wrote
+the design doc → **Fable 5 subagent design review (approve-with-changes)** → folded
+the fixes in → roadmap entry → checkpoint. Build deferred to next session on Tony's
+approval ("Fable 5 to review, then build from there upon approval. Save session").
+
+## What Phase 16 is
+Turn the dead FR-50 **"Obsidian Viewer"** placeholder (App.jsx `VIEWS` ~L1653,
+`placeholder:true`) into a working in-app viewer/editor for the Brain2 vault
+(`~/Brain2`, already an fs `allowed_root` since 15b). **Renamed → "Brain Scanner."**
+Three panes: folder/file **tree** (left) · rotating 3D node-**orb** of the vault
+that freezes + highlights the selected note (center, the "idiot lights" ambience) ·
+**reader/editor** with new-note creation (right). Stay close to how the real
+Obsidian app works.
+
+## Locked decisions (Tony interview, 2026-07-15)
+1. **Orb = native Canvas-2D, NO new dependency** (hand-rolled pseudo-3D sphere;
+   matches ponytail/CSS-only-OSAOrb house style; three.js NOT added).
+2. **Graphify DROPPED** — research showed it's a *code→graph* pipeline whose only
+   vault output is a *static* HTML graph; wrong direction, can't do live
+   spin/freeze/highlight. Build the orb ourselves from vault data.
+3. **Edges = real `[[wikilinks]]` + `#tags`** (tags modeled as their own nodes, not
+   pairwise cliques). Folder = dot color/cluster.
+4. **DIRECT vault save** (feels like real Obsidian) — dedicated write path scoped
+   hard to `~/Brain2`, NOT through the HITL Constitution queue. Guardrails:
+   `.md`-only, no-delete, no-overwrite-on-create, **mandatory `.bak` on overwrite**,
+   **mtime-409 concurrency check**.
+5. **Build via subagents** (test-author for tests; parallelizable chunks).
+
+## Fable 5 design review — approve-with-changes, ALL folded into the doc
+Ran a `general-purpose` subagent on **model fable** to review the doc against the
+codebase. Verdict approve-with-changes; the HIGH items are now in the doc:
+- **HIGH — PUT silent overwrite is a Constitution-bypass channel:** the direct-save
+  route is reachable via the un-gated `osascript`/`run_command` path (accepted risk
+  ~constitution.yaml L114) → OSA could `curl -X PUT` and clobber a note with zero
+  HITL. Fix folded: mandatory `.bak` + mtime-409 + `security-verifier` REQUIRED on
+  the 16d write diff + a pointer comment near `fs.allowed_roots`.
+- **HIGH — vault root must be CONFIG + test-injectable** so 16a pytest never touches
+  the real Brain2 (`tmp_path` fixture vault). Cache is in-memory (no DB table).
+- **HIGH — markdown render must escape-first / React-elements, never
+  `dangerouslySetInnerHTML`** (webview origin is CORS-allowlisted → injected
+  `<script>` could hit the write endpoints).
+- **MED folded:** tags-as-nodes (avoid N² edge blowup); strip code fences +
+  frontmatter before regex, parse frontmatter `tags:`, leading-letter tag regex
+  (rejects hex colors); cache invalidation across ALL writers (mtime+count / TTL +
+  `?refresh=1`); `VIEW_KEY` migration `obsidian→brain-scanner`; tree excludes
+  `.obsidian/`/dotfiles/non-md; title = filename stem v1; empty/missing vault → 503
+  in 16a.
+- **LOW folded:** Canvas reads theme tokens via `getComputedStyle` (2D ctx can't see
+  CSS vars) + null-guard `getContext('2d')` (returns null under jsdom); pause rAF
+  when hidden; orb unverified-until-on-device; small wins (hover tooltip, legend =
+  folder filter, POST returns new path).
+
+## Deliverables this session (committed)
+- **`docs/PHASE16_BRAIN_SCANNER.md`** — full design (locked decisions, Canvas-2D
+  orb §3, 3-pane layout §4, `api_vault.py` routes §5, direct-save guardrails §6,
+  components §7, 16a–16e sub-phases §8, open items §9, review fixes folded throughout).
+- **`docs/roadmap.md`** — Phase 16 section + 16a–16e sub-phase table (🟨 DESIGNED).
+
+## ▶ RESUME HERE — next session: BUILD Phase 16 (on Tony's go)
+0. Read `docs/PHASE16_BRAIN_SCANNER.md` FIRST (all review fixes are in it), then
+   `docs/gui-frontend-conventions.md` + `skills/osa-system-mcp` (payload/scoping
+   rules). Confirm vault note count for sanity: `find ~/Brain2 -name '*.md' | wc -l`.
+1. **16a — backend vault API** (lowest-risk, read-only): `gui/sidecar/routes/
+   api_vault.py` — GET tree / GET note / GET graph. Config `vault_root`
+   (test-injectable, default from `system_mcp.fs.allowed_roots`). Parse hygiene:
+   strip code fences + frontmatter, tags-as-nodes, leading-letter tag regex,
+   shortest-path basename resolution. In-memory cache keyed on max-mtime+count +
+   `?refresh=1`. Path-scope every path (15b `resolve_path`/`under_any_root`);
+   empty/missing vault → 503. Register in `app.py` (~L63) AND `HubApiExplorer.jsx`
+   ENDPOINTS (API registration rule). Delegate pytest to `test-author` (tmp_path
+   vault fixture); supervisor re-runs the full suite.
+2. **16b** tree + reader read-mode + the rename (VIEWS + `VIEW_KEY` migration + Hud
+   + lib.rs menu/⌘ — Rust rebuild, not `tauri dev`). **16c** Canvas orb. **16d**
+   edit/create writes (`.bak` + mtime-409 + `security-verifier` REQUIRED). **16e**
+   polish.
+3. Docs same-change every sub-phase: CHANGELOG, GLOSSARY (+Brain2 mirror), roadmap
+   status, HubApiExplorer.
+
+## Human/carried items (unchanged)
+- FDA grant for the `.venv` python (chat.db delivery check + `.emlx` reads).
+- `/login` for the pi-node claude (auto-continue runner still UNLOADED).
+
+---
+
 # ⏹ SESSION 2026-07-14 (night) — OSA VOICE PIPELINE FIXED + UNIFIED TRANSCRIPT ✅ (Tony signed off "ship it")
 
 Voice session: interview-driven diagnosis → 3 fixes (2 via subagents) → suites

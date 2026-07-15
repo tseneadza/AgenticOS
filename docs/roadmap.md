@@ -275,3 +275,26 @@ capability layer by the registration decorator.
 | 15c | iMessage: `messages_mcp.py` — chat.db reads (needs FDA) + AppleScript send spike | ✅ COMPLETE 2026-07-12 — READ (22 tests) + SEND (29 tests: `send_message` gated/irreversible, handles-only, iMessage→SMS fallback, argv injection defense; `resolve_contact` read/auto). Spike validated live; suite 659; security review PASS. OSA wired — 23 tools |
 | 15d | Mail: `mail_mcp.py` — transport decision (AppleScript vs IMAP), read/send gated | ✅ 2026-07-13 — AppleScript transport (Tony); 6 capabilities (4 reads auto, send_mail+reply gated); reply recipient re-check (approval can't redirect); body fetch best-effort behind timeout (spike: blocks when not local); 36 tests; suite 707 green; OSA 29 tools. Live-verified: send + threaded reply delivered once each, mismatch refused live; cold-launch double-send found+fixed (pgrep warm check + 6s send settle) |
 | 15e | Harden: effect-mode migration, classifier, permissions runbook | ✅ 2026-07-14 — flipped `system_mcp.mode: strict → effect` LIVE; fail-closed `run_command` effect classifier (`_policy.classify_command`, no model call) auto-runs provably read-only commands, gates everything else (ladder: denylist→allowlist→classifier→approve); strict unchanged. FDA-optional items wired + degrade cleanly: chat.db post-send delivery check, Mail `.emlx` disk body fallback (config-anchored `mail.emlx_root`). `docs/TCC_PERMISSIONS_RUNBOOK.md` (Brain2-mirrored). Broad-except audit: GraphBubbleUp re-raise intact, no interrupt-path swallowers. Suite 797 green. Flagged: allowlist prefix-chaining gap (`ls && rm x`) predates 15e — owner's call to tighten |
+
+
+## Phase 16 — Brain Scanner (Obsidian vault viewer) 🟨 DESIGNED 2026-07-15
+
+Turns the dead FR-50 "Obsidian Viewer" placeholder into a working in-app
+viewer/editor for the Brain2 vault (`~/Brain2`), **renamed "Brain Scanner."**
+Three panes: a folder/file **tree** (left), a rotating 3D node-**orb** of the
+vault that freezes + highlights the selected note (center, the "idiot lights"
+ambience), and a **reader/editor** with new-note creation (right). Design:
+`docs/PHASE16_BRAIN_SCANNER.md` (locked 2026-07-15; Fable 5 review
+approve-with-changes, fixes folded in). Locked calls: **Canvas-2D orb, no new
+dep** (Graphify dropped — it's a code→graph pipeline, wrong direction); **real
+`[[wikilink]]`+`#tag` edges** (tags as nodes); **direct vault save** scoped hard
+to `~/Brain2` (mandatory `.bak` + mtime-409, no delete, no overwrite-on-create);
+built via subagents.
+
+| Sub-phase | Scope | Status |
+|-----------|-------|--------|
+| 16a | Backend vault API `api_vault.py`: tree / note read / graph parse (wikilink+tag, code-block & frontmatter aware), config `vault_root` (test-injectable), in-memory cache w/ mtime+count invalidation; register app.py + HubApiExplorer; pytest | 🟨 planned |
+| 16b | Frontend `BrainScannerView` + `VaultTree` + `NoteReader` read mode; rename placeholder → Brain Scanner (VIEWS + `VIEW_KEY` migration + Hud + lib.rs menu/⌘, Rust rebuild); vitest | 🟨 planned |
+| 16c | `BrainOrb` Canvas-2D rotating node cloud + freeze-on-select + highlight; theme tokens via `getComputedStyle`; on-device visual pass in DoD; vitest tripwire | 🟨 planned |
+| 16d | Edit + create: PUT/POST scoped writes (`.bak`, mtime-409, `.md`-only) + reader edit/new flow; `security-verifier` REQUIRED; pytest + vitest | 🟨 planned |
+| 16e | Polish: wikilink click-to-open, legend/folder-filter, hover tooltip, empty/error states, theme pass | 🟨 planned |
