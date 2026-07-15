@@ -114,3 +114,16 @@ HTTP/WS connection) — no app relaunch needed for backend changes. Frontend
    (error -600 — hence the `open -ga` pre-launch rule in osa-system-mcp) and
    inherits Automation grants from its launching host — a sidecar launched
    from a different host will re-prompt on first Messages/Contacts use.
+
+7. (2026-07-14) Background restart KILLS voice-IN mic capture. A sidecar
+   relaunched via `nohup`/an automation shell (NOT Tony's GUI session) has no
+   MICROPHONE TCC grant: `_capture_utterance` opens the input stream without
+   error but reads near-silence (rms ~0.002, whisper hallucinates "Thank you
+   for watching!"), so the wake loop logs nothing and OSA seems "deaf." A
+   standalone `sounddevice` capture from the SAME shell reads the same ~0.002
+   while the user speaks, `input volume` is fine (81), and NO permission popup
+   appears — that trio fingerprints a TCC/launch-context problem, not a dead
+   mic. Fix: relaunch from the GUI session (the app). Never debug voice-IN
+   against a background-launched sidecar — you'll chase a phantom (we did, for
+   several turns). Mirrors #4/#6: launch context governs mic just like speakers,
+   AppleScript, and Automation.

@@ -111,3 +111,23 @@ NOT a matching problem.
 - [ ] Wake loop OFF before any diagnostic capture
 - [ ] Levels: user rms ≥ 0.01 at the mic; TV ~0.005; flatline = device issue
 - [ ] Never open odd devices at 16 kHz; use `voice.input_device`
+- [ ] STEP ZERO(b): resolve the LIVE log via `lsof -p <pid>` fd `1w` — do NOT
+      trust a fixed path (2026-07-14: read the wrong log, saw a false "no capture")
+- [ ] Sidecar relaunched from a background/automation shell? → silent mic
+      (TCC); relaunch from the GUI session (osa-sidecar-lifecycle #7)
+
+
+## 2026-07-14: two traps that FAKED "OSA is deaf" (both cost us turns)
+
+1. **You may be reading the WRONG log.** The sidecar's real stdout depends on
+   WHO launched it: the app/GUI logs to `/tmp/agenticos_sidecar.log`, but a
+   hand-launched (`nohup`) sidecar may log to `data/logs/sidecar.log`. Reading a
+   stale/other file shows ZERO `wake discard:` lines and you wrongly conclude
+   "no capture." ALWAYS resolve the LIVE log from the PID first:
+   `lsof -p $(lsof -tiTCP:5130 -sTCP:LISTEN) 2>/dev/null | awk '$4=="1w"{print $NF}'`.
+   Once we read the right log, "silent mic" turned into a full working turn
+   PLUS an echo cascade — the opposite of deaf.
+2. **Background-launched sidecar = silent mic (TCC).** rms ~0.002 + a "Thank
+   you for watching!" hallucination while the user speaks, input volume fine,
+   no popup = missing mic grant, NOT a matching problem. Relaunch from the GUI
+   session before trusting any capture read. See osa-sidecar-lifecycle #7.

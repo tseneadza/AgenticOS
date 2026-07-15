@@ -53,14 +53,27 @@ Diagnosis flow (see below), three real root causes, none of them a dead mic:
     `TEXT_MESSAGE_CONTENT` source=voice deltas, so word-by-word is a
     BACKEND-ONLY follow-up (emit deltas from the voice path).
 
-## ▶ RESUME HERE — next session
-1. **(Optional) True word-by-word voice streaming** — backend-only: stream the
+## ▶ RESUME HERE — next session — **PRIMARY: DEFINE PHASE 16** (Tony's call, 2026-07-14 night)
+1. **DEFINE PHASE 16 — this is the top of next session.** No phase 16 exists in
+   `docs/roadmap.md` yet. Start by INTERVIEWING Tony (his standing preference:
+   understand fully before building). Standing candidates are the four Phase-8
+   placeholder "Coming Soon" dashboards (registered as stubs, spec at FR-50 in
+   `docs/feature-backlog.md`), but do NOT assume — he may pick something else:
+     - **Scripts** — most wired-in already: Hub script discovery (FR-19, Phase 6)
+       + `ScriptsExplorer.jsx` exist; likely the lowest-lift to make real.
+     - **Web News** — `WebNewsView.jsx` stub; ties to news_db/tasks_db ORM (13f).
+     - **Zsh Config Editor** — edit shell config in-app; ties to the Phase-4 zsh
+       plugin.
+     - **Obsidian Viewer** — browse/read the Brain2 vault in-app; leverages the
+       fs allowed-roots (~/Brain2) already scoped in 15b.
+   Scoping questions to put to Tony: which dashboard (or new idea)? what's the
+   MVP for it? read-only vs. read/write? any external MCP/connector needed?
+   build via subagent (his usual)? Then write the Phase 16 design doc +
+   roadmap entry BEFORE building.
+2. **(Optional) True word-by-word voice streaming** — backend-only: stream the
    voice reply through the agent (mirror `_pump_stream`) and publish
    `TEXT_MESSAGE_CONTENT {run_id, delta, source:"voice"}`; the UI needs no
    change. Deferred tonight (Tony: "turn-level is fine for now").
-2. **Phase 16 still unpicked** — the four Phase-8 placeholder dashboards (Web
-   News, Scripts, Zsh Config Editor, Obsidian Viewer) remain the standing
-   candidates. Interview to scope.
 3. **Human items (unchanged):** FDA grant for the `.venv` python; `/login` for
    the pi-node claude (auto-continue runner still UNLOADED).
 

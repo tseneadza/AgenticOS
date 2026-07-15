@@ -159,3 +159,26 @@ guess: WAV duration at 1.0 vs 0.85 vs 0.7 was 4.26s / 3.74s / 3.07s.
 - Sentence-chunked playback gives first audio after ONE sentence's synth.
   ⚠️ Known bug (2026-07-08, unfixed): chunk gaps break barge-in — multiple
   replies can overlap. Fix sketch in CONTINUATION (speech generation counter).
+
+
+## 2026-07-14: the echo-loop guard + the min_rms / small-model pairing
+
+- **Conversation mode SELF-LOOPS on OSA's own voice unless echo-guarded.** With
+  `followup_window_s > 0`, OSA's TTS reply is captured by the mic and — because
+  the follow-up window needs no wake word — treated as the next command,
+  cascading into OSA answering itself ("Tony, you're looping my replies back
+  verbatim now"). The live "is audio playing NOW" check MISSES it: audio
+  recorded DURING playback finishes just AFTER `_play_proc` clears. Fix
+  (shipped): `voice.echo_cooldown_s` (1.0) + `_capture_was_echo(capture_start)`
+  = playing-now OR `_last_reply_done >= capture_start - echo_cooldown_s`; stamp
+  `_last_capture_start` at the top of `_capture_utterance`; gate in `_wake_loop`
+  BEFORE `_match_wake` so BOTH the follow-up AND wake-match paths drop echo
+  (logged as `echo discard:`). Cost: no voice barge-in without AEC. Raise
+  `echo_cooldown_s` if a reverberant tail still self-triggers; lower it if a
+  legit follow-up within ~1s feels laggy.
+- **`min_rms: 0.012` only works PAIRED with `wake_stt_model: small`.** Lowering
+  min_rms ALONE was reverted as noise-only in a prior session; on 2026-07-14 it
+  captured Tony reliably ONLY once the wake model was upgraded tiny→small (tiny
+  mangled "Osa" → "Ocer"/"also"/"Hi Mizzard"; small fixed recognition). Rule:
+  if you drop `min_rms`, upgrade `wake_stt_model` too. New MacBook-mic drift
+  alias added this session: "ocer".
