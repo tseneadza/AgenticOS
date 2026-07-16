@@ -1,3 +1,59 @@
+# ⏹ SESSION 2026-07-15 (later) — PHASE 16a–16c BUILT ✅ (Brain Scanner read slice + orb LIVE) · NEXT: Tony's on-device pass → 16d writes
+
+Tony's build go. Built with subagents per the plan: supervisor wrote production
+code, **test-author subagent** authored both test files, supervisor re-ran the
+full suites independently. Committed **fd8984b** (+ `1eef951` OSA memory chore),
+pushed. Suites: **pytest 866 green** (+24; 2 pre-existing FDA mail failures, see
+below), **vitest 670 green** (+31).
+
+## What shipped
+- **16a** `gui/sidecar/routes/api_vault.py` — GET tree/note/graph, vault root
+  from config w/ `set_vault_root()` test seam, 15b path-scoping EVERYWHERE
+  (tree/graph now skip in-vault symlinks that resolve outside — test-author
+  find), parse hygiene (fences/frontmatter stripped, frontmatter `tags:`
+  parsed, tags-as-NODES, shortest-path basename resolution), (count,max-mtime)
+  cache + `?refresh=1`, 503 w/ tree-consistent visibility (test-author find).
+  **Test-author caught a real design bug:** the leading-letter tag regex does
+  NOT reject `#fff`/`#d97b4f` (letters!) — fixed with a pure-hex post-filter at
+  CSS-color lengths (3/4/6/8), body tags only. Registered app.py +
+  HubApiExplorer ENDPOINTS. Real-vault smoke: 324 notes / 156 tags / 1427 edges.
+- **16b** `BrainScannerView` + `VaultTree` + `NoteReader` (escape-first
+  markdown → React elements, NO dangerouslySetInnerHTML). VIEWS `obsidian` →
+  `brain-scanner` + `VIEW_KEY` migration; `lib.rs` menu renamed — **⚠️ needs a
+  real Rust rebuild to appear** (hot-reload won't). No Hud.jsx exists (design
+  §7 mentions one) — nav derives from VIEWS only.
+- **16c** `BrainOrb` — Canvas-2D fibonacci sphere, idle Y-spin, freeze + halo +
+  neighbor edges on select, tags hollow, folder legend + hover tooltip, theme
+  via getComputedStyle (+re-read on theme-changed/data-theme), null 2d-context
+  no-op (jsdom), rAF pauses on visibilitychange. Draw: project → edges →
+  z-sorted dots. **Verified in the browser pane** (Vite dev :1420 against the
+  restarted sidecar): tree renders the real vault, selecting "Agentic OS"
+  froze the orb w/ halo + edges and rendered the note.
+
+## Gotchas paid for this session
+- `useScopedStyles` (inject-once-by-ID) defeats Vite HMR for CSS edits — full
+  page reload after editing a component stylesheet.
+- Stale `.git/index.lock` + `HEAD.lock` (0-byte, 00:40 — likely a crashed
+  auto-continue cycle) blocked the commit; verified no live git, removed.
+  CHECK whether the runner is crashing mid-commit.
+- **Pre-existing 2 red in `test_phase15d_mail_mcp.py`:** FDA has since been
+  GRANTED, so `_read_emlx_body` now returns real mail instead of degrading to
+  the mocked AppleScript path. Tests need a hermetic emlx_root/tmp_path fix —
+  NOT touched here (out of phase scope), chip filed.
+
+## ▶ RESUME HERE — next session
+1. **Tony: on-device Tauri visual pass of the orb** — 16c DoD; then flip 16c ✅
+   in roadmap.md. Menu label ⌘6 needs the Rust rebuild.
+2. **16d — writes**: PUT/POST in api_vault.py (`.bak` mandatory, mtime-409,
+   `.md`-only, no-delete, no-overwrite-on-create, re-validate in handler BODY),
+   reader edit mode + new-note flow. **security-verifier subagent REQUIRED on
+   the write diff** (§6 Constitution-bypass channel). test-author for pytest +
+   vitest. Then **16e** polish (wikilink click-to-open, legend filter, states).
+3. Fix the 2 FDA-dependent mail tests (hermetic fixture).
+4. Human items (unchanged): `/login` for the pi-node claude.
+
+---
+
 # ⏹ SESSION 2026-07-15 — PHASE 16 DEFINED + DESIGNED: "Brain Scanner" (Obsidian vault viewer) ✅ (design only, awaiting Tony's build go)
 
 Design-only session (NO product code). Interviewed Tony → locked Phase 16 → wrote
