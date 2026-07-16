@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import fs from "node:fs";
 import path from "node:path";
@@ -73,6 +73,14 @@ function stubFetch(overrides = {}) {
   });
   return calls;
 }
+
+beforeEach(() => {
+  // Real jsdom getContext("2d") returns null but logs a noisy "Not
+  // implemented" error per call; return null explicitly (same value the
+  // component sees on-device-less jsdom) so the orb's null-guard is still
+  // exercised without the stderr spam.
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
