@@ -1,3 +1,47 @@
+## 2026-07-15 — Phase 16a–16c: Brain Scanner (read slice + orb)
+
+The FR-50 "Obsidian Viewer" placeholder is now a working **Brain Scanner**
+(design `docs/PHASE16_BRAIN_SCANNER.md`; 16d writes + 16e polish still open).
+
+**16a — vault API (read-only).** New `gui/sidecar/routes/api_vault.py`:
+`GET /api/vault/tree` / `note?path=` / `graph` (+`?refresh=1`). Vault root is
+config (the `~/Brain2` entry of `system_mcp.fs.allowed_roots`) with a
+`set_vault_root()` test seam — pytest runs entirely in `tmp_path`. Every path
+is symlink-resolved and scope-checked with the 15b `resolve_path`/
+`under_any_root` helpers; tree/graph now obey the SAME scope (a symlink inside
+the vault resolving outside is invisible, not just unreadable). Parse hygiene
+per design §5: fences + inline code stripped, frontmatter stripped and its
+`tags:` parsed (list + comma-string), body-tag regex requires a leading letter
+AND a pure-hex post-filter (`#fff`/`#d97b4f` are colors, not tags — found by
+the test-author subagent as a real bug in the design's own regex claim). Tags
+are their own nodes (note→tag edges, never pairwise cliques); duplicate
+basenames resolve shortest-path; unresolved links dropped. In-memory graph
+cache keyed on (file count, max mtime) so ANY writer invalidates. Empty/missing
+vault → 503 with the same visibility rules as the tree. Registered in `app.py`
++ `HubApiExplorer.jsx` ENDPOINTS. Real-vault smoke: 324 notes, 156 tags, 1427
+edges. Tests: `test_phase16a_vault_api.py` (24, test-author subagent).
+
+**16b — 3-pane view.** `BrainScannerView` (tree · orb · reader, shared
+`selectedPath`), `VaultTree` (recursive, scoped styles), `NoteReader` —
+markdown rendered **escape-first to React elements, no
+`dangerouslySetInnerHTML`** (design HIGH: the webview origin is
+CORS-allowlisted, injected `<script>` must stay text). VIEWS entry
+`obsidian` → `brain-scanner` with the `VIEW_KEY` localStorage migration;
+`lib.rs` menu item renamed (⚠️ needs a real Rust rebuild to show). Verified
+live against the real vault via the Vite dev server.
+
+**16c — the orb.** `BrainOrb`: Canvas-2D fibonacci-sphere node cloud (locked:
+no three.js). Slow Y-rotation idle; selection freezes the spin, halos the dot,
+draws dim edges to neighbors, dims the rest; tags render hollow. Theme tokens
+read via `getComputedStyle` (+`theme-changed`/`data-theme` re-read);
+`getContext('2d')` null-guard (jsdom no-op); rAF pauses on `visibilitychange`;
+hover tooltip + folder legend. Draw loop is project → edges → z-sorted dots.
+**On-device Tauri visual pass still pending (16c DoD).**
+
+Known-unrelated: 2 pre-existing `test_phase15d_mail_mcp.py` failures surfaced
+by the (since-granted) FDA — the tests assumed the blocked `.emlx` path;
+flagged for a hermetic fix, not touched here.
+
 ## 2026-07-14 — Phase 15e: Harden + effect-mode migration
 
 Flipped `system_mcp.mode: strict → effect` LIVE in `config/constitution.yaml`.

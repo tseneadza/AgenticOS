@@ -20,6 +20,7 @@ import WorkflowsWorkspace from "./components/WorkflowsWorkspace";
 import WebNewsView from "./components/WebNewsView";
 import ScriptsExplorer from "./components/ScriptsExplorer";
 import ProjectsView from "./components/ProjectsView";  // Phase 13d
+import BrainScannerView from "./components/BrainScannerView";  // Phase 16 — Brain2 vault viewer
 import OSARail from "./components/OSARail";  // OSA right rail (14e follow-on) — orb + proactive feed
 
 // Phase 9 Views
@@ -1650,8 +1651,7 @@ const VIEWS = [
   { id: "scripts", label: "Scripts", component: ScriptsExplorer },
   { id: "zsh-config", label: "Zsh Config Editor", placeholder: true,
     purpose: "Edit and version your zsh configuration with safe rollbacks." },
-  { id: "obsidian", label: "Obsidian Viewer", placeholder: true,
-    purpose: "Read and search the Brain2 Obsidian vault inside the app." },
+  { id: "brain-scanner", label: "Brain Scanner", component: BrainScannerView },  // Phase 16 (was the FR-50 "obsidian" placeholder)
   { id: "projects", label: "Projects", component: ProjectsView },  // Phase 13d (⌘8 — appended after ⌘1–7 so existing bindings stay stable)
   { id: "hub-api", label: "Hub API", component: HubApiExplorer },
   { id: "settings", label: "Settings", component: SettingsView },
@@ -1697,6 +1697,7 @@ export default function App() {
     if (saved === "events") saved = "workflows";      // Events merged into Workflows dashboard
     if (saved === "tool-viz") saved = "workflows";    // Run Visualizer merged into Workflows workspace
     if (saved === "config") saved = "scripts";        // Phase 2 migration: old config → scripts tabs
+    if (saved === "obsidian") saved = "brain-scanner"; // Phase 16 migration: placeholder id → Brain Scanner
     return VIEWS.some((v) => v.id === saved) ? saved : "sysops";
   });
 

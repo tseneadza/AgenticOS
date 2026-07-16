@@ -153,7 +153,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     let v_webnews   = MenuItem::with_id(app, "view-web-news",   "Web News",          true, Some("cmd+3"))?;
     let v_scripts   = MenuItem::with_id(app, "view-scripts",    "Scripts",           true, Some("cmd+4"))?;
     let v_zsh       = MenuItem::with_id(app, "view-zsh-config", "Zsh Config Editor", true, Some("cmd+5"))?;
-    let v_obsidian  = MenuItem::with_id(app, "view-obsidian",   "Obsidian Viewer",   true, Some("cmd+6"))?;
+    let v_brain     = MenuItem::with_id(app, "view-brain-scanner", "Brain Scanner",  true, Some("cmd+6"))?; // Phase 16 (was Obsidian Viewer)
     let v_agent     = MenuItem::with_id(app, "view-agent",      "Agent",             true, Some("cmd+7"))?;
     let v_projects  = MenuItem::with_id(app, "view-projects",   "Projects",          true, Some("cmd+8"))?; // Phase 13d — cmd+8 so cmd+1–7 stay stable
     let sep_view    = PredefinedMenuItem::separator(app)?;
@@ -175,7 +175,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
 
     let view_menu = Submenu::with_items(
         app, "View", true,
-        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_obsidian, &v_projects, &v_agent,
+        &[&v_sysops, &v_workflows, &v_webnews, &v_scripts, &v_zsh, &v_brain, &v_projects, &v_agent,
           &sep_theme, &theme_menu, &sep_view, &v_reload],
     )?;
 

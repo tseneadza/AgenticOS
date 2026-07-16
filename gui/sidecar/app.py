@@ -28,6 +28,7 @@ from gui.sidecar.routes import api_projects  # Phase 11c: project creation
 from gui.sidecar.routes import api_diagnostics  # Phase 12: self-diagnostics dashboard
 from gui.sidecar.routes import api_osa  # Phase 14a: OSA assistant (text MVP)
 from gui.sidecar.routes import api_osa_voice  # Phase 14d: OSA voice pipeline (scaffold)
+from gui.sidecar.routes import api_vault  # Phase 16a: Brain Scanner vault API (read-only)
 
 _SETTINGS = yaml.safe_load(
     (Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml").read_text()
@@ -61,6 +62,7 @@ app.include_router(api_projects.router)  # Phase 11c: project scaffolding
 app.include_router(api_diagnostics.router)  # Phase 12: self-diagnostics dashboard
 app.include_router(api_osa.router)  # Phase 14a: OSA assistant chat + state
 app.include_router(api_osa_voice.router)  # Phase 14d: OSA voice state/ptt/mute
+app.include_router(api_vault.router)  # Phase 16a: Brain Scanner vault tree/note/graph
 
 
 @app.on_event("startup")

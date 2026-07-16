@@ -277,7 +277,7 @@ capability layer by the registration decorator.
 | 15e | Harden: effect-mode migration, classifier, permissions runbook | ✅ 2026-07-14 — flipped `system_mcp.mode: strict → effect` LIVE; fail-closed `run_command` effect classifier (`_policy.classify_command`, no model call) auto-runs provably read-only commands, gates everything else (ladder: denylist→allowlist→classifier→approve); strict unchanged. FDA-optional items wired + degrade cleanly: chat.db post-send delivery check, Mail `.emlx` disk body fallback (config-anchored `mail.emlx_root`). `docs/TCC_PERMISSIONS_RUNBOOK.md` (Brain2-mirrored). Broad-except audit: GraphBubbleUp re-raise intact, no interrupt-path swallowers. Suite 797 green. Flagged: allowlist prefix-chaining gap (`ls && rm x`) predates 15e — owner's call to tighten |
 
 
-## Phase 16 — Brain Scanner (Obsidian vault viewer) 🟨 DESIGNED 2026-07-15
+## Phase 16 — Brain Scanner (Obsidian vault viewer) 🟧 IN PROGRESS (16a–16c built 2026-07-15)
 
 Turns the dead FR-50 "Obsidian Viewer" placeholder into a working in-app
 viewer/editor for the Brain2 vault (`~/Brain2`), **renamed "Brain Scanner."**
@@ -293,8 +293,8 @@ built via subagents.
 
 | Sub-phase | Scope | Status |
 |-----------|-------|--------|
-| 16a | Backend vault API `api_vault.py`: tree / note read / graph parse (wikilink+tag, code-block & frontmatter aware), config `vault_root` (test-injectable), in-memory cache w/ mtime+count invalidation; register app.py + HubApiExplorer; pytest | 🟨 planned |
-| 16b | Frontend `BrainScannerView` + `VaultTree` + `NoteReader` read mode; rename placeholder → Brain Scanner (VIEWS + `VIEW_KEY` migration + Hud + lib.rs menu/⌘, Rust rebuild); vitest | 🟨 planned |
-| 16c | `BrainOrb` Canvas-2D rotating node cloud + freeze-on-select + highlight; theme tokens via `getComputedStyle`; on-device visual pass in DoD; vitest tripwire | 🟨 planned |
+| 16a | Backend vault API `api_vault.py`: tree / note read / graph parse (wikilink+tag, code-block & frontmatter aware), config `vault_root` (test-injectable), in-memory cache w/ mtime+count invalidation; register app.py + HubApiExplorer; pytest | ✅ 2026-07-15 (24 pytest; test-author findings fixed: hex-tag filter, symlink scope in tree/graph, hidden-note 503 gate) |
+| 16b | Frontend `BrainScannerView` + `VaultTree` + `NoteReader` read mode; rename placeholder → Brain Scanner (VIEWS + `VIEW_KEY` migration + lib.rs menu/⌘, Rust rebuild); vitest | ✅ 2026-07-15 (verified live against the real vault via Vite dev; ⚠️ lib.rs menu label needs a Rust rebuild to appear; no Hud.jsx exists — nav derives from VIEWS) |
+| 16c | `BrainOrb` Canvas-2D rotating node cloud + freeze-on-select + highlight; theme tokens via `getComputedStyle`; on-device visual pass in DoD; vitest tripwire | 🟧 built + verified in browser (spin, freeze, halo, neighbor edges, legend, tooltip) — **on-device Tauri visual pass by Tony still pending (DoD)** |
 | 16d | Edit + create: PUT/POST scoped writes (`.bak`, mtime-409, `.md`-only) + reader edit/new flow; `security-verifier` REQUIRED; pytest + vitest | 🟨 planned |
 | 16e | Polish: wikilink click-to-open, legend/folder-filter, hover tooltip, empty/error states, theme pass | 🟨 planned |

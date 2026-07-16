@@ -142,6 +142,11 @@ const ENDPOINTS_HARDCODED = [
   { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/voice/mute",  desc:"Flip the global voice output mute (works even while disabled); returns post-flip state", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"mute":true}'}] },
   { group:"OSA (Sidecar)", server:"sidecar", method:"POST", path:"/api/osa/voice/wake",  desc:"Toggle always-listening wake mode ('Hey Osa') — runtime-only opt-in, never persisted (§9 Q3, 2026-07-08); 409 if it can't start", params:[{name:"body",_in:"body",type:"json",required:true,hint:'{"enabled":true}'}] },
 
+  // ─── Vault (Sidecar) — Phase 16a Brain Scanner read slice ────────────
+  { group:"Vault (Sidecar)", server:"sidecar", method:"GET", path:"/api/vault/tree",  desc:"Brain2 vault folder/file tree (dirs + .md notes; dotfiles/.obsidian excluded)", params:[] },
+  { group:"Vault (Sidecar)", server:"sidecar", method:"GET", path:"/api/vault/note",  desc:"Raw markdown of one note + mtime/size (mtime feeds the 16d save 409 check)", params:[{name:"path",_in:"query",type:"string",required:true,hint:"01 - Projects/Agentic OS.md"}] },
+  { group:"Vault (Sidecar)", server:"sidecar", method:"GET", path:"/api/vault/graph", desc:"Vault graph: note+tag nodes, wikilink+tag edges (cached; ?refresh=1 rebuilds)", params:[{name:"refresh",_in:"query",type:"number",required:false,hint:"1 = force rebuild"}] },
+
   // ─── Keno (Georgia Lottery) (Flask @ :5000) ──────────────────────────
   { group:"Keno (Flask)", method:"GET",  path:"/api/status",        desc:"API health check", params:[] },
   { group:"Keno (Flask)", method:"GET",  path:"/api/draws/latest",  desc:"Get latest draws from database", params:[{name:"count",_in:"query",type:"number",required:false,hint:"5 (max 100)"}] },

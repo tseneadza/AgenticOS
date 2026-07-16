@@ -52,6 +52,13 @@ When a workflow hits `requires_approval: true` and LangGraph raises
 queue; the desktop GUI resolves it over HTTP so the human can approve or
 deny. See [constitution.md](constitution.md).
 
+**Brain Scanner** — The Phase 16 in-app viewer for the Brain2 vault (was the
+FR-50 "Obsidian Viewer" placeholder; view id `brain-scanner`, ⌘6). Three
+panes: `VaultTree` (left), `BrainOrb` node cloud (center), `NoteReader`
+(right), all sharing one `selectedPath`. Backend is the vault API
+(`gui/sidecar/routes/api_vault.py`): `/api/vault/tree|note|graph`, path-scoped
+to the vault root. Design: `docs/PHASE16_BRAIN_SCANNER.md`.
+
 **Brain2** — Tony's Obsidian-based personal knowledge management vault at
 `~/Brain2/`. AgenticOS reads it freely (spec, research, notes) and writes
 to it only through the guarded filesystem tool into allowlisted roots.
@@ -369,6 +376,14 @@ its `ENDPOINTS` array in the same change that adds/renames the route (see
 **JSX** — JavaScript syntax extension for embedding HTML-like markup in
 React components. AgenticOS uses `.jsx` (not TSX) for React source.
 
+**Orb (BrainOrb) / orb node cloud** — The Brain Scanner's center pane
+(`gui/desktop/src/components/BrainOrb.jsx`, Phase 16c): a Canvas-2D
+pseudo-3D sphere with one dot per note (fibonacci layout), tags hollow,
+colors by top-level folder. Idle = slow Y-rotation ("idiot lights");
+selecting a note freezes the spin, halos its dot, and draws dim edges to
+neighbors. No three.js — hand-rolled by locked decision. Distinct from
+OSAOrb below.
+
 **Orb (OSAOrb) / orb states** — The JARVIS-style reactor orb
 (`gui/desktop/src/components/OSAOrb.jsx`) that renders OSA's presence in the
 right rail. Driven by a `data-state` of `idle | listening | thinking |
@@ -640,6 +655,13 @@ to talk to a host: `tools/osa_system_mcp.py` runs as a stdio MCP server
 over stdin/stdout — contrast the sidecar's HTTP/WebSocket transport.
 
 **URL** — "Uniform Resource Locator." A web address.
+
+**Wikilink edge** — A Brain Scanner graph edge parsed from an Obsidian
+`[[wikilink]]` in a note body (`/api/vault/graph`, kind `"link"`). Targets
+resolve by basename, shortest path wins (Obsidian's rule); unresolved links
+are dropped in v1. `#tags` produce note→tag edges to tag NODES instead —
+never pairwise note-note cliques. Code fences, inline code, and frontmatter
+are stripped before parsing so code samples never become edges.
 
 **UX** — "User Experience." Umbrella for how the app feels to use.
 
