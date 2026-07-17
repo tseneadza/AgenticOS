@@ -17,6 +17,18 @@ rewritten:
   space returns to the full collection.
 - Tags stay in the `/api/vault/graph` payload — the orb just doesn't render
   them (future tags toggle needs no API change).
+**Steering + unique group colors (same day, Tony's follow-up):**
+- **Drag to steer.** The orb rotates freely on both axes (yaw + pitch);
+  releasing a drag flings the spin onward in that direction at the ambient
+  pace. Press-release under ~4px = click/select; larger = steer (never a
+  selection — verified: a 72px fling selects nothing, a still click on a
+  dot opens it). Cursor is `grab` over the canvas.
+- **Unique hue per group.** Top-level folders get evenly spaced HSL-wheel
+  hues so no two groups share a color (data-viz colors — WebNewsView
+  category precedent; UI chrome still theme-tokens-only). Ungrouped
+  (root-level) docs share one neutral color, legend-labeled
+  "(ungrouped)", until they find a group.
+
 Verified live in the browser pane against the real vault (incl. the
 ~60-link "Agentic OS" note as worst case + deselect roundtrip); 31 vitest
 green. Docs synced: design §1/§3/§4/§7/§8, roadmap 16c, GLOSSARY (+Brain2

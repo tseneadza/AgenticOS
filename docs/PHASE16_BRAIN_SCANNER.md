@@ -89,10 +89,17 @@ revisit three.js as a *separate* enhancement — not in this phase.
   heavily-linked docs stay readable; gentle rotation). Clicking a linked doc
   **re-centers** the local orb on it; clicking empty space **deselects** and
   the full collection resumes. This is Obsidian's local graph.
-- Dots colored by **top-level folder** (00-Raw, 01-Projects, 02-Learning,
-  08-Systems, …); a small legend maps color→folder.
-- Respect the active theme tokens (`--accent`, `--green`, etc.) — no hardcoded
-  palette that breaks skins.
+- **STEERABLE (Tony 2026-07-16):** drag the orb to rotate it freely on both
+  axes (yaw + pitch); releasing a drag flings the spin onward in that
+  direction at the ambient pace. Press-release under ~4px is a click
+  (select); anything larger is a steer, never a selection.
+- **Group colors are UNIQUE (Tony 2026-07-16):** each group (top-level
+  folder) gets its own hue, evenly spaced around the HSL wheel so no two
+  groups share a color (data-viz colors, same precedent as WebNewsView
+  categories — UI chrome still uses theme tokens only). Docs not in any
+  group share one neutral color — "(ungrouped)" in the legend — until they
+  find a group.
+- A small legend maps color→group.
 - Tags-as-nodes remain in the `/api/vault/graph` payload (§5) — the orb simply
   does not render them; a future tags toggle stays possible without API change.
 

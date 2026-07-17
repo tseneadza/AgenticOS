@@ -12,12 +12,20 @@
  *   linked docs orbiting it, edges + labels visible (Obsidian's local graph).
  *   Clicking a neighbor re-centers on it; clicking empty space returns to
  *   the full collection.
+ * - STEERABLE (Tony, 2026-07-16): drag the orb to rotate it freely on both
+ *   axes; releasing a drag keeps the spin going in the flung direction at
+ *   the ambient speed. A drag is not a click — selection only fires on
+ *   press-release with <4px movement.
+ * - COLORS (Tony, 2026-07-16): every group (top-level folder) gets its own
+ *   hue, evenly spaced on the wheel so groups are visually unique; docs not
+ *   in any group share one neutral color until they find a group.
  * - Tag nodes are NOT rendered (no hollow placeholder dots); edges are real
  *   [[wikilink]] connections only.
  *
  * Rules honored (design §7 / gui-frontend-conventions):
- * - Canvas 2D can't read CSS vars → theme tokens via getComputedStyle at
- *   mount, re-read on `theme-changed` / data-theme mutation. No hardcoded hex.
+ * - UI chrome uses theme tokens via getComputedStyle (re-read on
+ *   `theme-changed` / data-theme mutation). Group hues are data-viz colors
+ *   generated on the HSL wheel (same precedent as WebNewsView categories).
  * - getContext('2d') is null under jsdom → component no-ops cleanly.
  * - rAF pauses when the document is hidden (battery) and stops on unmount.
  *
@@ -26,6 +34,8 @@
 import { useRef, useEffect, useState, useMemo } from "react";
 
 const TOKEN_NAMES = ["--accent", "--green", "--yellow", "--red", "--text", "--text-dim", "--bg-panel", "--border-soft"];
+const AMBIENT_SPEED = 0.0035; // radians/frame — the "idiot lights" pace
+const DRAG_CLICK_PX = 4; // press-release under this = click, over = steer
 
 function readTheme() {
   if (typeof document === "undefined") return {};
@@ -41,13 +51,6 @@ function hashStr(s) {
   return h;
 }
 
-// deterministic folder → palette-slot hash
-function folderColor(folder, theme) {
-  const palette = [theme["--accent"], theme["--green"], theme["--yellow"], theme["--red"], theme["--text"]];
-  if (!folder) return theme["--text-dim"];
-  return palette[hashStr(folder) % palette.length];
-}
-
 // evenly distribute N points on a unit sphere (fibonacci spiral)
 function spherePoints(n) {
   const pts = [];
@@ -61,10 +64,29 @@ function spherePoints(n) {
   return pts;
 }
 
+// One unique hue per group, evenly spaced around the wheel so every group is
+// visually distinct regardless of how many exist. Ungrouped (root-level)
+// docs share one neutral color until they find a group.
+function buildGroupColors(folders) {
+  const named = folders.filter((f) => f);
+  const map = new Map();
+  named.forEach((f, i) => {
+    const hue = Math.round((i / Math.max(named.length, 1)) * 360);
+    map.set(f, `hsl(${hue}, 60%, 62%)`);
+  });
+  return map;
+}
+
 export default function BrainOrb({ graph, selectedPath, onSelect }) {
   const canvasRef = useRef(null);
   const [hover, setHover] = useState(null); // {id, label, x, y}
-  const stateRef = useRef({ angle: 0, theme: readTheme(), hoverId: null });
+  const stateRef = useRef({
+    rot: { x: -0.35, y: 0 },
+    vel: { x: 0, y: AMBIENT_SPEED },
+    drag: null, // {px, py, moved, vx, vy}
+    theme: readTheme(),
+    hoverId: null,
+  });
 
   // Precompute layout + adjacency whenever the graph changes. Notes only —
   // tag nodes would render as placeholder-looking dots; edges are wikilinks.
@@ -87,8 +109,20 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
     const shuffled = [...notes].sort((a, b) => hashStr(a.id) - hashStr(b.id));
     const pts = spherePoints(shuffled.length);
     const nodes = shuffled.map((n, i) => ({ ...n, p: pts[i] }));
-    return { nodes, edges, neighbors, byId: new Map(nodes.map((n) => [n.id, n])) };
+    const folders = [...new Set(notes.map((n) => n.folder))].sort();
+    return {
+      nodes,
+      edges,
+      neighbors,
+      byId: new Map(nodes.map((n) => [n.id, n])),
+      folders,
+      groupColors: buildGroupColors(folders),
+    };
   }, [graph]);
+
+  // group color lookup shared by canvas + legend
+  const colorFor = (folder, theme) =>
+    folder ? model.groupColors.get(folder) || theme["--text"] : theme["--text-dim"];
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -121,11 +155,18 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
     ro?.observe(canvas.parentElement || canvas);
 
-    const project = (p, cx, cy, R, sin, cos) => {
+    // free two-axis rotation: yaw (Y) then pitch (X)
+    const project = (p, cx, cy, R) => {
       const [x0, y0, z0] = p;
-      const x = x0 * cos + z0 * sin; // Y-axis rotation
-      const z = -x0 * sin + z0 * cos;
-      return { x: cx + x * R, y: cy + y0 * R, z, depth: (z + 1) / 2 };
+      const sy = Math.sin(st.rot.y);
+      const cyw = Math.cos(st.rot.y);
+      const sx = Math.sin(st.rot.x);
+      const cxp = Math.cos(st.rot.x);
+      const x1 = x0 * cyw + z0 * sy;
+      const z1 = -x0 * sy + z0 * cyw;
+      const y2 = y0 * cxp - z1 * sx;
+      const z2 = y0 * sx + z1 * cxp;
+      return { x: cx + x1 * R, y: cy + y2 * R, z: z2, depth: (z2 + 1) / 2 };
     };
 
     const truncate = (s, n = 20) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -135,11 +176,9 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
       const cx = W / 2;
       const cy = H / 2;
       const R = Math.min(W, H) * 0.4;
-      const sin = Math.sin(st.angle);
-      const cos = Math.cos(st.angle);
 
       projected = model.nodes.map((n) => {
-        const pr = project(n.p, cx, cy, R, sin, cos);
+        const pr = project(n.p, cx, cy, R);
         return {
           id: n.id, label: n.label, folder: n.folder,
           x: pr.x, y: pr.y, z: pr.z, depth: pr.depth,
@@ -165,7 +204,7 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
       // dots, back to front
       for (const p of [...projected].sort((a, b) => a.z - b.z)) {
         ctx.globalAlpha = 0.35 + p.depth * 0.65;
-        ctx.fillStyle = folderColor(p.folder, st.theme);
+        ctx.fillStyle = colorFor(p.folder, st.theme);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
@@ -178,15 +217,13 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
       const cx = W / 2;
       const cy = H / 2;
       const R = Math.min(W, H) * 0.33;
-      const sin = Math.sin(st.angle);
-      const cos = Math.cos(st.angle);
       const nbrIds = [...(model.neighbors.get(sel.id) || [])];
       const pts = spherePoints(nbrIds.length);
       const font = `${Math.round(10 * dpr)}px sans-serif`;
 
       projected = nbrIds.map((id, i) => {
         const n = model.byId.get(id);
-        const pr = project(pts[i], cx, cy, R, sin, cos);
+        const pr = project(pts[i], cx, cy, R);
         return {
           id, label: n?.label || id, folder: n?.folder || "",
           x: pr.x, y: pr.y, z: pr.z, depth: pr.depth,
@@ -211,7 +248,7 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
       ctx.textAlign = "center";
       for (const p of [...projected].sort((a, b) => a.z - b.z)) {
         ctx.globalAlpha = 0.5 + p.depth * 0.5;
-        ctx.fillStyle = folderColor(p.folder, st.theme);
+        ctx.fillStyle = colorFor(p.folder, st.theme);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
@@ -249,7 +286,13 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
 
     const draw = () => {
       if (!running) return;
-      st.angle += selectedPath ? 0.0015 : 0.0035; // local orb turns gently
+      if (!st.drag) {
+        // ambient spin continues in whatever direction the last fling set;
+        // the local orb turns at a gentler pace, same heading
+        const damp = selectedPath ? 0.45 : 1;
+        st.rot.x += st.vel.x * damp;
+        st.rot.y += st.vel.y * damp;
+      }
 
       const W = canvas.width;
       const H = canvas.height;
@@ -280,11 +323,31 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
       return best;
     };
 
-    const onClick = (ev) => {
-      const best = pick(ev);
-      onSelect?.(best ? best.id : null);
+    // ── steering: drag rotates the orb directly; release flings the spin in
+    // that direction at ambient speed; a tiny press-release is a click ──────
+    const onDown = (ev) => {
+      st.drag = { px: ev.clientX, py: ev.clientY, x0: ev.clientX, y0: ev.clientY, moved: false, vx: 0, vy: 0 };
     };
     const onMove = (ev) => {
+      if (st.drag) {
+        const dx = ev.clientX - st.drag.px;
+        const dy = ev.clientY - st.drag.py;
+        st.drag.px = ev.clientX;
+        st.drag.py = ev.clientY;
+        // horizontal drag = yaw, vertical drag = pitch (grab-and-turn feel)
+        st.rot.y += dx * 0.008;
+        st.rot.x -= dy * 0.008;
+        st.drag.vy = dx * 0.008;
+        st.drag.vx = -dy * 0.008;
+        if (Math.abs(ev.clientX - st.drag.x0) + Math.abs(ev.clientY - st.drag.y0) > DRAG_CLICK_PX) {
+          st.drag.moved = true;
+          if (st.hoverId) {
+            st.hoverId = null;
+            setHover(null);
+          }
+        }
+        return;
+      }
       const best = pick(ev);
       const next = best ? best.id : null;
       if (next !== st.hoverId) {
@@ -296,8 +359,28 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
         );
       }
     };
-    canvas.addEventListener("click", onClick);
+    const onUp = (ev) => {
+      const drag = st.drag;
+      st.drag = null;
+      if (!drag) return;
+      if (!drag.moved) {
+        // a click: select the dot under the pointer (or clear selection)
+        const best = pick(ev);
+        onSelect?.(best ? best.id : null);
+        return;
+      }
+      // a fling: keep spinning in the flung direction at the ambient pace
+      const mag = Math.hypot(drag.vx, drag.vy);
+      if (mag > 1e-4) {
+        st.vel = {
+          x: (drag.vx / mag) * AMBIENT_SPEED,
+          y: (drag.vy / mag) * AMBIENT_SPEED,
+        };
+      }
+    };
+    canvas.addEventListener("mousedown", onDown);
     canvas.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
 
     const onVis = () => {
       if (document.hidden) {
@@ -314,22 +397,15 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
     return () => {
       running = false;
       cancelAnimationFrame(raf);
-      canvas.removeEventListener("click", onClick);
+      canvas.removeEventListener("mousedown", onDown);
       canvas.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("theme-changed", onTheme);
       mo?.disconnect();
       ro?.disconnect();
     };
   }, [model, selectedPath, onSelect]);
-
-  const folders = useMemo(() => {
-    const seen = new Map();
-    for (const n of graph?.nodes || []) {
-      if (n.type === "note" && !seen.has(n.folder)) seen.set(n.folder, true);
-    }
-    return [...seen.keys()].sort();
-  }, [graph]);
 
   if (!graph) {
     return (
@@ -341,7 +417,10 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
 
   return (
     <div style={{ position: "relative", flex: 1, minHeight: 0 }} data-testid="brain-orb">
-      <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%" }} />
+      <canvas
+        ref={canvasRef}
+        style={{ display: "block", width: "100%", height: "100%", cursor: "grab" }}
+      />
       {hover && (
         <div
           style={{
@@ -376,18 +455,18 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
         }}
         data-testid="orb-legend"
       >
-        {folders.map((f) => (
-          <span key={f || "(root)"} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {model.folders.map((f) => (
+          <span key={f || "(ungrouped)"} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <span
               style={{
                 width: 7,
                 height: 7,
                 borderRadius: "50%",
-                background: folderColor(f, stateRef.current.theme),
+                background: f ? model.groupColors.get(f) : "var(--text-dim)",
                 display: "inline-block",
               }}
             />
-            {f || "(root)"}
+            {f || "(ungrouped)"}
           </span>
         ))}
       </div>

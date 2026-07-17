@@ -345,11 +345,12 @@ describe("BrainOrb", () => {
     expect(screen.getByTestId("brain-orb").querySelector("canvas")).not.toBeNull();
   });
 
-  it("renders the legend from note folders only (tags excluded, root labeled)", () => {
+  it("renders the legend from note folders only (tags excluded, ungrouped labeled)", () => {
     render(<BrainOrb graph={GRAPH} selectedPath={null} onSelect={() => {}} />);
     const legend = screen.getByTestId("orb-legend");
     expect(legend.textContent).toContain("01 - Projects");
-    expect(legend.textContent).toContain("(root)");
+    // docs outside any group share one neutral bucket (Tony, 2026-07-16)
+    expect(legend.textContent).toContain("(ungrouped)");
     expect(legend.textContent).not.toContain("#ai");
   });
 

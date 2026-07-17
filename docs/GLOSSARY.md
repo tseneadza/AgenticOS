@@ -379,10 +379,14 @@ React components. AgenticOS uses `.jsx` (not TSX) for React source.
 **Orb (BrainOrb) / orb node cloud** — The Brain Scanner's center pane
 (`gui/desktop/src/components/BrainOrb.jsx`, Phase 16c, behavior revised
 2026-07-16): a Canvas-2D pseudo-3D sphere with one solid dot per note
-(fibonacci layout in deterministic hash order so folders don't band), colors
-by top-level folder, wikilink edges always visible as faint depth-faded
-lines — Obsidian's global graph. Tag nodes are not rendered (no hollow
-placeholder dots). Selecting a doc swaps in a LOCAL-graph orb: the doc
+(fibonacci layout in deterministic hash order so folders don't band), one
+UNIQUE evenly-spaced hue per group (top-level folder; ungrouped root docs
+share a neutral color until they find a group), wikilink edges always
+visible as faint depth-faded lines — Obsidian's global graph. Drag to steer:
+the orb rotates freely on both axes and a released fling keeps the spin
+going in that direction; a <4px press-release is the click/select. Tag nodes
+are not rendered (no hollow placeholder dots). Selecting a doc swaps in a
+LOCAL-graph orb: the doc
 centered (accent + halo + title) with only its linked docs orbiting it,
 edges + front-hemisphere labels; click a neighbor to re-center, click empty
 space to return to the full collection. No three.js — hand-rolled by locked
