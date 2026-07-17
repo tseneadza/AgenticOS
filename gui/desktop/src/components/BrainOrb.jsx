@@ -233,6 +233,24 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
         };
       });
 
+      // cross-links among the linked docs themselves (drilling down keeps
+      // showing the connections, not just spokes — Tony 2026-07-16), drawn
+      // first so the center spokes read on top
+      const byId = new Map(projected.map((p) => [p.id, p]));
+      ctx.lineWidth = dpr * 0.7;
+      ctx.strokeStyle = st.theme["--text-dim"];
+      for (const e of model.edges) {
+        if (e.source === sel.id || e.target === sel.id) continue; // spokes below
+        const a = byId.get(e.source);
+        const b = byId.get(e.target);
+        if (!a || !b) continue;
+        ctx.globalAlpha = 0.18 + ((a.depth + b.depth) / 2) * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
       // edges: center → every linked doc
       ctx.lineWidth = dpr * 0.8;
       ctx.strokeStyle = st.theme["--border-soft"];
