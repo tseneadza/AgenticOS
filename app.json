@@ -1,17 +1,41 @@
 {
   "id": "agenticos",
   "name": "Agentic OS",
-  "description": "LangGraph-based agentic operating system orchestrating multi-step workflows against Brain2, Hub, and Claude API.",
+  "description": "LangGraph-based agentic operating system orchestrating multi-step workflows against Brain2, Hub, and Claude API. Includes the Brain Scanner vault viewer (Phase 16) served by the sidecar on :5130 (/api/vault/tree|note|graph).",
   "version": "1.0.0",
-  "type": "desktop",
+  "type": "both",
   "icon": "\ud83e\udd16",
   "category": "infrastructure",
+  "web": {
+    "enabled": true,
+    "entry": "gui/sidecar/app.py",
+    "port": 5130,
+    "framework": "fastapi",
+    "venv": ".venv",
+    "command": [
+      ".venv/bin/python",
+      "-m",
+      "gui.sidecar"
+    ]
+  },
+  "desktop": {
+    "enabled": true,
+    "framework": "tauri",
+    "command": [
+      "scripts/agentic-gui.sh",
+      "start"
+    ]
+  },
   "tags": [
     "agentic",
     "ai",
     "orchestration",
     "brain2",
-    "langraph"
+    "langraph",
+    "brain-scanner",
+    "vault",
+    "obsidian",
+    "sidecar"
   ],
   "scripts": [
     {

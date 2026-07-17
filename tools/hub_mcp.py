@@ -87,7 +87,10 @@ def _normalise_app(raw: dict) -> dict:
     status_obj = raw.get("status") or {}
     if isinstance(status_obj, dict):
         web = status_obj.get("web") or {}
-        running = bool(web.get("running"))
+        # "running" is the Hub's did-I-spawn-it flag; a service started outside
+        # the Hub (e.g. the AgenticOS sidecar) reports running=false while its
+        # expected port IS listening. A listening port is running-evidence.
+        running = bool(web.get("running") or web.get("port_listening"))
         port = web.get("expected_port") or web.get("port") or raw.get("port")
         url = web.get("url")
     else:
