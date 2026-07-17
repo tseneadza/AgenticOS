@@ -1,3 +1,27 @@
+## 2026-07-16 — 16c revised: Obsidian-graph orb behavior (Tony's spec)
+
+Tony reviewed the orb and re-specced it to match how the real Obsidian graph
+works; design §1/§3 updated (supersedes freeze-in-place). `BrainOrb.jsx`
+rewritten:
+- **FULL mode:** wikilink edges between connected docs are ALWAYS drawn
+  (faint, depth-faded) — not just on selection. Tag nodes no longer render
+  (hollow dots read as placeholders); notes only, all solid. Sphere positions
+  assigned in deterministic hash order — vault order is alphabetical
+  (folder-grouped) and painted colored latitude bands, which is why the orb
+  looked non-uniform.
+- **LOCAL mode (new):** selecting a doc replaces the collection with a new
+  orb built from the selection — selected doc centered (accent + halo +
+  title), linked docs orbiting with visible edges and titles (labels fade in
+  on the front hemisphere only, so heavily-linked docs stay readable),
+  gentle rotation. Clicking a linked doc re-centers on it; clicking empty
+  space returns to the full collection.
+- Tags stay in the `/api/vault/graph` payload — the orb just doesn't render
+  them (future tags toggle needs no API change).
+Verified live in the browser pane against the real vault (incl. the
+~60-link "Agentic OS" note as worst case + deselect roundtrip); 31 vitest
+green. Docs synced: design §1/§3/§4/§7/§8, roadmap 16c, GLOSSARY (+Brain2
+mirror). On-device Tauri pass still the 16c DoD.
+
 ## 2026-07-15 — Phase 16a–16c: Brain Scanner (read slice + orb)
 
 The FR-50 "Obsidian Viewer" placeholder is now a working **Brain Scanner**

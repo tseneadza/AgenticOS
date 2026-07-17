@@ -2,10 +2,18 @@
  * BrainOrb — Phase 16c rotating node-orb of the Brain2 vault (Canvas 2D,
  * NO new dependency — locked decision §2#5; three.js deliberately not added).
  *
- * One dot per note (fibonacci-sphere layout), tags as hollow dots. Idle:
- * slow Y-axis rotation (the "idiot lights" ambience). Selecting a note —
- * from the tree OR by clicking a dot — freezes the spin and highlights the
- * dot + its linked neighbors. Deselect resumes.
+ * Obsidian-graph behavior (Tony, 2026-07-16):
+ * - FULL mode (nothing selected): every note is a solid dot on an evenly
+ *   distributed sphere (deterministic shuffle so folders don't band into
+ *   latitude stripes), with faint wikilink edges drawn between connected
+ *   docs — the whole thing slowly rotating.
+ * - LOCAL mode (a doc selected, from the tree OR by clicking a dot): a NEW
+ *   orb replaces the collection — the selected doc at center with only its
+ *   linked docs orbiting it, edges + labels visible (Obsidian's local graph).
+ *   Clicking a neighbor re-centers on it; clicking empty space returns to
+ *   the full collection.
+ * - Tag nodes are NOT rendered (no hollow placeholder dots); edges are real
+ *   [[wikilink]] connections only.
  *
  * Rules honored (design §7 / gui-frontend-conventions):
  * - Canvas 2D can't read CSS vars → theme tokens via getComputedStyle at
@@ -27,13 +35,17 @@ function readTheme() {
   return theme;
 }
 
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
 // deterministic folder → palette-slot hash
 function folderColor(folder, theme) {
   const palette = [theme["--accent"], theme["--green"], theme["--yellow"], theme["--red"], theme["--text"]];
   if (!folder) return theme["--text-dim"];
-  let h = 0;
-  for (let i = 0; i < folder.length; i++) h = (h * 31 + folder.charCodeAt(i)) >>> 0;
-  return palette[h % palette.length];
+  return palette[hashStr(folder) % palette.length];
 }
 
 // evenly distribute N points on a unit sphere (fibonacci spiral)
@@ -54,21 +66,28 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
   const [hover, setHover] = useState(null); // {id, label, x, y}
   const stateRef = useRef({ angle: 0, theme: readTheme(), hoverId: null });
 
-  // Precompute layout + adjacency whenever the graph changes.
+  // Precompute layout + adjacency whenever the graph changes. Notes only —
+  // tag nodes would render as placeholder-looking dots; edges are wikilinks.
   const model = useMemo(() => {
-    const nodes = graph?.nodes || [];
-    const pts = spherePoints(nodes.length);
+    const notes = (graph?.nodes || []).filter((n) => n.type === "note");
+    const noteIds = new Set(notes.map((n) => n.id));
+    const edges = (graph?.edges || []).filter(
+      (e) => e.kind === "link" && noteIds.has(e.source) && noteIds.has(e.target)
+    );
     const neighbors = new Map();
-    for (const e of graph?.edges || []) {
+    for (const e of edges) {
       if (!neighbors.has(e.source)) neighbors.set(e.source, new Set());
       if (!neighbors.has(e.target)) neighbors.set(e.target, new Set());
       neighbors.get(e.source).add(e.target);
       neighbors.get(e.target).add(e.source);
     }
-    return {
-      nodes: nodes.map((n, i) => ({ ...n, p: pts[i] })),
-      neighbors,
-    };
+    // Deterministic shuffle before assigning sphere points: the vault list is
+    // alphabetical (= folder-grouped), which paints folder-colored latitude
+    // bands on the spiral. Hash order spreads colors uniformly.
+    const shuffled = [...notes].sort((a, b) => hashStr(a.id) - hashStr(b.id));
+    const pts = spherePoints(shuffled.length);
+    const nodes = shuffled.map((n, i) => ({ ...n, p: pts[i] }));
+    return { nodes, edges, neighbors, byId: new Map(nodes.map((n) => [n.id, n])) };
   }, [graph]);
 
   useEffect(() => {
@@ -102,77 +121,145 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
     ro?.observe(canvas.parentElement || canvas);
 
-    const draw = () => {
-      if (!running) return;
-      const frozen = Boolean(selectedPath);
-      if (!frozen) st.angle += 0.0035;
+    const project = (p, cx, cy, R, sin, cos) => {
+      const [x0, y0, z0] = p;
+      const x = x0 * cos + z0 * sin; // Y-axis rotation
+      const z = -x0 * sin + z0 * cos;
+      return { x: cx + x * R, y: cy + y0 * R, z, depth: (z + 1) / 2 };
+    };
 
-      const W = canvas.width;
-      const H = canvas.height;
-      const dpr = window.devicePixelRatio || 1;
+    const truncate = (s, n = 20) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+    // FULL mode — the whole collection, spinning, with faint link edges.
+    const drawFull = (W, H, dpr) => {
       const cx = W / 2;
       const cy = H / 2;
       const R = Math.min(W, H) * 0.4;
       const sin = Math.sin(st.angle);
       const cos = Math.cos(st.angle);
-      const selSet = selectedPath ? model.neighbors.get(selectedPath) : null;
 
-      ctx.clearRect(0, 0, W, H);
-
-      // pass 1 — project every node
       projected = model.nodes.map((n) => {
-        const [x0, y0, z0] = n.p;
-        const x = x0 * cos + z0 * sin; // Y-axis rotation
-        const z = -x0 * sin + z0 * cos;
-        const depth = (z + 1) / 2; // 0 back → 1 front
-        const isSel = n.id === selectedPath;
-        const isNbr = selSet ? selSet.has(n.id) : false;
-        const r = (n.type === "tag" ? 1.6 : 2.2) * dpr * (0.6 + depth * 0.8) * (isSel ? 2.4 : isNbr ? 1.5 : 1);
+        const pr = project(n.p, cx, cy, R, sin, cos);
         return {
-          id: n.id, label: n.label, type: n.type, folder: n.folder,
-          x: cx + x * R, y: cy + y0 * R, z, depth, r, isSel, isNbr,
+          id: n.id, label: n.label, folder: n.folder,
+          x: pr.x, y: pr.y, z: pr.z, depth: pr.depth,
+          r: 2.2 * dpr * (0.6 + pr.depth * 0.8),
+        };
+      });
+      const byId = new Map(projected.map((p) => [p.id, p]));
+
+      // link edges between connected docs — always visible, depth-faded
+      ctx.lineWidth = dpr * 0.6;
+      ctx.strokeStyle = st.theme["--text-dim"];
+      for (const e of model.edges) {
+        const a = byId.get(e.source);
+        const b = byId.get(e.target);
+        if (!a || !b) continue;
+        ctx.globalAlpha = 0.04 + ((a.depth + b.depth) / 2) * 0.1;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
+      // dots, back to front
+      for (const p of [...projected].sort((a, b) => a.z - b.z)) {
+        ctx.globalAlpha = 0.35 + p.depth * 0.65;
+        ctx.fillStyle = folderColor(p.folder, st.theme);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+
+    // LOCAL mode — a new orb: the selected doc centered, its linked docs
+    // orbiting it with visible edges + labels (Obsidian's local graph).
+    const drawLocal = (W, H, dpr, sel) => {
+      const cx = W / 2;
+      const cy = H / 2;
+      const R = Math.min(W, H) * 0.33;
+      const sin = Math.sin(st.angle);
+      const cos = Math.cos(st.angle);
+      const nbrIds = [...(model.neighbors.get(sel.id) || [])];
+      const pts = spherePoints(nbrIds.length);
+      const font = `${Math.round(10 * dpr)}px sans-serif`;
+
+      projected = nbrIds.map((id, i) => {
+        const n = model.byId.get(id);
+        const pr = project(pts[i], cx, cy, R, sin, cos);
+        return {
+          id, label: n?.label || id, folder: n?.folder || "",
+          x: pr.x, y: pr.y, z: pr.z, depth: pr.depth,
+          r: 3.2 * dpr * (0.7 + pr.depth * 0.6),
         };
       });
 
-      // pass 2 — dim edges selected → neighbors (under the dots)
-      const sel = selectedPath ? projected.find((p) => p.isSel) : null;
-      if (sel && selSet) {
-        ctx.globalAlpha = 0.25;
-        ctx.strokeStyle = st.theme["--border-soft"];
-        ctx.lineWidth = dpr;
-        for (const p of projected) {
-          if (p.isNbr) {
-            ctx.beginPath();
-            ctx.moveTo(sel.x, sel.y);
-            ctx.lineTo(p.x, p.y);
-            ctx.stroke();
-          }
+      // edges: center → every linked doc
+      ctx.lineWidth = dpr * 0.8;
+      ctx.strokeStyle = st.theme["--border-soft"];
+      for (const p of projected) {
+        ctx.globalAlpha = 0.25 + p.depth * 0.35;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }
+
+      // linked docs, back to front; labels only on the front hemisphere so a
+      // heavily-linked doc doesn't dissolve into overlapping text
+      ctx.font = font;
+      ctx.textAlign = "center";
+      for (const p of [...projected].sort((a, b) => a.z - b.z)) {
+        ctx.globalAlpha = 0.5 + p.depth * 0.5;
+        ctx.fillStyle = folderColor(p.folder, st.theme);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+        if (p.depth > 0.55) {
+          ctx.globalAlpha = (p.depth - 0.55) * 2.2;
+          ctx.fillStyle = st.theme["--text-dim"];
+          ctx.fillText(truncate(p.label), p.x, p.y + p.r + 11 * dpr);
         }
       }
 
-      // pass 3 — dots, back to front
-      for (const p of [...projected].sort((a, b) => a.z - b.z)) {
-        const base = p.type === "tag" ? st.theme["--text-dim"] : folderColor(p.folder, st.theme);
-        ctx.globalAlpha = selectedPath && !p.isSel && !p.isNbr ? 0.18 + p.depth * 0.12 : 0.35 + p.depth * 0.65;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        if (p.type === "tag" && !p.isSel) {
-          ctx.strokeStyle = base;
-          ctx.lineWidth = dpr;
-          ctx.stroke();
-        } else {
-          ctx.fillStyle = p.isSel ? st.theme["--accent"] : base;
-          ctx.fill();
-        }
-        if (p.isSel) {
-          ctx.globalAlpha = 0.35;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r * 2.2, 0, Math.PI * 2);
-          ctx.strokeStyle = st.theme["--accent"];
-          ctx.lineWidth = dpr;
-          ctx.stroke();
-        }
+      // the selected doc at center: accent dot + halo + label
+      const cr = 6 * dpr;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = st.theme["--accent"];
+      ctx.beginPath();
+      ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = st.theme["--accent"];
+      ctx.lineWidth = dpr;
+      ctx.beginPath();
+      ctx.arc(cx, cy, cr * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = st.theme["--text"];
+      ctx.fillText(truncate(sel.label, 28), cx, cy + cr + 13 * dpr);
+      if (nbrIds.length === 0) {
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = st.theme["--text-dim"];
+        ctx.fillText("no linked docs", cx, cy + cr + 26 * dpr);
       }
+
+      projected.push({ id: sel.id, label: sel.label, x: cx, y: cy, z: 1, r: cr });
+    };
+
+    const draw = () => {
+      if (!running) return;
+      st.angle += selectedPath ? 0.0015 : 0.0035; // local orb turns gently
+
+      const W = canvas.width;
+      const H = canvas.height;
+      const dpr = window.devicePixelRatio || 1;
+      ctx.clearRect(0, 0, W, H);
+
+      const sel = selectedPath ? model.byId.get(selectedPath) : null;
+      if (sel) drawLocal(W, H, dpr, sel);
+      else drawFull(W, H, dpr);
+
       // hit-tests want generous radii
       for (const p of projected) p.r = Math.max(p.r, 4 * dpr);
       ctx.globalAlpha = 1;

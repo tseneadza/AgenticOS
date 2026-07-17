@@ -15,8 +15,11 @@ the **Brain2 Obsidian vault** (`~/Brain2`, already an fs `allowed_root` since Ph
 15b). Three things at once:
 
 1. **A living graph.** A rotating 3D "orb" of dots — one dot per note — that
-   spins continuously as a soothing ambient affectation ("idiot lights"). Selecting
-   a file **freezes** the spin and **highlights** that note's dot.
+   spins continuously as a soothing ambient affectation ("idiot lights"), with
+   the **wikilink edges between connected docs visible** like Obsidian's global
+   graph. Selecting a file swaps in a **local-graph orb**: the selected doc at
+   center with only its linked docs orbiting it (revised from freeze-in-place,
+   Tony 2026-07-16 — see §3).
 2. **A navigator.** A folder/file **tree** down the left side (like the real
    Obsidian file explorer) to browse and open notes.
 3. **A reader/editor.** Open a note to **read** (rendered markdown) or **edit**
@@ -71,16 +74,27 @@ zero, matches house style (ponytail / CSS-only OSAOrb). three.js is not added. I
 a very large vault (1000+ notes) ever makes hand-rolled picking/depth painful,
 revisit three.js as a *separate* enhancement — not in this phase.
 
-**Behavior (identical regardless of substrate):**
-- **Idle:** slow continuous Y-axis rotation (the "idiot lights" ambience).
-- **Select a note** (from tree OR by clicking its dot): rotation **freezes**, the
-  selected dot **highlights** (color + size + halo), optionally its linked
-  neighbors dim-highlight.
-- **Deselect / close:** rotation resumes.
+**Behavior (REVISED with Tony 2026-07-16 — supersedes the freeze-in-place spec):**
+- **FULL mode (nothing selected):** slow continuous Y-axis rotation (the "idiot
+  lights" ambience). Every note is a **solid** dot — tag nodes are NOT rendered
+  (hollow dots read as placeholders); edges are real `[[wikilink]]` connections
+  only, drawn **always-visible** as faint depth-faded lines (Obsidian's global
+  graph). Sphere positions are assigned in **deterministic hash order**, not
+  vault order — alphabetical order groups folders into colored latitude bands
+  and makes the orb look non-uniform.
+- **LOCAL mode (a doc selected, from tree OR by clicking its dot):** the
+  collection is replaced by a **new orb built from the selection** — the
+  selected doc at center (accent + halo + title), its linked docs orbiting it
+  with visible edges and titles (labels fade in on the front hemisphere so
+  heavily-linked docs stay readable; gentle rotation). Clicking a linked doc
+  **re-centers** the local orb on it; clicking empty space **deselects** and
+  the full collection resumes. This is Obsidian's local graph.
 - Dots colored by **top-level folder** (00-Raw, 01-Projects, 02-Learning,
   08-Systems, …); a small legend maps color→folder.
 - Respect the active theme tokens (`--accent`, `--green`, etc.) — no hardcoded
   palette that breaks skins.
+- Tags-as-nodes remain in the `/api/vault/graph` payload (§5) — the orb simply
+  does not render them; a future tags toggle stays possible without API change.
 
 ---
 
@@ -93,7 +107,7 @@ revisit three.js as a *separate* enhancement — not in this phase.
 │ ▸ 00 - Raw    │      · · ·  ·   ·          │  # Note title       │
 │ ▾ 01 - Proj   │    ·   ●(selected)  ·      │  rendered markdown  │
 │   • note A    │      ·   · ·  ·            │  ────────────       │
-│   • note B    │   (spins; freezes on       │  [Edit] [Save] [New]│
+│   • note B    │   (spins; local graph on   │  [Edit] [Save] [New]│
 │ ▸ 02 - Learn  │    selection)              │                     │
 └───────────────┴────────────────────────────┴────────────────────┘
 ```
@@ -236,7 +250,7 @@ crashes rather than merely under-verifying. The orb is **unverified until seen
 on-device** (`gui-frontend-conventions.md` §9).
 
 Selection state (`selectedPath`) lives in `BrainScannerView` and is shared by tree
-↔ orb ↔ reader so all three agree on the active note and the freeze/highlight.
+↔ orb ↔ reader so all three agree on the active note and the full↔local orb mode.
 **Pause the rAF spin loop** when the view is inactive or the window is hidden
 (battery).
 
@@ -248,7 +262,7 @@ Selection state (`selectedPath`) lives in `BrainScannerView` and is shared by tr
 |-----|-------|
 | **16a** | Backend vault API: `api_vault.py` (tree, note read, graph parse) + scoping + register in app.py & HubApiExplorer + pytest. Read-only slice. |
 | **16b** | Frontend: `BrainScannerView` + `VaultTree` + `NoteReader` **read mode**; rename placeholder → Brain Scanner in VIEWS/Hud/menu; vitest. |
-| **16c** | `BrainOrb` rotating node-orb + freeze-on-select + highlight, wired to `/api/vault/graph`; vitest tripwire (jsdom can't see canvas). **Definition of done includes the on-device visual pass** — the orb cannot be verified by its own vitest slice, so don't defer that to 16e. |
+| **16c** | `BrainOrb` rotating node-orb: full collection w/ visible wikilink edges + local-graph orb on selection (§3 revised behavior), wired to `/api/vault/graph`; vitest tripwire (jsdom can't see canvas). **Definition of done includes the on-device visual pass** — the orb cannot be verified by its own vitest slice, so don't defer that to 16e. |
 | **16d** | Edit + create: PUT/POST save endpoints (scoped write, mandatory `.bak`, mtime-409) + reader edit mode + new-note flow; pytest + vitest. **`security-verifier` REQUIRED on the write diff** (§6). |
 | **16e** | Polish: theme pass on-device (`npm run tauri dev`), wikilink click-to-open navigation, legend, empty/error states. |
 
