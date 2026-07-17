@@ -187,14 +187,16 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
       });
       const byId = new Map(projected.map((p) => [p.id, p]));
 
-      // link edges between connected docs — always visible, depth-faded
-      ctx.lineWidth = dpr * 0.6;
+      // link edges between connected docs — always visible, depth-faded.
+      // Alpha floor keeps back-side links legible; front links read clearly
+      // (0.04–0.14 was invisible on-device — Tony 2026-07-16).
+      ctx.lineWidth = dpr * 0.9;
       ctx.strokeStyle = st.theme["--text-dim"];
       for (const e of model.edges) {
         const a = byId.get(e.source);
         const b = byId.get(e.target);
         if (!a || !b) continue;
-        ctx.globalAlpha = 0.04 + ((a.depth + b.depth) / 2) * 0.1;
+        ctx.globalAlpha = 0.14 + ((a.depth + b.depth) / 2) * 0.3;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
