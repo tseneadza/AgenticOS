@@ -21,3 +21,4 @@ prune, correct, or reorganize anytime.
 - 2026-07-14 23:45 (osa): Keno backfill script (keno_backfill.py) is running in the background. Tony asked me to monitor it and report results when complete. Started around 2026-07-12 late night.
 - 2026-07-15 00:14 (osa): Tony's birthday is August 20th.
 - 2026-07-15 00:16 (osa): Tony was born in 1966. His birthday is August 20th. He will turn 60 in August 2026.
+- 2026-07-19 03:25 (osa): Chroma vector database install started 2026-07-16 — running in background (~venv-chroma). Installation log at ~/chroma-install.log. Plan: embed Brain2 vault notes into Chroma for semantic search layer on Brain Scanner. Install may take several minutes due to ML dependencies.
