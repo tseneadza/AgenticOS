@@ -108,27 +108,27 @@ def test_validate_project_name_invalid(name):
 
 # ── scan_codehome_structure tests ─────────────────────────────────────────────
 
-def test_scan_codehome_structure_from_ledger(sqlite_session):
+def test_scan_codehome_structure_from_ledger(ledger_session):
     """Subfolders are self-curated from the projects ledger (not the filesystem)."""
     from gui.sidecar.models import Project
 
     # Fresh ledger: no project folders yet, but root + custom always offered.
-    empty = pm.scan_codehome_structure(session=sqlite_session)
+    empty = pm.scan_codehome_structure(session=ledger_session)
     assert empty["all"] == []
     assert empty["suggested"] == []
     assert empty["custom_available"] is True
     assert empty["root_available"] is True
 
     # Once projects exist, their distinct subfolders surface (root "" excluded).
-    sqlite_session.add_all([
+    ledger_session.add_all([
         Project(id="a", name="a", path="/x/a", subfolder="The Sciences", template="cli", port=5201),
         Project(id="b", name="b", path="/x/b", subfolder="Games", template="cli", port=5202),
         Project(id="c", name="c", path="/x/c", subfolder="Games", template="cli", port=5203),
         Project(id="d", name="d", path="/x/d", subfolder="", template="cli", port=5204),  # root
     ])
-    sqlite_session.commit()
+    ledger_session.commit()
 
-    res = pm.scan_codehome_structure(session=sqlite_session)
+    res = pm.scan_codehome_structure(session=ledger_session)
     assert set(res["all"]) == {"Games", "The Sciences"}
     assert res["all"] == sorted(res["all"], key=str.lower)  # sorted, case-insensitive
     assert res["root_available"] is True
@@ -149,10 +149,10 @@ def test_scan_codehome_structure_db_unavailable(monkeypatch):
     assert res["root_available"] is True
 
 
-# ── allocate_port tests (in-memory SQLite) ────────────────────────────────────
+# ── allocate_port tests (agenticos_test MySQL ledger) ─────────────────────────
 
 @pytest.fixture()
-def sqlite_session(db_session, monkeypatch):
+def ledger_session(db_session, monkeypatch):
     """A SQLAlchemy session on the ``agenticos_test`` MySQL schema.
 
     Phase 13f: converted off in-memory SQLite to the conftest ``db_session``
@@ -160,8 +160,7 @@ def sqlite_session(db_session, monkeypatch):
     clean). Skips cleanly when MySQL is down. app_registry.get_all and
     pm._port_in_use are neutralised so allocation is deterministic.
 
-    The fixture name is kept as ``sqlite_session`` so the test bodies below are
-    unchanged.
+    Renamed from ``sqlite_session`` in the 2026-07-19 all-MySQL sweep.
     """
     # Neutralise external influences on the unavailable-port set.
     from core import app_registry
@@ -171,30 +170,30 @@ def sqlite_session(db_session, monkeypatch):
     yield db_session
 
 
-def test_allocate_port_sequential(sqlite_session):
-    first = pm.allocate_port("app-a", session=sqlite_session)
-    second = pm.allocate_port("app-b", session=sqlite_session)
+def test_allocate_port_sequential(ledger_session):
+    first = pm.allocate_port("app-a", session=ledger_session)
+    second = pm.allocate_port("app-b", session=ledger_session)
     assert first == 5200
     assert second == 5201
 
 
-def test_allocate_port_preferred_free(sqlite_session):
-    port = pm.allocate_port("app-x", preferred_port=5432, session=sqlite_session)
+def test_allocate_port_preferred_free(ledger_session):
+    port = pm.allocate_port("app-x", preferred_port=5432, session=ledger_session)
     assert port == 5432
 
 
-def test_allocate_port_preferred_taken_falls_back(sqlite_session):
+def test_allocate_port_preferred_taken_falls_back(ledger_session):
     # Claim 5200 first, then request it as a preferred port — should fall back.
-    pm.allocate_port("app-a", preferred_port=5200, session=sqlite_session)
-    port = pm.allocate_port("app-b", preferred_port=5200, session=sqlite_session)
+    pm.allocate_port("app-a", preferred_port=5200, session=ledger_session)
+    port = pm.allocate_port("app-b", preferred_port=5200, session=ledger_session)
     assert port == 5201
 
 
-def test_allocate_port_skips_registry_ports(sqlite_session, monkeypatch):
+def test_allocate_port_skips_registry_ports(ledger_session, monkeypatch):
     from core import app_registry
     monkeypatch.setattr(
         app_registry, "get_all",
         lambda: [{"id": "other", "expected_port": 5200}],
     )
-    port = pm.allocate_port("app-a", session=sqlite_session)
+    port = pm.allocate_port("app-a", session=ledger_session)
     assert port == 5201  # 5200 reserved by the registry

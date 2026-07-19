@@ -5,7 +5,8 @@
       are never imported; they need no DB or network.
     * The /port-check + orchestration tests are DB-backed (Phase 13f — against
       the ``agenticos_test`` MySQL schema via the conftest fixtures, no more
-      in-memory SQLite) and skip cleanly when MySQL is down. GitHub creation is
+      the
+      agenticos_test MySQL schema) and skip cleanly when MySQL is down. GitHub creation is
       stubbed to None (no-token path), folders redirect to ``tmp_path``, and
       port allocation is made deterministic.
 
@@ -69,7 +70,7 @@ def test_list_subfolders_shape(client, monkeypatch):
     assert "apps" in body["all"]
 
 
-# ── REST: /port-check (sqlite-backed ledger) ──────────────────────────────────
+# ── REST: /port-check (MySQL-backed ledger) ───────────────────────────────────
 
 def test_port_check_free(client, monkeypatch, mysql_engine):
     from sqlalchemy.orm import sessionmaker
@@ -77,7 +78,7 @@ def test_port_check_free(client, monkeypatch, mysql_engine):
     from gui.sidecar import models  # noqa: F401  (registers Port on Base)
 
     # Phase 13f: bind to the ``agenticos_test`` MySQL schema (was in-memory
-    # SQLite). Clear any existing ports rows first for determinism.
+    # MySQL). Clear any existing ports rows first for determinism.
     Session = sessionmaker(bind=mysql_engine, future=True)
     _cleanup = Session()
     try:
@@ -98,7 +99,7 @@ def test_port_check_free(client, monkeypatch, mysql_engine):
     assert body["available"] is True
 
 
-# ── orchestration: create_project_full end-to-end (sqlite + no network) ────────
+# ── orchestration: create_project_full end-to-end (MySQL + no network) ─────────
 
 def test_create_project_full(monkeypatch, tmp_path, db_session):
     from gui.sidecar import models  # noqa: F401  (registers Project + Port)
@@ -154,7 +155,7 @@ def test_create_project_full(monkeypatch, tmp_path, db_session):
         assert (project_dir / "README.md").exists()
         assert (project_dir / ".git").is_dir()  # init_git_repo ran real git
 
-        # ── ledger row present in the injected sqlite session ────────────────
+        # ── ledger row present in the injected ledger session ────────────────
         row = session.query(models.Project).filter_by(id="my-app").first()
         assert row is not None
         assert row.port == 5200

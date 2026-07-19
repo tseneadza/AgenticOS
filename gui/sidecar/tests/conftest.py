@@ -12,8 +12,10 @@ Fixtures:
     db_session    (function-scoped) — a Session on that engine; wipes every
         table after each test for isolation.
 
-Legacy suites (test_phase11a/11c) still carry their own SQLite fixtures —
-converting them is scheduled as Phase 13f (SQLAlchemy consolidation).
+All suites run against this MySQL schema — the last SQLite test fixtures were
+converted in Phase 13f and the stale names/comments swept 2026-07-19. The only
+sqlite3 left in tests builds fixture copies of Apple's chat.db (a foreign,
+inherently-SQLite data source the messages domain reads).
 
 Connection config comes from the same ~/.agentic-os/.env vars as production
 (``gui.sidecar.db._CFG``); only the database name is overridden.

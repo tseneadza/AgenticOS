@@ -1,3 +1,26 @@
+## 2026-07-19 — All-MySQL sweep (Tony's directive: no SQLite in this app)
+
+Audit result: production storage was ALREADY fully MySQL — ledger/models,
+core/memory run history, news/tasks DBs, and the LangGraph checkpointer
+(langgraph-checkpoint-mysql PyMySQLSaver). What the sweep actually removed
+was residue that made greps lie:
+- **Uninstalled dormant packages** `langgraph-checkpoint-sqlite` (3.1.0) and
+  its transitive dep `sqlite-vec` (0.1.9) — zero imports anywhere; leftovers
+  from the pre-MySQL checkpointer era. Verified the MySQL checkpointer
+  imports and the full suite passes without them.
+- **Renamed the misnamed `sqlite_session` fixture** in test_phase11a.py to
+  `ledger_session` — Phase 13f had already pointed it at the agenticos_test
+  MySQL schema; only the name survived. Swept every stale "in-memory
+  SQLite" comment in conftest/11a/11c to describe reality.
+- **Deliberately kept:** `sqlite3` reads of Apple's Messages `chat.db` in
+  the 15c messages domain (+ its fixture builders) — a foreign, inherently-
+  SQLite data source we read, not app storage.
+- **Open question for Tony:** template_registry's Django scaffold still
+  generates NEW projects with Django's sqlite default — those are separate
+  apps, so left as-is pending his call.
+
+Suite: 842 passed, 2 pre-existing FDA mail failures only.
+
 ## 2026-07-16 — 16c revised: Obsidian-graph orb behavior (Tony's spec)
 
 Tony reviewed the orb and re-specced it to match how the real Obsidian graph
