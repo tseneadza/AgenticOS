@@ -13,14 +13,17 @@
 #     mic/audio; Tony verifies the pipeline on his Mac.
 #   * All processing is local/offline (decision #3): no cloud STT/TTS.
 #
-# STATUS 2026-07-08: piper-tts is INSTALLED (voice-OUT is live). The four
-# mic-side deps below remain uninstalled until the voice-IN pass.
-#   * piper-tts pulls onnxruntime + bumps numpy to 2.x — full suite stays green.
+# STATUS 2026-07-21: ALL deps INSTALLED — voice_available() → (True, []).
+#   openwakeword 0.6.0, faster-whisper 1.2.1 (ctranslate2 4.8.1),
+#   piper-tts 1.4.2 (onnxruntime 1.27.0), sounddevice 0.5.5,
+#   webrtcvad 2.0.10, setuptools 80.10.2 (<81 pin holds).
+#   * webrtcvad emits a pkg_resources deprecation warning on import — harmless
+#     while setuptools stays <81.
 #   * Voice model en_GB-alan-medium lives in ~/.agentic-os/voices/ (fetched via
 #     `python -m piper.download_voices en_GB-alan-medium --download-dir ...`).
-openwakeword          # wake word ("osa") — rolling buffer detection (§3.1) [voice-IN, not yet installed]
-faster-whisper        # local STT, model size via constitution voice.stt_model (§3.2) [voice-IN, not yet installed]
+openwakeword          # wake word ("osa") — rolling buffer detection (§3.1) [voice-IN, INSTALLED 2026-07-21]
+faster-whisper        # local STT, model size via constitution voice.stt_model (§3.2) [voice-IN, INSTALLED 2026-07-21]
 piper-tts             # local TTS; voice model via voice.piper_voice (§3.3) [voice-OUT, INSTALLED 2026-07-08]
-sounddevice           # mic capture + speaker playback (PortAudio) [voice-IN, not yet installed]
+sounddevice           # mic capture + speaker playback (PortAudio) [voice-IN, INSTALLED 2026-07-21]
 webrtcvad             # end-of-speech / silence detection [voice-IN, INSTALLED 2026-07-08]
 setuptools<81         # webrtcvad 2.0.10 imports pkg_resources, removed in setuptools 81+ (hit 2026-07-08)
