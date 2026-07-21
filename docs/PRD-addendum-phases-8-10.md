@@ -1,5 +1,8 @@
 # PRD Addendum — Phases 8–10 (staged 2026-06-14)
 
+> **✅ ACCOMPLISHED (audited 2026-07-21):** Phases 8, 9, 10 all shipped
+> (2026-06-14 → 2026-07-01). Historical record. See `docs/IDEA_LEDGER.md`.
+
 > **Status: STAGED for paste-in.** The canonical Full PRD lives at
 > `Brain2/01 - Projects/PRDs/Agentic OS - Full PRD.md`, which is not accessible
 > from this workspace. Paste these phase sections into that PRD and keep

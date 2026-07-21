@@ -1,5 +1,8 @@
 # Hub Decommission Plan — Phase 9
 
+> **✅ ACCOMPLISHED (audited 2026-07-21):** Phase 9 complete 2026-06-26 —
+> Hub Go server retired. Historical record. See `docs/IDEA_LEDGER.md`.
+
 **Status:** Architecture & design phase  
 **Last updated:** 2026-06-18  
 **Owner:** AgenticOS team

@@ -1,3 +1,31 @@
+# ⏹ SESSION 2026-07-21 — VOICE DEPS AT EQUILIBRIUM ✅ · NEXT: Tony's live mic run
+
+Short session. Audited `requirements-voice.txt` vs the actual `.venv`: **all six
+voice deps were already installed** (openwakeword 0.6.0, faster-whisper 1.2.1,
+piper-tts 1.4.2, sounddevice 0.5.5, webrtcvad 2.0.10, setuptools 80.10.2 <81) —
+the file's "not yet installed" annotations were stale. Verified on-device:
+imports clean, `voice_available()` → `(True, [])`. Synced the file annotations
+to INSTALLED, committed + pushed **44c79c7**. Known-benign: webrtcvad emits a
+pkg_resources deprecation warning (covered by the <81 pin).
+
+## Also this session — IDEA LEDGER established
+`docs/IDEA_LEDGER.md` (NEW): every idea/want/feature across the docs now has
+a verdict (SHIPPED / IN PROGRESS / EXPLORED / PARKED / ABANDONED) with
+evidence, plus inline ▸ STATUS tags in the home docs (feature-backlog CLOSED —
+all 4 NF shipped; OSAORB_IDEAS audited — #1 #3 #6 shipped, rest parked;
+UI_VISION parked-north-star; plan docs bannered ACCOMPLISHED). **Rule going
+forward: when an idea ships/dies/parks, update the ledger AND the inline tag.**
+
+## ▶ NEXT — voice
+1. **Tony: first live mic run on the Mac** (sandbox can't do audio). Launch the
+   sidecar/voice pipeline and speak the wake word — macOS will prompt for
+   **microphone permission for the host process** (Terminal or the Tauri app);
+   grant it. See `docs/TCC_PERMISSIONS_RUNBOOK.md` for the TCC flow.
+2. Then wire/verify end-of-speech → STT → TTS round-trip and flip the Phase 14d
+   voice-IN items in `roadmap.md`.
+
+---
+
 # ⏹ SESSION 2026-07-15 (later) — PHASE 16a–16c BUILT ✅ (Brain Scanner read slice + orb LIVE) · NEXT: Tony's on-device pass → 16d writes
 
 Tony's build go. Built with subagents per the plan: supervisor wrote production

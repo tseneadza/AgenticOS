@@ -1,5 +1,9 @@
 # Feature Backlog — intake for next PRD batch (Phase 8+)
 
+> **📕 CLOSED 2026-07-21 — every item shipped.** NF-1 ✅ · NF-2 ✅ Phase 8 ·
+> NF-4 ✅ Phase 9 · NF-3 ✅ Phase 10. Verdicts: `docs/IDEA_LEDGER.md`.
+> New intake goes in a fresh batch or straight to `roadmap.md`.
+
 Status: **priorities LOCKED 2026-06-14.** Build order: NF-1 (✅ done) →
 NF-2 (Phase 8) → NF-4 (Phase 9) → NF-3 (Phase 10). Detailed specs done for
 NF-2 and NF-3; **NF-4 still needs a detailed drill-down before build.** PRD
@@ -11,6 +15,8 @@ Legend — Type: `SETUP` (one-off action) · `GUI` · `AGENT` · `CORE/INTEGRATI
 ---
 
 ## NF-1 — Host the project in a GitHub repo named `AgenticOS`
+
+> **✅ SHIPPED** — `github.com/tseneadza/AgenticOS` is the remote of record.
 - **Type:** SETUP (action, not a PRD feature)
 - **Summary:** Initialize git (if needed) and push this repo to GitHub as
   `AgenticOS`. Establishes version control / backup / remote of record.
@@ -20,6 +26,8 @@ Legend — Type: `SETUP` (one-off action) · `GUI` · `AGENT` · `CORE/INTEGRATI
   is decided. Not a phase item — it's prerequisite plumbing.
 
 ## NF-2 — Nav becomes a list of *dashboards* (restructure + new dashboards)
+
+> **✅ SHIPPED** — Phase 8 complete 2026-06-14 (FR-46–51).
 - **Type:** GUI/UX · **Effort:** medium · **Proposed phase:** 8
 - **Summary:** Turn the left sidebar from three fixed views into a registry of
   named **dashboards**. Rename the current dashboard, merge Workflows + Events
@@ -95,6 +103,8 @@ Legend — Type: `SETUP` (one-off action) · `GUI` · `AGENT` · `CORE/INTEGRATI
   (small Rust change). Low risk; isolated to the GUI layer.
 
 ## NF-3 — Governing AI agent over the whole app (LangChain + local model)
+
+> **✅ SHIPPED** — Phase 10 complete 2026-07-01 (FR-52–59).
 - **Type:** AGENT (large / epic)
 - **Summary:** A conversational agent that can do everything the app can do via
   natural language ("an AI agent that governs the application"). Built with
@@ -216,6 +226,8 @@ Legend — Type: `SETUP` (one-off action) · `GUI` · `AGENT` · `CORE/INTEGRATI
   (Hub absorbed → agent governs Hub natively through the same registry).
 
 ## NF-4 — Absorb the Hub; decommission the external Hub service
+
+> **✅ SHIPPED** — Phase 9 complete 2026-06-26; Hub `:8085` retired.
 - **Type:** CORE/INTEGRATION (large / epic)
 - **Summary:** Make AgenticOS the owner of Codehome app management instead of
   wrapping the external Hub on `:8085`. Native app registry + lifecycle

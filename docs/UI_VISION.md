@@ -1,5 +1,9 @@
 # AgenticOS — UI Vision (the "shock and awe" north star)
 
+> **📒 STATUS (2026-07-21): 🅿 PARKED — active north star, no slices executed
+> yet.** OSA functionality deliberately prioritized. The orb + OSARail already
+> embody the target language. Verdict tracking: `docs/IDEA_LEDGER.md`.
+
 > **Purpose.** A design north-star for evolving the AgenticOS desktop GUI
 > (`gui/desktop/`) from *typical/expected application chrome* into a
 > **fresh, attention-grabbing, desirably-functional space**. Captured

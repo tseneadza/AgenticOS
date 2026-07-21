@@ -1,5 +1,10 @@
 # Roadmap append — paste into docs/roadmap.md
 
+> **✅ ACCOMPLISHED, RENUMBERED (audited 2026-07-21):** shipped as the theme
+> system (`theme.css` skins + View ▸ Theme), menu-bar tray, and Minimize-to-HUD —
+> but NOT as "Phase 12/13" (those numbers went to Diagnostics / Launch System).
+> Historical record. See `docs/IDEA_LEDGER.md`.
+
 These continue the existing phase numbering (latest shipped ≈ Phase 9–11). Adjust numbers
 to match your current head. FR numbers continue from FR-51 (last seen in `lib.rs`).
 

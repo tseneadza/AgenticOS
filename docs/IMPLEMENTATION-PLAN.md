@@ -1,5 +1,9 @@
 # Agentic OS — Aesthetic System + Bling Implementation Plan
 
+> **✅ ACCOMPLISHED (audited 2026-07-21):** theming, menu-bar OSA tray, and
+> Minimize-to-HUD all shipped (phase numbers diverged — see `ROADMAP-APPEND.md`
+> note). Historical record. See `docs/IDEA_LEDGER.md`.
+
 Companion to the `AgenticOS Enhanced.dc.html` mockup. This is the build plan for
 landing that mockup's three changes in the real Tauri + React app
 (`gui/desktop/`) **without losing any functionality**:
