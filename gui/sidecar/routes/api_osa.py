@@ -180,6 +180,85 @@ def clear_pending(thread_id: str) -> None:
     _PENDING_CONFIRM.pop(thread_id, None)
 
 
+def _heal_pending_interrupt(agent, config) -> str | None:
+    """Resolve a parked interrupt on this thread before appending a new turn.
+
+    Cross-path corruption guard (2026-07-21). The WS chat path gates a
+    destructive tool via LangGraph ``interrupt()``, which parks an
+    ``AIMessage`` carrying the tool call on the durable checkpointer with NO
+    ``ToolMessage`` yet, awaiting ``Command(resume=...)``. Because typed (WS)
+    and voice (sync POST) share ONE durable thread (the active-thread
+    singleton, 2026-07-14), a new message that arrives on the OTHER path while
+    that interrupt is still parked would append a ``HumanMessage`` on top of
+    the dangling tool call — yielding a history with ``tool_calls`` and no
+    matching ``ToolMessage``, which the LLM provider rejects
+    (``INVALID_CHAT_HISTORY``). This clears the parked interrupt with a
+    **fail-closed DENY** (resume-deny re-runs the tool's pre-guard code — which
+    is side-effect-free — then the guard denies, so the parked action NEVER
+    executes) so the incoming turn appends cleanly.
+
+    Heals BOTH shapes the corruption can take:
+
+    1. **Live interrupt** — a WS gated tool is parked awaiting a resume. Cleared
+       with a fail-closed DENY (resume-deny re-runs only the tool's
+       side-effect-free pre-guard code, then the guard denies, so the parked
+       action NEVER executes).
+    2. **Baked dangling tool call** — a prior crash already appended a
+       ``HumanMessage`` on top of the dangling call (``.next`` points back at the
+       agent, no live interrupt). The offending ``AIMessage`` is rewritten in
+       place (same id ⇒ ``add_messages`` replaces it) with its ``tool_calls``
+       stripped, so no orphaned ``tool_use`` remains.
+
+    Best-effort + idempotent: a healthy thread costs one ``get_state`` read and
+    returns ``None``. Bounded and non-raising — if it can't clear, the next turn
+    simply retries. Returns a short description of what it healed, else ``None``.
+    """
+    healed: str | None = None
+    try:
+        from langchain_core.messages import AIMessage
+        from langgraph.types import Command
+
+        # (1) Resolve a LIVE interrupt (fail-closed deny), bounded.
+        for _ in range(3):
+            snap = agent.get_state(config)
+            intr = None
+            for task in getattr(snap, "tasks", None) or []:
+                for i in getattr(task, "interrupts", None) or []:
+                    intr = i
+                    break
+                if intr is not None:
+                    break
+            if intr is None:
+                break  # no live interrupt to resume
+            val = getattr(intr, "value", None)
+            if healed is None and isinstance(val, dict):
+                healed = val.get("description")
+            agent.invoke(Command(resume="deny"), config=config)
+
+        # (2) Strip any BAKED dangling tool call so the next turn validates.
+        snap = agent.get_state(config)
+        msgs = (getattr(snap, "values", None) or {}).get("messages", [])
+        answered = {getattr(m, "tool_call_id", None) for m in msgs}
+        fixes = [
+            AIMessage(
+                content=getattr(m, "content", "") or "(cancelled an unfinished action)",
+                id=m.id,
+            )
+            for m in msgs
+            if (getattr(m, "tool_calls", None) or [])
+            and any(c.get("id") not in answered for c in m.tool_calls)
+        ]
+        if fixes:
+            agent.update_state(config, {"messages": fixes})
+            healed = healed or "cancelled an unfinished tool call"
+    except Exception as exc:  # noqa: BLE001 — best-effort; a new turn will retry
+        logger.warning("heal: could not clear parked/dangling tool state: %s", exc)
+        return None
+    if healed:
+        logger.info("heal: cleared parked/dangling tool state (%s)", healed)
+    return healed
+
+
 class OSAChat(BaseModel):
     """Request body for an OSA chat turn."""
 
@@ -341,6 +420,10 @@ def osa_chat(body: OSAChat) -> dict:
             system_suffix=brain_line, voice_aware=_voice_is_on(),
         )
         config = {"configurable": {"thread_id": thread_id}}
+        # Heal a parked interrupt left by a gated tool on the OTHER (WS) path
+        # before appending this turn, else the shared thread yields a dangling
+        # tool call → INVALID_CHAT_HISTORY (2026-07-21).
+        _heal_pending_interrupt(agent, config)
         result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=config)
     except Exception as exc:  # noqa: BLE001 — surface as a 502, never crash the route
         logger.error("OSA chat failed: %s", exc, exc_info=True)
@@ -872,6 +955,15 @@ async def osa_chat_ws(ws: WebSocket) -> None:
             "type": "start", "thread_id": thread_id, "model": model_id,
             "route": route, "pinned_model": pin, "escalated": escalated,
         })
+
+        # A fresh message (not a resume) on a thread still parked on a prior
+        # gated interrupt would append a dangling tool call → INVALID_CHAT_HISTORY.
+        # Clear it first (fail-closed deny); run off the event loop (sync + may
+        # do one LLM call). A real resume intentionally resolves the interrupt.
+        if resume_val is None:
+            await asyncio.get_running_loop().run_in_executor(
+                None, _heal_pending_interrupt, agent, config
+            )
 
         trace: list[dict] = []
         while True:

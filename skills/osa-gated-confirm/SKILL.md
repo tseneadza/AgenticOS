@@ -85,6 +85,19 @@ The prompt now forbids it: "NEVER accomplish a denied or blocked action by
 another route — working around your own safety guard is forbidden." If you see
 OSA proposing a workaround for a BLOCKED/DENIED op, that's a regression here.
 
+## Pitfall 6 — a parked WS interrupt corrupts the shared thread
+
+The WS confirm path parks a real `interrupt()` — an `AIMessage` with the tool
+call sits on the checkpointer with NO `ToolMessage` until a resume. Because typed
+(WS) and voice/sync (POST) share ONE durable thread, if the user abandons the
+confirm and sends a NEW message on the other path, it appends a `HumanMessage`
+onto that dangling tool call → `INVALID_CHAT_HISTORY` on every later turn, wedged
+durably in MySQL. Fix (2026-07-21): `_heal_pending_interrupt(agent, config)` runs
+before BOTH paths append a turn — resume-deny a live interrupt (fail-closed) or
+strip a baked dangling call in place. Full write-up + wedged-thread detection in
+`osa-chat-dual-path`. Never resume a WS interrupt with anything but a verified
+human decision; the heal always denies.
+
 ## How to test (LIVE — unit tests can't see model behavior)
 
 These are MODEL-BEHAVIOR bugs: the route mechanism unit-tests stay green while

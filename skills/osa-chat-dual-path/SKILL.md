@@ -117,6 +117,36 @@ does NOT catch two calls that start at the same instant (both still synthesizing
 
 When adding confirm-related behavior, respect which mechanism the path uses.
 
+**⚠️ The two paths SHARE ONE durable thread — and their confirm mechanisms
+leave incompatible checkpoint shapes (live-found 2026-07-21).** Since the
+unified-transcript feature (2026-07-14, `osa_active_thread.py` active-thread
+singleton), typed (WS) and voice/typed-sync (POST) turns run on the SAME
+`thread_id`. The WS `interrupt()` parks an `AIMessage` carrying the tool call on
+the checkpointer with NO `ToolMessage` yet (awaiting resume). If the user then
+sends a NEW message on the OTHER path (e.g. switches to voice) instead of
+resuming, that path appends a `HumanMessage` on top of the dangling tool call →
+a history with `tool_calls` and no matching `ToolMessage` → the provider rejects
+EVERY subsequent turn with `INVALID_CHAT_HISTORY`, wedging the whole
+conversation durably (it's in MySQL, survives restarts; in-memory `_WS_TURN_STATE`
+/ `_PENDING_CONFIRM` do NOT).
+
+Guard: **`_heal_pending_interrupt(agent, config)` runs before BOTH paths append a
+new turn** (sync: before `agent.invoke`; WS: only when `resume_val is None`, run
+in an executor). It heals two shapes, fail-closed:
+1. a LIVE interrupt still parked → `Command(resume="deny")` (re-runs only the
+   tool's side-effect-free pre-guard, then denies — the action NEVER executes);
+2. a BAKED dangling call (a prior crash already appended the HumanMessage,
+   `.next` back at `agent`, no live interrupt) → rewrite the offending
+   `AIMessage` in place (same `id` ⇒ `add_messages` replaces it) with
+   `tool_calls` stripped.
+
+To find a wedged thread: build an agent with the checkpointer, `get_state` each
+`thread_id`, and flag any `AIMessage` tool_call `id` with no matching
+`ToolMessage.tool_call_id` ANYWHERE in `state.values["messages"]` (not just the
+last message — the corruption sits mid-history, behind the appended
+HumanMessage). Running the heal helper against that thread repairs it in place,
+preserving all history.
+
 **Gated TOOLS are dual-path too (live-found 2026-07-12):** a new gated tool
 can work perfectly over curl (sync pending-confirm) while being completely
 DEAD over the app's WS path — `interrupt()` works by RAISING GraphInterrupt
@@ -137,3 +167,9 @@ osa-gated-confirm Pitfall 4.
 3. Add a source-level regression test asserting the WS handler calls your hook.
 4. Client can double-open the socket → make user-visible per-reply effects
    idempotent (dedup window), not just barge-in-cancelled.
+5. (2026-07-21) One shared durable thread + two confirm mechanisms = a
+   checkpoint landmine. A parked WS `interrupt()` leaves a dangling tool call;
+   a new turn on the sync/voice path appends over it → `INVALID_CHAT_HISTORY`
+   forever. Heal on entry (fail-closed) before appending, and never assume a
+   thread is clean just because the last message looks fine — the dangling call
+   hides mid-history. Fixed via `_heal_pending_interrupt` + `test_osa_heal_interrupt.py`.

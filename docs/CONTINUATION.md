@@ -1,3 +1,39 @@
+# ⏹ SESSION 2026-07-22 — OSA CHAT UNWEDGED ✅ (cross-path checkpoint-corruption fix + live thread healed) · runner PAUSED
+
+Diagnosed + fixed a durable `INVALID_CHAT_HISTORY` crash Tony hit in OSA chat.
+Root cause: since the 2026-07-14 unified transcript, typed (WS `interrupt()`) and
+voice/sync (POST conversational) turns share ONE durable thread but confirm
+destructively in incompatible ways. A parked WS interrupt leaves an `AIMessage`
+with a `move_file` tool call and no `ToolMessage`; a new turn on the sync/voice
+path appends a `HumanMessage` on top → provider rejects every later turn, wedged
+in MySQL (survives restarts; in-memory `_WS_TURN_STATE`/`_PENDING_CONFIRM` don't).
+
+**Fix (committed):** `_heal_pending_interrupt(agent, config)` in `api_osa.py`,
+run before BOTH paths append a turn. Fail-closed; heals a live interrupt
+(`Command(resume="deny")`) OR a baked dangling call (strip `tool_calls` from the
+offending `AIMessage` in place via id-replacement). Tests
+`test_osa_heal_interrupt.py` (8). Full suite **852 green**. Built INLINE
+(test-author subagent not available in the Cowork surface — documented fallback);
+fix is fail-closed, no new capability/surface (security-verifier available on
+request if wanted).
+
+**Live heal:** the wedged thread `osa-50d1ca7af7` (180 msgs, the exact dangling
+`move_file` id from Tony's error) repaired in place, all history kept; full
+checkpointer re-scan → **0 corrupted threads**. Sidecar restarted on the fix.
+
+Also this session: **auto-continue runner PAUSED** (`data/.auto_continue_off`
+touched) per the standing recommendation — it had committed the broken Chroma
+route (see below) and this is the 3rd broken-tree instance. Stays paused until
+the pi-node `/login` is fixed (Tony's call to fully unload/re-enable).
+
+NOTE: the api_chroma back-out commit (`e7f8a23`) also swept in two valid OSA
+memory writes (`config/Memory.md`, `docs/ROADMAP-APPEND.md` — "Brief Me overhaul"
++ "Approvals Pending panel" TODOs Tony dictated to OSA). Content is legit + now
+committed; only the commit message under-described them (offered to split; left
+as-is).
+
+---
+
 # ⏹ SESSION 2026-07-21 (later) — SIDECAR RESTORED ✅ (backed out phantom Chroma route) · NEXT: unchanged (live mic run)
 
 Sidecar was **offline** — down since the 2026-07-19 unattended run. Root cause:

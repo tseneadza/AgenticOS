@@ -1,3 +1,36 @@
+## 2026-07-22 — OSA chat: heal-on-entry guard against cross-path checkpoint corruption
+
+Fixed a durable `INVALID_CHAT_HISTORY` wedge in OSA chat. Since the unified
+transcript (2026-07-14), typed (WS `interrupt()`) and voice/sync (POST
+conversational) turns share ONE durable thread but confirm destructively in
+incompatible ways: a parked WS interrupt leaves an `AIMessage` with a `move_file`
+tool call and no `ToolMessage`, and a new turn arriving on the sync/voice path
+appends a `HumanMessage` on top of it → the provider rejects every subsequent
+turn, wedging the conversation (it's in the MySQL checkpointer; survives
+restarts). Tony hit this live (voice "make both notes needs-processing" after a
+typed gated move).
+
+- **`gui/sidecar/routes/api_osa.py`** — new `_heal_pending_interrupt(agent,
+  config)`, called before BOTH paths append a turn (sync: before `agent.invoke`;
+  WS: only when `resume_val is None`, via `run_in_executor`). Fail-closed, heals
+  two shapes: (1) a live interrupt → `Command(resume="deny")` (re-runs only the
+  tool's side-effect-free pre-guard, then denies — the parked action never
+  executes); (2) a baked dangling call (a prior crash already appended the
+  HumanMessage) → rewrite the offending `AIMessage` in place (id-replacement via
+  `add_messages`) with `tool_calls` stripped. Bounded + best-effort; a healthy
+  thread costs one `get_state`.
+- **Healed the live wedged thread** `osa-50d1ca7af7` (180 msgs, the exact
+  dangling `move_file` id from Tony's error) in place — all history preserved;
+  full checkpointer re-scan → 0 corrupted threads.
+- **Tests** `gui/sidecar/tests/test_osa_heal_interrupt.py` (8) — healthy no-op,
+  live-interrupt fail-closed deny, bounded resume, baked-call strip, answered
+  call left alone, get_state failure swallowed, sync-route heals-before-invoke.
+  Full suite green (852). Built inline (test-author subagent unavailable in
+  this Cowork surface — documented spend-limit fallback); supervisor security
+  reasoning: fix is fail-closed, adds no capability/surface.
+- **Skills** `osa-chat-dual-path` (shared-thread corruption + heal mechanism +
+  wedged-thread detection) and `osa-gated-confirm` (Pitfall 6).
+
 ## 2026-07-19 — All-MySQL sweep (Tony's directive: no SQLite in this app)
 
 Audit result: production storage was ALREADY fully MySQL — ledger/models,
