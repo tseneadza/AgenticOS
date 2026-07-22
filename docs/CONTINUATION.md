@@ -1,3 +1,38 @@
+# ⏹ SESSION 2026-07-21 (later) — SIDECAR RESTORED ✅ (backed out phantom Chroma route) · NEXT: unchanged (live mic run)
+
+Sidecar was **offline** — down since the 2026-07-19 unattended run. Root cause:
+commit `44ec05f` ("chore(auto-continue): checkpoint uncommitted work") added
+`gui/sidecar/routes/api_chroma.py`, a **Flask** blueprint (`from flask import
+Blueprint`) wired into the **FastAPI** app (`app.py` L32 import + L67
+`include_router(api_chroma.router)` — a `.router` attr the file never defined).
+Flask + chromadb were never installed / never in requirements, so `app.py`
+crash-looped on `ModuleNotFoundError: No module named 'flask'` at every launchd
+start. The `com.agentcos.sidecar` agent was also unloaded. (MySQL was fine — the
+`mysql.server status` PID-perm error is benign; mysqld was running.)
+
+**Fix:** removed the 2 `app.py` lines, deleted the dead Flask file, verified
+`import gui.sidecar.app` clean, re-copied the plist + `launchctl bootstrap`ed the
+sidecar agent. **Now: `/api/health` → `{"ok":true,"port":5130}`, pid running,
+never-exited, agent loaded w/ auto-restart.** The Tauri app itself is not running
+(`agentic-gui start` when the window is wanted).
+
+The Chroma work was a phantom feature: **never in the Phase 16 design doc, never
+called by the frontend, never functional.** Tony's actual intent (captured, not
+lost): a vector DB for the Brain Scanner so you can drill into a note-cluster and
+keep surfacing **semantic** connections to other docs (similarity edges layered
+onto the orb, beyond `[[wikilinks]]`+`#tags`). Recorded as **roadmap Phase 16f
+(🅿 PARKED)** + an IDEA_LEDGER entry — build from scratch as its own phase (proper
+FastAPI router, deliberate `chromadb`-or-alt decision, backfill design, orb UI);
+do NOT resurrect `api_chroma.py`.
+
+⚠️ **Auto-continue runner is still committing broken work** (this is the 3rd
+instance logged — see the CLAUDE.md "dead subagent = untrusted tree" rule). It
+remains armed/uncontrolled while the pi-node `/login` is unfixed. Recommend
+`launchctl unload com.agenticos.auto-continue` (or `touch
+data/.auto_continue_off`) until login is fixed — awaiting Tony's call.
+
+---
+
 # ⏹ SESSION 2026-07-21 — VOICE DEPS AT EQUILIBRIUM ✅ · NEXT: Tony's live mic run
 
 Short session. Audited `requirements-voice.txt` vs the actual `.venv`: **all six

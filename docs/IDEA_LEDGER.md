@@ -56,3 +56,9 @@
 | Allowlist prefix-chaining gap (`ls && rm x`) | roadmap 15e | 🅿 PARKED — flagged, owner's call |
 | 2 FDA-dependent mail tests need hermetic fixture | CONTINUATION 07-15 | 🅿 PARKED — chip filed |
 | `/login` for the pi-node claude | CONTINUATION 07-15 | 🅿 PARKED — human item |
+
+## Brain Scanner — semantic connections via vector DB
+
+| Idea | Status | What came of it |
+|---|---|---|
+| Vector-DB semantic drill-down for the orb | 🅿 PARKED (wants own phase) | Intent (Tony, 2026-07-21): drill into a cluster of notes and keep surfacing their semantic connections to other docs — similarity edges layered onto the orb/graph, beyond explicit `[[wikilinks]]` + `#tags`. The auto-continue runner sketched `api_chroma.py` (Chroma) on 2026-07-19 but it was **Flask in a FastAPI app, never wired to the UI, never installed, crash-looped the sidecar**; backed out + deleted 2026-07-21. Build it right as a scoped Phase 16 follow-on: proper FastAPI router, a deliberate `chromadb` (or alt) dependency decision, an embeddings/backfill design, and the orb UI. See roadmap Phase 16 "semantic connections" entry. |
