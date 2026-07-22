@@ -21,6 +21,15 @@ request if wanted).
 `move_file` id from Tony's error) repaired in place, all history kept; full
 checkpointer re-scan → **0 corrupted threads**. Sidecar restarted on the fix.
 
+**Graceful backend errors (committed):** Tony then hit a raw Anthropic
+`400 credit balance is too low` on a web-search turn (tool turns route to the
+cloud brain; his API key is out of credits — a human Billing top-up at
+console.anthropic.com, separate from any Claude.ai sub). Added
+`_classify_api_error` (billing/auth/rate-limit/overloaded/ollama-down →
+in-persona reply) wired into BOTH chat paths: sync → friendly `200` + `error_kind`
+(not `502`), WS → `final` frame + `error_kind` (not a raw `error`). Tests
+`test_osa_graceful_errors.py` (11). Full suite **863 green**.
+
 Also this session: **auto-continue runner PAUSED** (`data/.auto_continue_off`
 touched) per the standing recommendation — it had committed the broken Chroma
 route (see below) and this is the 3rd broken-tree instance. Stays paused until

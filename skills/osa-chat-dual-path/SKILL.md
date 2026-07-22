@@ -34,6 +34,12 @@ Adding/altering anything that runs once per finished reply, e.g.:
 - Logging / analytics / metrics on replies.
 - Reply post-processing (echo scrub, escalation clause, redaction).
 - Recording "last turn" state, notifications, side effects.
+- Backend-error handling (2026-07-22): `_classify_api_error(err)` turns a dead
+  key / rate limit / overloaded API / down Ollama into an in-persona reply. It
+  MUST be wired into both error exits — the sync route's `except` (friendly
+  `200` + `error_kind`, not a `502`) AND the WS `outcome["error"]` branch
+  (a `final` frame + `error_kind`, not a raw `error` frame). Unrecognized errors
+  fall through to the raw path so real bugs stay visible.
 
 ## The shared choke points (use these, don't duplicate logic)
 

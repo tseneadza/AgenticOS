@@ -259,6 +259,53 @@ def _heal_pending_interrupt(agent, config) -> str | None:
     return healed
 
 
+# Friendly, in-persona messages for common cloud/local API failures (2026-07-22)
+# so a dead key, a rate limit, or a down Ollama reads as OSA speaking rather than
+# a raw provider error (e.g. Anthropic's 400 "credit balance is too low"). Each
+# entry: (kind, substring needles matched case-insensitively, spoken message).
+# Order matters — most specific first.
+_API_ERROR_SIGNATURES: list[tuple[str, tuple[str, ...], str]] = [
+    ("billing",
+     ("credit balance is too low", "plans & billing", "purchase credits",
+      "insufficient credit", "billing"),
+     "My cloud brain is out of Anthropic API credits, Sir. I can't reach Claude "
+     "until the balance is topped up at the Anthropic console under Billing. My "
+     "local brain is still here for anything that doesn't need the web."),
+    ("auth",
+     ("invalid x-api-key", "authentication_error", "invalid api key",
+      "could not resolve authentication", "permission_error"),
+     "My cloud brain's API key is being rejected, Sir — it looks invalid or "
+     "revoked. Worth checking ANTHROPIC_API_KEY in the config. My local brain "
+     "still works."),
+    ("rate_limit",
+     ("rate_limit", "rate limit", "too many requests", "429"),
+     "My cloud brain is rate-limited right now, Sir. Give it a minute and ask me "
+     "again."),
+    ("overloaded",
+     ("overloaded", "529"),
+     "Anthropic's API is overloaded at the moment, Sir — not on our end. A retry "
+     "shortly should go through."),
+    ("local_down",
+     ("11434", "ollama"),
+     "My local brain (Ollama) isn't responding, Sir. Worth checking that the "
+     "Ollama service is running on port 11434."),
+]
+
+
+def _classify_api_error(err) -> tuple[str, str] | None:
+    """Map a provider/backend error to ``(kind, in-persona message)``, or None.
+
+    ``None`` means "unrecognized" — the caller should fall through to its raw
+    error path (a 502 / an ``error`` frame) so genuine bugs stay visible.
+    Accepts an exception or a string (the WS worker hands us ``str(exc)``).
+    """
+    text = str(err).lower()
+    for kind, needles, message in _API_ERROR_SIGNATURES:
+        if any(n in text for n in needles):
+            return kind, message
+    return None
+
+
 class OSAChat(BaseModel):
     """Request body for an OSA chat turn."""
 
@@ -427,7 +474,28 @@ def osa_chat(body: OSAChat) -> dict:
         result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=config)
     except Exception as exc:  # noqa: BLE001 — surface as a 502, never crash the route
         logger.error("OSA chat failed: %s", exc, exc_info=True)
-        raise HTTPException(502, f"OSA turn failed: {exc}") from exc
+        classified = _classify_api_error(exc)
+        if classified is None:
+            raise HTTPException(502, f"OSA turn failed: {exc}") from exc
+        # Recognized backend failure (dead key, rate limit, Ollama down): reply
+        # in-persona instead of leaking a raw provider error to the user.
+        kind, friendly = classified
+        _LAST_TURN.update(model=model_id, escalated=escalated)
+        _maybe_speak_reply(friendly)
+        return {
+            "reply": friendly,
+            "thread_id": thread_id,
+            "model": model_id,
+            "route": route,
+            "pinned_model": pin,
+            "escalated": escalated,
+            "ollama_ready": ollama_ready,
+            "tool_trace": [],
+            "awaiting_confirm": False,
+            "pending_action": None,
+            "confirmed": False,
+            "error_kind": kind,
+        }
     finally:
         if conn is not None:
             conn.close()
@@ -970,7 +1038,20 @@ async def osa_chat_ws(ws: WebSocket) -> None:
             outcome = await _pump_stream(agent, payload, config, ws, trace)
             if outcome["error"]:
                 logger.error("OSA WS turn failed: %s", outcome["error"])
-                await ws.send_json({"type": "error", "error": outcome["error"]})
+                classified = _classify_api_error(outcome["error"])
+                if classified is None:
+                    await ws.send_json({"type": "error", "error": outcome["error"]})
+                    return
+                # Recognized backend failure: deliver an in-persona reply as a
+                # normal final frame (shows in the transcript, not an error banner).
+                kind, friendly = classified
+                _maybe_speak_reply(friendly)
+                await ws.send_json({
+                    "type": "final", "reply": friendly, "thread_id": thread_id,
+                    "model": model_id, "route": route, "pinned_model": pin,
+                    "escalated": escalated, "tool_trace": trace,
+                    "confirmed": confirmed, "error_kind": kind,
+                })
                 return
             if outcome["interrupt"] is not None:
                 intr = outcome["interrupt"]

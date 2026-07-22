@@ -1,3 +1,21 @@
+## 2026-07-22 — OSA chat: graceful backend-error replies (no raw provider errors)
+
+A dead Anthropic key surfaced as a raw `400 … credit balance is too low` (Tony
+hit it on a web-search turn — tool turns route to the cloud brain). Now common
+backend failures read as OSA speaking instead of a leaked provider error.
+
+- **`gui/sidecar/routes/api_osa.py`** — `_classify_api_error(err)` maps
+  billing / auth / rate-limit / overloaded / Ollama-down signatures to an
+  in-persona message (`(kind, message)`), else `None` (unrecognized → raw path
+  preserved so real bugs stay visible). Wired into BOTH chat paths (dual-path
+  rule): the sync route returns a friendly `200` with `error_kind` instead of a
+  `502`; the WS route sends a normal `final` frame (shows in the transcript) with
+  `error_kind` instead of a raw `error` frame. Both speak the message (voice-OUT).
+- **Tests** `gui/sidecar/tests/test_osa_graceful_errors.py` (11) — classifier per
+  signature + unknown→None + exception/string inputs; sync route billing→200 vs
+  unknown→502; WS source-level wiring guard. Full suite green (863).
+- Skill `osa-chat-dual-path` updated (graceful-error hook is per-reply, both paths).
+
 ## 2026-07-22 — OSA chat: heal-on-entry guard against cross-path checkpoint corruption
 
 Fixed a durable `INVALID_CHAT_HISTORY` wedge in OSA chat. Since the unified
