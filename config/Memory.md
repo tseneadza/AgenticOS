@@ -22,3 +22,7 @@ prune, correct, or reorganize anytime.
 - 2026-07-15 00:14 (osa): Tony's birthday is August 20th.
 - 2026-07-15 00:16 (osa): Tony was born in 1966. His birthday is August 20th. He will turn 60 in August 2026.
 - 2026-07-19 03:25 (osa): Chroma vector database install started 2026-07-16 — running in background (~venv-chroma). Installation log at ~/chroma-install.log. Plan: embed Brain2 vault notes into Chroma for semantic search layer on Brain Scanner. Install may take several minutes due to ML dependencies.
+- 2026-07-21 23:07 (osa): TODO - Brief Me button overhaul: Wire the "Brief Me" button to dynamically pull a live dev summary from CONTINUATION.md each time it's clicked. Should include: last phase completed, what's next, open issues and concerns, and refactor candidates. Currently returns a canned static response — needs to call OSA dynamically.
+- 2026-07-21 23:10 (osa): TODO - Approvals Pending panel: When OSA needs approval for a gated/irreversible action, it should show up in a dedicated "Approvals Pending" UI panel — not just in the chat window. Should allow approve/deny from the panel directly, with a clear audit trail.
+- 2026-07-21 23:27 (osa): Add Approvals Pending panel to OSA roadmap and update feature notes with new status ladder.
+- 2026-07-21 23:34 (osa): Add feature to allow users to create a new Approvals Pending panel directly from the main chat window, eliminating the need for a separate UI component.

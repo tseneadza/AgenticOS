@@ -54,3 +54,15 @@ Goal: the app can wear multiple looks; one or more are selected at runtime. Pure
 ### Dependency order
 Phase 12 `aesthetic-base` first (carries the token refactor risk) → aesthetic-0X looks in
 parallel → Phase 14 HUD → Phase 13 tray/autostart last (most OS-specific).
+
+## Brief Me Button Overhaul
+- **Status:** TODO
+- **What:** Wire the "Brief Me" button to dynamically pull a live dev summary each time it's clicked — no more canned static response.
+- **Should include:** Last phase completed, what's next on the roadmap, open issues and concerns, refactor candidates.
+- **How:** Read CONTINUATION.md dynamically and have OSA summarize it on demand.
+
+## Approvals Pending Panel
+- **Status:** TODO
+- **What:** When OSA needs approval for a gated or irreversible action, it should surface in a dedicated "Approvals Pending" UI panel — not just buried in the chat window.
+- **Should include:** The action requesting approval, approve/deny buttons directly in the panel, and a clear audit trail of past approvals and denials.
+- **Why:** Makes gated actions visible, actionable, and auditable without hunting through chat history.

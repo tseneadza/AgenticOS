@@ -1,7 +1,7 @@
 ---
 name: osa-sidecar-lifecycle
 description: |
-  Correctly restart, verify, and reason about the AgenticOS FastAPI sidecar (gui.sidecar on :5130). Use this skill whenever you change Python/sidecar code and need it to take effect, whenever a restart "didn't work" or old behavior persists, whenever the app shows stale behavior after an edit, or whenever you suspect duplicate/zombie sidecars. Covers the port-singleton behavior, the "kill ALL PIDs first" rule, the audio-session caveat for background-launched sidecars, and how to confirm the running process is serving the new code.
+  Correctly restart, verify, diagnose, and reason about the AgenticOS FastAPI sidecar (gui.sidecar on :5130). Use this skill whenever you change Python/sidecar code and need it to take effect, whenever a restart "didn't work" or old behavior persists, whenever the app shows stale behavior after an edit, whenever you suspect duplicate/zombie sidecars, or whenever the sidecar is fully OFFLINE / crash-looping (won't start, /api/health dead, "sidecar not running"). Covers the launchd supervision + `agentic-gui` control script (the canonical path), the port-singleton behavior, the "kill ALL PIDs first" rule, diagnosing a startup crash from a recently-committed broken route, the audio-session caveat for background-launched sidecars, and how to confirm the running process is serving the new code.
 compatibility: macOS, AgenticOS repo at ~/Codehome/AgenticOS, .venv present
 ---
 
@@ -20,8 +20,83 @@ is the canonical restart + verify procedure.
   startup — it does NOT hot-reload).
 - A restart "didn't work" / old behavior persists.
 - You suspect two sidecars, a zombie, or a port conflict.
+- The sidecar is fully OFFLINE / crash-looping — see "Sidecar won't start" below.
 - Audio/voice works from your shell tests but not from the sidecar (or vice
   versa).
+
+## Supervised by launchd — use `agentic-gui`, not raw `nohup` (canonical)
+
+The sidecar runs as a **launchd user agent** `com.agentcos.sidecar` (plist:
+`~/Library/LaunchAgents/`, source of record `scripts/com.agentcos.sidecar.plist`;
+hub is the sibling `com.agentcos.hub`). `KeepAlive=true` → launchd **auto-restarts
+it within ~10s if it crashes**, and starts it at login. It runs
+`.venv/bin/python -m gui.sidecar` and logs to **`data/logs/sidecar.log`** (the
+launchd path — NOT `/tmp/agenticos_sidecar.log`, which is only where a manual
+`nohup` launch redirects). Check the right log for the launch method in play.
+
+The control script `scripts/agentic-gui.sh` is the canonical front door:
+
+```bash
+cd ~/Codehome/AgenticOS
+bash scripts/agentic-gui.sh status     # sidecar/hub/app + whether agents are LOADED
+bash scripts/agentic-gui.sh restart    # launchctl kickstart -k the sidecar + hub
+bash scripts/agentic-gui.sh start      # load agents if needed + launch the Tauri app
+bash scripts/agentic-gui.sh stop       # bootout agents (they stay down until start)
+bash scripts/agentic-gui.sh install    # (re)register the launchd agents (run once)
+```
+
+Restarting a supervised sidecar is `launchctl kickstart -k gui/$(id -u)/com.agentcos.sidecar`
+(what `restart` does) — do NOT hand-kill + `nohup` a supervised sidecar; launchd
+will race you and respawn its own copy. Hand-launch only when the agent is
+deliberately unloaded. If `status` shows an agent **"NOT loaded"**, nothing is
+supervising it — reload it:
+
+```bash
+cp scripts/com.agentcos.sidecar.plist ~/Library/LaunchAgents/
+launchctl bootout   gui/$(id -u)/com.agentcos.sidecar 2>/dev/null || true
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentcos.sidecar.plist
+```
+
+## Sidecar won't start (fully OFFLINE / crash-looping) — diagnose before you flail
+
+Distinct from "stale" (old code serving): here **nothing** owns :5130 and
+`/api/health` is dead. `KeepAlive` means launchd is trying and the process is
+dying on startup — usually a Python **import error**, not a port problem. Triage:
+
+```bash
+cd ~/Codehome/AgenticOS
+bash scripts/agentic-gui.sh status                       # loaded? running?
+tail -n 40 data/logs/sidecar.log                         # the startup traceback lives here
+launchctl print gui/$(id -u)/com.agentcos.sidecar | grep -E 'state|pid|last exit'
+# CHEAP isolation — does the app even import, no server, no port?
+.venv/bin/python -c "import gui.sidecar.app; print('IMPORT OK')"
+```
+
+That last line is the fastest split: a `ModuleNotFoundError` / `ImportError`
+there is a **code** problem (a bad route, a missing dep), not a lifecycle one —
+fixing PIDs/ports won't help. Then find what changed:
+
+```bash
+git log --oneline -8 -- gui/sidecar/            # what recently touched the sidecar
+grep -n 'include_router\|^from gui.sidecar.routes import' gui/sidecar/app.py
+```
+
+**A newly-added route that imports a missing package (or the wrong framework)
+takes the WHOLE sidecar down** — every route dies because `app.py` imports them
+all at module load. Seen 2026-07-21: the auto-continue runner committed
+`routes/api_chroma.py` written in **Flask** (`from flask import Blueprint`) and
+wired into the **FastAPI** app (`app.include_router(api_chroma.router)` — a
+`.router` the Flask file never defined); Flask/chromadb were never installed, so
+`app.py` crash-looped on `ModuleNotFoundError: No module named 'flask'` for two
+days. Fix = back the offending route out of `app.py` (import + `include_router`)
+and delete/repair the file, then re-verify with the import one-liner before
+touching launchd. **Suspect the newest sidecar commit first** — and note the
+recurring auto-continue-runner failure mode (CLAUDE.md "dead subagent = untrusted
+tree"): unattended runs have committed broken trees ≥3× (brain-switching v2, the
+orphaned 15b fs_mcp, this Chroma route). MySQL being down is a *different* failure
+(the startup handler logs it explicitly — see `docs/MYSQL_MAINTENANCE.md` /
+`mysql-recovery` skill); a `mysql.server status` PID-file "Permission denied" with
+`pgrep -x mysqld` alive is benign, NOT the cause.
 
 ## The #1 rule: kill ALL sidecar PIDs before starting a new one
 
@@ -127,3 +202,15 @@ HTTP/WS connection) — no app relaunch needed for backend changes. Frontend
    against a background-launched sidecar — you'll chase a phantom (we did, for
    several turns). Mirrors #4/#6: launch context governs mic just like speakers,
    AppleScript, and Automation.
+
+8. (2026-07-21) "Sidecar offline" ≠ "sidecar stale." When NOTHING owns :5130 and
+   `/api/health` is dead, it's a **startup crash**, not the port-singleton trap.
+   Because `app.py` imports every route at module load, ONE bad route (missing
+   dep / wrong framework) kills the whole process, and `KeepAlive` just crash-loops
+   it. Fastest diagnosis is the no-server import probe
+   (`.venv/bin/python -c "import gui.sidecar.app"`) — an ImportError there proves
+   it's code, not lifecycle. The culprit was an unattended-runner commit
+   (`api_chroma.py`, Flask-in-FastAPI, uninstalled deps) — so `git log -- gui/sidecar/`
+   and suspect the newest commit. Also: the sidecar is launchd-supervised now
+   (`com.agentcos.sidecar`), so a wrong-launch `agentic-gui status` "NOT loaded"
+   can be its own cause; reload with `launchctl bootstrap`, don't `nohup`.
