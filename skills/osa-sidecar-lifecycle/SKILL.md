@@ -48,7 +48,19 @@ bash scripts/agentic-gui.sh install    # (re)register the launchd agents (run on
 Restarting a supervised sidecar is `launchctl kickstart -k gui/$(id -u)/com.agentcos.sidecar`
 (what `restart` does) — do NOT hand-kill + `nohup` a supervised sidecar; launchd
 will race you and respawn its own copy. Hand-launch only when the agent is
-deliberately unloaded. If `status` shows an agent **"NOT loaded"**, nothing is
+deliberately unloaded.
+
+**⚠️ A STRAY non-launchd sidecar defeats `kickstart` silently (paid 2026-07-23).**
+If some earlier process is still holding :5130, `agentic-gui restart` /
+`kickstart` spawns a launchd instance that sees the port taken and immediately
+exits (`launchctl print …` shows `job state = exited`, `state = spawn scheduled`)
+— so the OLD code keeps serving and your code changes look like they "didn't
+work" (routing/tools behave as the previous build). This burned ~5 test fires in
+one session. After ANY restart, confirm the ACTUAL owner + its age:
+`ps -eo pid,lstart,command | grep gui.sidecar | grep -v grep` — a start time that
+predates your last edit means a stray. Fix: `pkill -9 -f "python -m gui.sidecar"`,
+wait, then `kickstart -k`. This is the launchd-era face of the "kill ALL PIDs"
+rule below. If `status` shows an agent **"NOT loaded"**, nothing is
 supervising it — reload it:
 
 ```bash
