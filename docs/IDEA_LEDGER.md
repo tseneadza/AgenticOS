@@ -62,3 +62,11 @@
 | Idea | Status | What came of it |
 |---|---|---|
 | Vector-DB semantic drill-down for the orb | 🅿 PARKED (wants own phase) | Intent (Tony, 2026-07-21): drill into a cluster of notes and keep surfacing their semantic connections to other docs — similarity edges layered onto the orb/graph, beyond explicit `[[wikilinks]]` + `#tags`. The auto-continue runner sketched `api_chroma.py` (Chroma) on 2026-07-19 but it was **Flask in a FastAPI app, never wired to the UI, never installed, crash-looped the sidecar**; backed out + deleted 2026-07-21. Build it right as a scoped Phase 16 follow-on: proper FastAPI router, a deliberate `chromadb` (or alt) dependency decision, an embeddings/backfill design, and the orb UI. See roadmap Phase 16 "semantic connections" entry. |
+
+## Aesthetic "non-mundane looks" (Tony, 2026-07-24 session)
+
+| # | Idea | Status | What came of it |
+|---|---|---|---|
+| 1 | Theme personality flourishes — CRT scanlines/flicker (term), glass blur (future), neon hover rings (cyber), warm gradients (terra) | 🅿 PARKED | Tony 2026-07-24: "focus upon again at a later time... functionality absolutely rules." Token adoption pass (radius/glow, commit b53249d) shipped as the foundation; flourishes build on it, visual-only |
+| 2 | Mockup §5 enhanced views — News digest + "Summarize top 5", skeleton/empty/error states, Scripts "Wrap as agent tool", Hub API "Try-it" | 🅿 PARKED | Same call; these are features not styling — scope them as their own phase when picked up. Plan preserved in the "Enhanced app views mockup" handoff zip / IMPLEMENTATION-PLAN.md §5 |
+| 3 | Recover `AgenticOS Enhanced.dc.html` mockup for exact tuned style values | 🅿 PARKED | Zip Tony uploaded had only the handoff docs, not the mockup HTML; if found, tune tokens against its style block verbatim |

@@ -321,3 +321,13 @@ Design: `docs/PHASE17_OSA_SELF_MODEL.md` (decisions locked with Tony
 rule text in prompts/replies). DoD: suite green (894 baseline), local
 warm-turn latency within ~10% of pre-17 baseline, docs/glossary updated in
 the landing change.
+
+## Phase 18 — Aesthetic flourish pass + enhanced views 🅿 PARKED (Tony 2026-07-24)
+
+Non-mundane looks: per-theme personality flourishes (CRT scanlines for term,
+glass blur for future, neon rings for cyber, warm gradients for terra) and the
+mockup plan's §5 enhanced-view features (News digest/"Summarize top 5",
+skeleton states, Scripts "Wrap as agent tool", Hub API "Try-it"). Parked by
+Tony — "functionality absolutely rules" — see IDEA_LEDGER 2026-07-24 batch.
+Foundation already shipped: token adoption pass (b53249d) + 8-variant theme
+menu (d473a37).
