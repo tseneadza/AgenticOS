@@ -299,3 +299,25 @@ built via subagents.
 | 16d | Edit + create: PUT/POST scoped writes (`.bak`, mtime-409, `.md`-only) + reader edit/new flow; `security-verifier` REQUIRED; pytest + vitest | 🟨 planned |
 | 16e | Polish: wikilink click-to-open, legend/folder-filter, hover tooltip, empty/error states, theme pass | 🟨 planned |
 | 16f | **Semantic connections (vector DB)** — drill into a note-cluster and surface semantic-similarity edges to related docs, layered onto the orb/graph beyond explicit `[[wikilinks]]`+`#tags`. Proper FastAPI router (NOT Flask), deliberate `chromadb`-or-alt dependency decision, embeddings/backfill design, orb UI. `security-verifier` on any new write/index path; pytest + vitest | 🅿 PARKED — idea only (Tony 2026-07-21). ⚠️ An unattended-run `api_chroma.py` (Flask, unwired, crash-looped the sidecar) was backed out + deleted 2026-07-21; build this from scratch, do NOT resurrect that file |
+
+## Phase 17 — OSA Self-Model ("The Sentiency of OSA") 🟨 DESIGN LOCKED 2026-07-23
+
+OSA knows what it has access to — tools, rules, brains, system, memory — from
+a **generated** self-model, not hand-written prompt prose. Hybrid delivery:
+tiered auto-generated "Self" block in the system prompt + a read-only
+`introspect` tool (local-safe). The hand-written tool-mapping paragraph in
+`OSA_SYSTEM` is replaced by prose rendered from a per-tool `TOOL_SPECS`
+registry (single source of truth for binding, prompt, and introspection).
+Design: `docs/PHASE17_OSA_SELF_MODEL.md` (decisions locked with Tony
+2026-07-23: full scope, hybrid delivery, generated mapping, both purposes).
+
+| Sub-phase | Scope | Status |
+|-----------|-------|--------|
+| 17a | `TOOL_SPECS` registry; `build_tools` + generated per-brain tool-map prose replace the hand-written `OSA_SYSTEM` paragraph; phrase-preservation snapshot tests (handle/address confirms, call-first arming text); local prompt stops naming cloud-only tools | 🟨 planned |
+| 17b | `core/self_model.py` capability manifest (tools/rules/brains/system/memory, all best-effort live sources) + tiered `render_self_block` in `build_agent` (absorbs Brain-status + voice-awareness lines); local block hard token budget | 🟨 planned |
+| 17c | `introspect(section)` toolbox tool — read-only, guard-free, in `LOCAL_TOOL_NAMES`; voice-shaped, size-capped, **no-secrets** output; live proof on cloud AND offline local | 🟨 planned |
+
+`security-verifier` REQUIRED on 17b/17c (reads `constitution.yaml`, exposes
+rule text in prompts/replies). DoD: suite green (894 baseline), local
+warm-turn latency within ~10% of pre-17 baseline, docs/glossary updated in
+the landing change.

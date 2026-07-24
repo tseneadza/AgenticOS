@@ -428,6 +428,10 @@ Renders the PTY output stream in the terminal panel.
 press, or mute cancels in-flight Piper playback: `stop_speaking()` terminates
 the `afplay` process and abandons the remaining sentence chunks. Design §3.3.
 
+**Capability manifest** — The generated, structured description of everything
+OSA has access to (tools, rules, brains, system, memory), built live by
+`core/self_model.py` at agent construction. Never hand-authored. Phase 17.
+
 **Claude** — Anthropic's LLM family. AgenticOS routes to Claude (via
 `~/.agentic-os/.env` `ANTHROPIC_API_KEY`) for tool-use and heavy
 reasoning. Requires a standard `sk-ant-api03-` key; `sk-admin-` keys
@@ -451,6 +455,11 @@ without a real microphone or the optional audio deps, by injecting fake
 `sounddevice` + `webrtcvad` modules and controlling the per-frame VAD verdict.
 Lets CI assert pipeline transitions (e.g. idle-vs-listening) deterministically.
 See `gui/sidecar/tests/test_osa_idle_state.py`.
+
+**Introspect (tool)** — Phase 17 read-only, guard-free OSA tool returning
+live self-model detail by section (`tools`/`rules`/`brains`/`system`/
+`memory`/`all`). In `LOCAL_TOOL_NAMES` so offline OSA can self-describe.
+Must never emit secrets.
 
 **JARVIS** — Iron Man's fictional AI assistant. OSA mimics JARVIS's
 *role* (calm, competent, always-on) — not copied identity.
@@ -489,6 +498,12 @@ active turn: `idle` when voice is enabled with deps present, else `disabled`
 and flips to `listening` only when VAD detects directed speech (2026-07-09
 fix — the orb no longer reads "listening" while merely armed and waiting).
 
+**Self-Model / Self block** — Phase 17 ("The Sentiency of OSA"). The
+Self-Model is OSA's awareness of what it has access to, delivered hybrid:
+a compact auto-generated "Self block" in the system prompt (tiered — ~12
+lines cloud, 3–4 lines local) plus the `introspect` tool for detail.
+Absorbs the old Brain-status and voice-awareness special-case lines.
+
 **STT** — "Speech To Text." Voice input → text. OSA uses faster-whisper.
 
 **Tool guardrail (7B tool-calling)** — Local 7B-class models aren't
@@ -496,6 +511,12 @@ reliable for tool calls. When a user pins a small local model but the
 turn needs a tool, OSA escalates to Claude and marks the reply
 `escalated` ("Took Claude for that one"). See Phase 14 brain-switching
 work.
+
+**TOOL_SPECS** — Phase 17 per-tool metadata registry in
+`agents/osa_agent.py` (name, trigger phrases, usage note, local flag, guard
+class, group). Single source of truth: `build_tools` binds from it, the
+prompt's tool-map prose renders from it, `introspect("tools")` reports from
+it. Replaces the hand-written `OSA_SYSTEM` mapping paragraph.
 
 **TTS** — "Text To Speech." Text output → voice. OSA uses Piper.
 

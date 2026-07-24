@@ -1,3 +1,20 @@
+## 2026-07-23 — Phase 17 design locked: OSA Self-Model ("The Sentiency of OSA")
+
+Design-only change (no behavior yet). OSA gets a generated self-model of all
+it has access to — tools, rules, brains, system, memory — replacing the
+hand-written `OSA_SYSTEM` tool-mapping prose with prose rendered from a new
+`TOOL_SPECS` registry, plus a tiered "Self" prompt block and a read-only
+`introspect` tool (local-safe). Decisions locked with Tony: full scope,
+hybrid delivery, generated mapping, both purposes (self-answers + behavior).
+
+- **`docs/PHASE17_OSA_SELF_MODEL.md`** — NEW full design: architecture,
+  sub-phases 17a–17c, tests (phrase-preservation snapshots, registry parity,
+  no-secrets scan), guardrails (arming pattern preserved, local token budget),
+  risks, out-of-scope.
+- **`docs/roadmap.md`** — Phase 17 section + sub-phase table.
+- **`docs/GLOSSARY.md`** (+ Brain2 mirror) — Capability manifest, Introspect
+  (tool), Self-Model / Self block, TOOL_SPECS.
+
 ## 2026-07-23 — OSA preloads the local model at startup (first turn ~20s not ~90s)
 
 Local turns were ~90s COLD (model load) but ~21s warm. Now the `_ensure_ollama_up`
