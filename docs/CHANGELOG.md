@@ -1,3 +1,20 @@
+## 2026-07-23 — OSA preloads the local model at startup (first turn ~20s not ~90s)
+
+Local turns were ~90s COLD (model load) but ~21s warm. Now the `_ensure_ollama_up`
+startup hook preloads the model OSA uses for local turns so the first real turn
+is warm.
+
+- **`core/llm.py`** — `preload_model(model_id, keep_alive="30m")`: empty-prompt
+  `/api/generate` load (done_reason "load"), best-effort. (Bug caught + fixed:
+  `requests` is imported inside functions in llm.py, not module-level — preload
+  needs its own local import or it NameErrors to False.)
+- **`gui/sidecar/app.py`** — after Ollama is confirmed up at startup, preload the
+  effective local model (pin if local, else `resolve("local")`), off the event
+  loop. Verified live: `ollama preload llama3.2:latest: ok`.
+- **Tests** `test_osa_local_capability.py::TestPreload` (+2). Full suite **896**.
+- Remaining warm cost (~20s) is the react loop on a 3B + 19-tool schema — a
+  further optimization (smaller model/toolset) if wanted, but usable.
+
 ## 2026-07-23 — OSA warm_ollama re-probe (local routing was silently disabled)
 
 Follow-up to the local-brain work: `warm_ollama()` cached `_ollama_ready`

@@ -115,3 +115,38 @@ class TestWarmReprobe:
         assert osa_agent.warm_ollama() is True
         assert probes["n"] == 1  # second call returned the sticky True without probing
         osa_agent.reset_ollama_warm_cache()
+
+
+class TestPreload:
+    def test_preload_posts_generate_with_keep_alive(self, monkeypatch):
+        import requests
+
+        from core import llm
+        captured = {}
+
+        class _Resp:
+            ok = True
+
+        def _post(url, json=None, timeout=None):
+            captured["url"] = url
+            captured["json"] = json
+            return _Resp()
+
+        # requests is imported inside preload_model, so patch the library global.
+        monkeypatch.setattr(requests, "post", _post)
+        assert llm.preload_model("qwen2.5:7b-instruct", keep_alive="30m") is True
+        assert captured["url"].endswith("/api/generate")
+        assert captured["json"]["model"] == "qwen2.5:7b-instruct"
+        assert captured["json"]["keep_alive"] == "30m"
+        assert captured["json"]["prompt"] == ""  # empty prompt = load-only
+
+    def test_preload_swallows_errors(self, monkeypatch):
+        import requests
+
+        from core import llm
+
+        def _boom(*a, **k):
+            raise RuntimeError("connection refused")
+
+        monkeypatch.setattr(requests, "post", _boom)
+        assert llm.preload_model("whatever") is False

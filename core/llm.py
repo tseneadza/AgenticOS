@@ -325,6 +325,28 @@ def ensure_ollama_running(wait: float = 8.0) -> dict:
             "error": "ollama did not become ready in time"}
 
 
+def preload_model(model_id: str, keep_alive: str = "30m", timeout: float = 120.0) -> bool:
+    """Warm a model into memory so the first real turn isn't a cold load.
+
+    Sends an empty-prompt ``/api/generate`` with ``keep_alive`` — Ollama loads +
+    pins the model (done_reason "load") and returns immediately. Cuts OSA's first
+    local turn from a cold ~90s to a warm ~20s (2026-07-23). Best-effort, never
+    raises; returns True on a successful load.
+    """
+    import requests
+
+    try:
+        resp = requests.post(
+            f"{ollama_base_url()}/api/generate",
+            json={"model": model_id, "prompt": "", "stream": False,
+                  "keep_alive": keep_alive},
+            timeout=timeout,
+        )
+        return resp.ok
+    except Exception:  # noqa: BLE001 — preload is best-effort
+        return False
+
+
 def _label_for(name: str, details: dict) -> str:
     """Build a human-readable label for a discovered (unconfigured) Ollama model."""
     params = (details or {}).get("parameter_size")

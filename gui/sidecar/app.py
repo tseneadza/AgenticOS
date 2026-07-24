@@ -174,14 +174,23 @@ async def _ensure_ollama_up() -> None:
         try:
             from core import llm
             result = await asyncio.to_thread(llm.ensure_ollama_running)
-            if result.get("up"):
-                _log.info("ollama ready at %s (started=%s)",
-                          llm.ollama_base_url(), result.get("started"))
-            else:
+            if not result.get("up"):
                 _log.warning("ollama not up at %s: %s",
                              llm.ollama_base_url(), result.get("error"))
+                return
+            _log.info("ollama ready at %s (started=%s)",
+                      llm.ollama_base_url(), result.get("started"))
+            # Preload the model OSA uses for LOCAL turns so the first one is warm
+            # (~20s) not cold (~90s). Pin if it's local, else the default local.
+            from gui.sidecar import osa_settings
+            pin = osa_settings.get_model_pin()
+            local_id = pin or llm.resolve("local")
+            info = llm.get_model_info(local_id) or llm.discover_ollama().get(local_id)
+            if info is not None and info.is_local:
+                ok = await asyncio.to_thread(llm.preload_model, local_id)
+                _log.info("ollama preload %s: %s", local_id, "ok" if ok else "failed")
         except Exception:  # noqa: BLE001 — Ollama must never break startup
-            _log.warning("ollama ensure skipped", exc_info=True)
+            _log.warning("ollama ensure/preload skipped", exc_info=True)
 
     app.state.ollama_ensure = asyncio.create_task(_go())
 
