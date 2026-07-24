@@ -1,3 +1,16 @@
+## 2026-07-23 — OSA warm_ollama re-probe (local routing was silently disabled)
+
+Follow-up to the local-brain work: `warm_ollama()` cached `_ollama_ready`
+**permanently** after the first call, so a transient early failure (the 1s probe
+timing out against a cold sidecar right after restart) stranded EVERY local turn
+on the cloud brain for the whole process. Now success is sticky but a not-ready
+result RE-PROBES on the next call (cheap `ollama_up()` first, spawn only if truly
+down). Verified live end-to-end: with cloud credits exhausted, "what time is it"
+routed to `llama3.2:latest`, called `get_time`, and answered "It's 10:58 PM EDT."
+— fully offline. `test_osa_local_capability.py::TestWarmReprobe` (+2); full suite
+**894 green**. (Also paid the CLAUDE.md gotcha #1/#10 tax: a stray pre-change
+sidecar was holding :5130, so `kickstart` no-op'd — killed all PIDs, relaunched.)
+
 ## 2026-07-23 — OSA does menial tasks on the local brain (curated toolset + routing)
 
 OSA can now run menial system tasks — notes, app start/stop, status, remember,

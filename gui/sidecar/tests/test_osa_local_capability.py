@@ -88,3 +88,30 @@ class TestRouting:
         # "why is the app down" has a menial hint ("is ", "app") but should reason
         # on cloud because of the heavy "why".
         assert osa_agent.route_turn("why is the app down") == "default"
+
+
+class TestWarmReprobe:
+    """A transient not-ready must not strand local turns on the cloud forever."""
+
+    def test_not_ready_reprobes_and_recovers(self, monkeypatch):
+        osa_agent.reset_ollama_warm_cache()
+        ups = iter([False, True])  # first probe down, next probe up
+        monkeypatch.setattr("core.llm.ollama_up", lambda *a, **k: next(ups))
+        monkeypatch.setattr("core.llm.ensure_ollama_running", lambda *a, **k: {"up": False})
+        assert osa_agent.warm_ollama() is False   # first turn: down, spawn fails
+        assert osa_agent.warm_ollama() is True     # next turn: re-probe, now up
+        osa_agent.reset_ollama_warm_cache()
+
+    def test_ready_is_sticky_no_reprobe(self, monkeypatch):
+        osa_agent.reset_ollama_warm_cache()
+        probes = {"n": 0}
+
+        def _up(*a, **k):
+            probes["n"] += 1
+            return True
+
+        monkeypatch.setattr("core.llm.ollama_up", _up)
+        assert osa_agent.warm_ollama() is True
+        assert osa_agent.warm_ollama() is True
+        assert probes["n"] == 1  # second call returned the sticky True without probing
+        osa_agent.reset_ollama_warm_cache()

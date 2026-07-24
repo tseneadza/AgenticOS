@@ -88,6 +88,16 @@ class TestRouting:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestWarmOllama:
+    @pytest.fixture(autouse=True)
+    def _isolate(self, monkeypatch):
+        # Fresh warm cache each test, and make the cheap ollama_up() probe report
+        # DOWN by default so warm_ollama() exercises ensure_ollama_running (the
+        # 2026-07-23 re-probe short-circuits to True when Ollama actually answers).
+        osa_agent.reset_ollama_warm_cache()
+        monkeypatch.setattr("core.llm.ollama_up", lambda *a, **k: False)
+        yield
+        osa_agent.reset_ollama_warm_cache()
+
     def test_up(self, monkeypatch):
         calls = {"n": 0}
 

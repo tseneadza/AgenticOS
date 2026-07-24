@@ -124,24 +124,30 @@ _ollama_ready = False
 def warm_ollama() -> bool:
     """Ensure Ollama is up for OSA's local turns — once per process.
 
-    Best-effort and cached: the first call spawns ``ollama serve`` via
-    ``core.llm.ensure_ollama_running`` (detached, short wait); later calls
-    return the cached result without re-spawning. Never raises — if Ollama's
-    binary is missing or it won't come up, this returns ``False`` and OSA routes
-    local turns to Claude instead (see ``pick_model``).
+    Best-effort: success is STICKY (once Ollama is up we don't re-spawn), but a
+    not-yet-ready result is RE-PROBED on the next call — so a transient early
+    failure (e.g. the 1s probe timing out against a cold sidecar right after
+    restart) doesn't permanently strand every local turn on the cloud brain
+    (2026-07-23: this was disabling local routing whenever the first turn raced
+    startup). Never raises — if Ollama's binary is missing or it won't come up,
+    returns ``False`` and OSA routes local turns to Claude instead (``pick_model``).
 
     Returns:
         True if Ollama is up (already-running or just-started), else False.
     """
     global _warm_done, _ollama_ready
     with _warm_lock:
-        if _warm_done:
-            return _ollama_ready
+        if _warm_done and _ollama_ready:
+            return True  # sticky once up — never re-spawn
         try:
             from core import llm
 
-            result = llm.ensure_ollama_running()
-            _ollama_ready = bool(result.get("up"))
+            # Cheap probe first: if it already answers, we're up (no spawn).
+            if llm.ollama_up():
+                _ollama_ready = True
+            else:
+                result = llm.ensure_ollama_running()
+                _ollama_ready = bool(result.get("up"))
         except Exception:  # noqa: BLE001 — never let warming break a turn
             _ollama_ready = False
         _warm_done = True
