@@ -40,6 +40,12 @@ Canonical tokens (keep this list in sync with `App.css :root`):
   `box-shadow: var(--glow)`; fixed semantic hues get token-derived
   backgrounds via `color-mix(in srgb, <hue> 14%, var(--bg-inset))`.
   Pills (`50%`/`999px`) and hairline radii (≤2px) stay literal.
+- **Tripwires:** `src/__tests__/themeIntegrity.test.js` enforces all of this —
+  theme.js↔theme.css↔lib.rs three-way parity (a theme missing from the native
+  menu is unreachable: the 2026-07-24 mishap), per-theme token-contract
+  completeness, no undefined `var(--x)`, and a token-adoption floor. Run it
+  before AND after any theme/token/menu change. Full procedure:
+  `.claude/skills/theme-integrity/SKILL.md`.
 - When you paste a component from elsewhere (or another design system), grep it
   for `var(--` and confirm **every** token appears in `App.css :root`.
 - Undefined CSS vars fail silently. A component can "work" and still be wrong.

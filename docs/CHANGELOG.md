@@ -1,3 +1,19 @@
+## 2026-07-24 — Theme-integrity tripwires + repo skill (never lose a theme again)
+
+Hardening after the unreachable-light-themes mishap. New
+`gui/desktop/src/__tests__/themeIntegrity.test.js` (8 tests, suite now 678):
+theme.js THEMES ↔ theme.css `[data-theme]` blocks parity (both directions),
+THEMES ↔ lib.rs `theme-<key>` menu ids parity (both directions — THE
+regression: registered themes absent from the native menu are invisible),
+menu-label match, per-theme 16-token contract completeness (a missing token
+silently inherits terra), no undefined `var(--x)` in App.css/theme.css
+(silent-failure class), and a token-adoption floor for `--radius`/
+`--radius-sm`. Plus repo-versioned skill
+`.claude/skills/theme-integrity/SKILL.md`: the three sync points, mapping
+rules, rebuild gotchas, "looks unchanged" debugging order, DoD.
+Conventions doc points at both. Authored inline (test-author subagent
+unavailable in this surface — documented fallback).
+
 ## 2026-07-24 — View ▸ Theme menu exposes all 8 variants (light themes were unreachable)
 
 `theme.css` + `theme.js` have had 4 looks x light/dark since FR-60 landed, but
