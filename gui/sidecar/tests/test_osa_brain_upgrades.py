@@ -223,7 +223,10 @@ class TestCloudEscapeHatch:
         res = osa_settings.resolve_brain("claude-opus-4-8")
         assert res == {"status": "ok", "model": "claude-opus-4-8"}
 
-    def test_bare_family_name_is_not_guessed(self):
+    def test_bare_family_name_is_not_guessed(self, monkeypatch):
+        # Hermetic: drop discovered Ollama models — Tony's :12434 instance has a
+        # 'claude-opus-*' model that would otherwise make "opus" resolve.
+        monkeypatch.setattr("core.llm.discover_ollama", lambda force=False: {})
         res = osa_settings.resolve_brain("opus")
         assert res.get("status") != "ok"
 

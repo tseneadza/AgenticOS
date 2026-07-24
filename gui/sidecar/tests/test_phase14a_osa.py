@@ -44,10 +44,19 @@ class TestRouting:
         "how's my memory?",
         "what's the system health",
         "remember that I prefer dark mode",
-        "why did the sidecar restart",
         "list my running apps",
     ])
-    def test_control_and_questions_route_default(self, msg):
+    def test_menial_control_tasks_route_local(self, msg):
+        # 2026-07-23: menial system tasks run on the local brain (curated toolset).
+        assert osa_agent.route_turn(msg) == "local"
+
+    @pytest.mark.parametrize("msg", [
+        "why did the sidecar restart",
+        "search the web for the news",
+        "explain how the checkpointer works",
+        "research the best vector database",
+    ])
+    def test_web_and_heavy_route_default(self, msg):
         assert osa_agent.route_turn(msg) == "default"
 
     def test_empty_routes_local(self):
@@ -63,9 +72,15 @@ class TestRouting:
         assert osa_agent.pick_model("hey", ollama_ready=True) == "local"
         assert osa_agent.pick_model("hey", ollama_ready=False) == "default"
 
-    def test_pick_model_default_unaffected_by_ollama(self):
+    def test_pick_model_web_heavy_unaffected_by_ollama(self):
+        # A web/heavy turn goes to cloud regardless of local availability.
+        assert osa_agent.pick_model("search the web for X", ollama_ready=False) == "default"
+        assert osa_agent.pick_model("search the web for X", ollama_ready=True) == "default"
+
+    def test_pick_model_menial_prefers_local_but_downgrades(self):
+        # A menial task runs local when Ollama is up, cloud when it's down.
+        assert osa_agent.pick_model("launch worldwise", ollama_ready=True) == "local"
         assert osa_agent.pick_model("launch worldwise", ollama_ready=False) == "default"
-        assert osa_agent.pick_model("launch worldwise", ollama_ready=True) == "default"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

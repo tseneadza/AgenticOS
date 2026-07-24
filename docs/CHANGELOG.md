@@ -1,3 +1,25 @@
+## 2026-07-23 — OSA does menial tasks on the local brain (curated toolset + routing)
+
+OSA can now run menial system tasks — notes, app start/stop, status, remember,
+messages, mail — on the LOCAL Ollama brain instead of forcing every tool turn to
+the cloud (which failed hard when credits ran out). Two parts:
+
+- **Curated local toolset** (`agents/osa_agent.py`): `LOCAL_TOOL_NAMES` (~19
+  menial tools) is bound to LOCAL models; cloud keeps all 29. A 7B mis-picks and
+  crawls with 29 schemas (measured: qwen2.5 calls a tool in ~7s with 2 tools vs
+  minutes/looping with 29). `build_tools(toolbox, only=...)` filters; `build_agent`
+  passes the subset when `_pin_is_local(model_id)`. Sharp/arbitrary tools
+  (`run_command`, `delete_file`, `move_file`, `search_*`) stay CLOUD-only.
+- **Local-first routing** (`route_turn`): menial hints → `local`; web/heavy/sharp
+  hints (`_HEAVY_HINTS`: web/online/why/explain/research/run/delete/…) → `default`,
+  checked FIRST so "why is the app down" still reasons on cloud. Local pins now
+  keep menial turns instead of escalating; only web/heavy escalate. Ollama-down
+  still downgrades to cloud (never hard-fail).
+- **Tests**: `test_osa_local_capability.py` (new) + updated routing/pin matrices
+  in `test_phase14a_osa.py` / `test_osa_brain_switch.py`. Full suite **892 green**.
+- Also fixed two tests newly coupled to the richer :12434 model set (a bare
+  "llama"/"opus" now resolves): made them hermetic / unambiguous.
+
 ## 2026-07-23 — OSA local brain on Ollama :12434 (richer, tool-capable models)
 
 Pointed OSA's local brain at Tony's curated Ollama instance on **:12434**

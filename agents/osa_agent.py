@@ -159,12 +159,26 @@ def reset_ollama_warm_cache() -> None:
 # --------------------------------------------------------------------------- #
 # Turn routing (decision #6 / §4.3) — cheap, pure, unit-testable.
 # --------------------------------------------------------------------------- #
-# Words/phrases that signal a control or monitoring turn → Claude + tools.
-_TOOL_HINTS = (
+# Menial local system tasks → the LOCAL brain (2026-07-23, "Both"): notes, app
+# control, status/monitoring, remember, messages, mail. These map to the curated
+# LOCAL_TOOL_NAMES a 7B handles fast + reliably, and Tony wants them to work
+# offline/credit-free.
+_MENIAL_HINTS = (
     "launch", "start", "stop", "shut down", "shutdown", "restart", "kill",
-    "run ", "status", "health", "memory", "ram", "cpu", "disk", "how's",
-    "hows", "how is", "is ", "are ", "which ", "list ", "show ", "check ",
-    "remember", "delete", "remove", "why", "explain", "diagnose", "fix",
+    "status", "health", "memory", "ram", "cpu", "disk", "how's", "hows",
+    "how is", "is ", "are ", "which ", "list ", "show ", "check ", "remember",
+    "note", "obsidian", "vault", "email", "e-mail", "mail", "text ", "imessage",
+    "message", "send ", "app", "project", "time",
+)
+# Web/heavy/sharp turns → the CLOUD brain: web lookups, deep reasoning, and the
+# destructive/arbitrary tools that are deliberately NOT in the local subset
+# (run_command, delete, move). Checked FIRST so "why is the app down" reasons on
+# cloud rather than routing local off the "is "/"app" menial hint.
+_HEAVY_HINTS = (
+    "web", "online", "internet", "google", "search the", "search online",
+    "look up", "browse", "latest news", "news about", "why", "explain",
+    "diagnose", "analyze", "debug", "compare", "research", "design ",
+    "refactor", "run ", "delete", "remove", "rm ", "move ", "code",
 )
 # Short conversational turns that a local model handles fine → Ollama.
 _CHITCHAT = frozenset({
@@ -198,11 +212,16 @@ def route_turn(message: str) -> str:
     stripped = text.rstrip("!.?,")
     if stripped in _CHITCHAT:
         return "local"
-    if any(hint in text for hint in _TOOL_HINTS):
+    # Web/heavy/sharp FIRST — deep reasoning + web + the tools local doesn't have.
+    if any(hint in text for hint in _HEAVY_HINTS):
         return "default"
+    # Menial local system tasks → local (curated fast toolset, works offline).
+    if any(hint in text for hint in _MENIAL_HINTS):
+        return "local"
+    # Open-ended question with no menial signal → cloud reasoning.
     if "?" in text:
         return "default"
-    # Very short, no tool signal, not a question → treat as banter (local).
+    # Very short, no signal → banter (local).
     if len(text.split()) <= 3:
         return "local"
     return "default"
@@ -276,10 +295,11 @@ def pick_model(
 
     Pin rules (OSA brain switching, 2026-07-07):
       * ``pin`` is a cloud model  → that id for EVERY turn, chit-chat included.
-      * ``pin`` is a local model  → that id for conversational turns; any
-        tool-worthy turn (``route_turn`` says ``default``) escalates to Claude
-        because 7B local models are unreliable tool-callers; Ollama down →
-        ``default`` too (the existing never-hard-fail fallback).
+      * ``pin`` is a local model  → that id for conversational AND menial
+        system turns (``route_turn`` says ``local`` — notes/apps/status/mail via
+        the curated ``LOCAL_TOOL_NAMES``); only web/heavy turns (``route_turn``
+        says ``default``) escalate to Claude; Ollama down → ``default`` too (the
+        existing never-hard-fail fallback).
       * ``pin`` is None (auto)    → today's router, unchanged: ``route_turn``
         plus the Ollama-down downgrade (decision #9 / §10).
 
@@ -1138,8 +1158,28 @@ def _run_coro(coro):
 # --------------------------------------------------------------------------- #
 # LangGraph ReAct agent construction (lazy — keeps this module import-light).
 # --------------------------------------------------------------------------- #
-def build_tools(toolbox: OSAToolbox) -> list:
-    """Wrap an OSAToolbox's methods as LangChain StructuredTools."""
+# Tools a LOCAL model is given (2026-07-23) — the menial, high-frequency system
+# tasks Tony runs offline/credit-free: notes, app control, status, remember,
+# messages, mail. Deliberately SMALL: feeding a 7B all 29 schemas bloats its
+# prompt and it mis-picks/loops (measured: ~7s for a 2-tool call, minutes with
+# 29). Cloud models keep the full set. Excludes the sharp/heavy tools
+# (run_command, move_file, delete_file, search_*) — those stay cloud-only.
+LOCAL_TOOL_NAMES = frozenset({
+    "get_time", "system_health", "app_status", "apps_health", "list_projects",
+    "start_app", "stop_app", "remember", "switch_model",
+    "list_dir", "read_file", "write_file", "append_file",
+    "read_messages", "send_message", "resolve_contact",
+    "list_recent_mail", "read_email", "send_mail",
+})
+
+
+def build_tools(toolbox: OSAToolbox, only: frozenset[str] | None = None) -> list:
+    """Wrap an OSAToolbox's methods as LangChain StructuredTools.
+
+    ``only`` (a set of tool names) restricts the bound tools — used to hand a
+    local model the smaller ``LOCAL_TOOL_NAMES`` subset so its prompt stays fast
+    and it reliably picks the right tool. ``None`` binds the full set (cloud).
+    """
     from langchain_core.tools import StructuredTool
 
     specs = [
@@ -1176,6 +1216,7 @@ def build_tools(toolbox: OSAToolbox) -> list:
     return [
         StructuredTool.from_function(func=fn, name=name, description=(fn.__doc__ or name).strip())
         for fn, name in specs
+        if only is None or name in only
     ]
 
 
@@ -1234,7 +1275,11 @@ def build_agent(
         constitution=constitution, approval_fn=approval_fn, event_fn=event_fn
     )
     model = llm.get_chat_model(model_id)
-    tools = build_tools(toolbox)
+    # Local models get the curated menial subset (fast + reliable on a 7B);
+    # cloud models get the full 29 (2026-07-23).
+    tools = build_tools(
+        toolbox, only=LOCAL_TOOL_NAMES if _pin_is_local(model_id) else None
+    )
     prompt = _prompt_with_tool_manifest(tools)
     preamble = soul.identity_preamble(soul_name=OSA_SOUL_NAME)
     if preamble:

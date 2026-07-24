@@ -240,11 +240,16 @@ class TestResolveBrain:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestPickModelMatrix:
-    # auto (no pin): today's router, unchanged.
-    def test_auto_unchanged(self):
+    # auto (no pin): menial system tasks → local; web/heavy → cloud (2026-07-23).
+    def test_auto_routes_menial_local_web_cloud(self):
         assert osa_agent.pick_model("hey", ollama_ready=True, pin=None) == "local"
         assert osa_agent.pick_model("hey", ollama_ready=False, pin=None) == "default"
-        assert osa_agent.pick_model("launch worldwise", ollama_ready=True, pin=None) == "default"
+        # menial system task → LOCAL now (curated toolset, works offline)
+        assert osa_agent.pick_model("launch worldwise", ollama_ready=True, pin=None) == "local"
+        # web/heavy → cloud
+        assert osa_agent.pick_model("search the web for X", ollama_ready=True, pin=None) == "default"
+        # menial but Ollama down → cloud fallback (never hard-fail)
+        assert osa_agent.pick_model("launch worldwise", ollama_ready=False, pin=None) == "default"
 
     # cloud pin: EVERY turn goes to the pinned model.
     @pytest.mark.parametrize("msg,ready", [
@@ -254,13 +259,17 @@ class TestPickModelMatrix:
     def test_cloud_pin_takes_every_turn(self, msg, ready):
         assert osa_agent.pick_model(msg, ollama_ready=ready, pin=SONNET) == SONNET
 
-    # local pin: conversational turns local, tool turns escalate to Claude.
+    # local pin: conversational AND menial system turns local; web/heavy escalate.
     def test_local_pin_takes_chitchat(self):
         assert osa_agent.pick_model("hey", ollama_ready=True, pin=QWEN) == QWEN
 
-    def test_local_pin_tool_turn_escalates(self):
-        assert osa_agent.pick_model("launch worldwise", ollama_ready=True, pin=QWEN) == "default"
-        assert osa_agent.pick_model("how's my memory?", ollama_ready=True, pin=QWEN) == "default"
+    def test_local_pin_menial_stays_local(self):
+        assert osa_agent.pick_model("launch worldwise", ollama_ready=True, pin=QWEN) == QWEN
+        assert osa_agent.pick_model("how's my memory?", ollama_ready=True, pin=QWEN) == QWEN
+
+    def test_local_pin_web_heavy_escalates(self):
+        assert osa_agent.pick_model("search the web for news", ollama_ready=True, pin=QWEN) == "default"
+        assert osa_agent.pick_model("explain why this keeps happening", ollama_ready=True, pin=QWEN) == "default"
 
     def test_local_pin_ollama_down_falls_back(self):
         assert osa_agent.pick_model("hey", ollama_ready=False, pin=QWEN) == "default"
@@ -313,7 +322,9 @@ class TestSwitchModelTool:
         monkeypatch.setattr(
             osa_settings, "_availability", lambda mid: (False, "not_installed")
         )
-        reply = self._toolbox().switch_model("llama")
+        # Unambiguous id (registry-backed) so resolution reaches the availability
+        # check — a bare "llama" is now ambiguous across the :12434 model set.
+        reply = self._toolbox().switch_model("llama3.1:8b")
         assert "not_installed" in reply
         assert osa_settings.get_model_pin() is None
 
@@ -461,8 +472,10 @@ class TestChatHonorsPin:
     ):
         built = self._patch_graph(monkeypatch, reply="Worldwise is up.")
         osa_settings.set_model_pin(QWEN)
+        # A web/heavy turn escalates a local pin to Claude (menial turns now stay
+        # local — see TestPickModelMatrix).
         d = _client().post(
-            "/api/osa/chat", json={"message": "launch worldwise"}
+            "/api/osa/chat", json={"message": "explain why worldwise keeps crashing"}
         ).json()
         assert built["model"] == SONNET     # resolve("default") → Sonnet
         assert d["route"] == "default"
@@ -480,7 +493,7 @@ class TestChatHonorsPin:
         self._patch_graph(monkeypatch, reply="Took Claude for the heavy lifting.")
         osa_settings.set_model_pin(QWEN)
         d = _client().post(
-            "/api/osa/chat", json={"message": "launch worldwise"}
+            "/api/osa/chat", json={"message": "explain why worldwise keeps crashing"}
         ).json()
         assert d["escalated"] is True
         assert d["reply"].count("Claude") == 1
