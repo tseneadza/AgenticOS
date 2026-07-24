@@ -449,7 +449,7 @@ export default function BrainOrb({ graph, selectedPath, onSelect }) {
             top: hover.y + 10,
             background: "var(--bg-inset)",
             border: "1px solid var(--border-soft)",
-            borderRadius: 6,
+            borderRadius: "var(--radius)",
             padding: "2px 8px",
             fontSize: 11,
             color: "var(--text)",

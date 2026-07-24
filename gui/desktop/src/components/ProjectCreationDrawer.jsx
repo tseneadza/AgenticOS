@@ -51,7 +51,7 @@ const CSS = `
   width: min(440px, 92vw);
   background: var(--bg-panel);
   border-left: 1px solid var(--border);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--glow);
   display: flex; flex-direction: column;
   transform: translateX(100%);
   transition: transform 200ms ease;

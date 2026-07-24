@@ -182,7 +182,7 @@ function DomainBadge({ domain, small, colors = DOMAIN_COLORS }) {
     <span style={{
       display: "inline-block",
       padding: small ? "1px 6px" : "2px 8px",
-      borderRadius: 4,
+      borderRadius: "var(--radius-sm)",
       background: color + "1f",
       border: `1px solid ${color}55`,
       color,
@@ -204,7 +204,7 @@ function ScoreBadge({ score }) {
   return (
     <span style={{
       display: "inline-flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      width: 30, height: 30, borderRadius: 8,
+      width: 30, height: 30, borderRadius: "var(--radius)",
       background: color + "22", border: `1.5px solid ${color}`,
       color, fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0,
       lineHeight: 1,
@@ -296,7 +296,7 @@ function ArticleCard({ item, ranked, colors = DOMAIN_COLORS, layout = "list" }) 
           )}
           {ranked && item._reasoning && (
             <p style={{
-              margin: "7px 0 0", padding: "5px 8px", borderRadius: 5,
+              margin: "7px 0 0", padding: "5px 8px", borderRadius: "var(--radius-sm)",
               background: "var(--bg-inset)",
               fontSize: 10.5, color: "var(--yellow)",
               fontStyle: "italic", lineHeight: 1.5,
@@ -315,7 +315,7 @@ function ArticleCard({ item, ranked, colors = DOMAIN_COLORS, layout = "list" }) 
 const FIELD_STYLE = {
   all: "unset", boxSizing: "border-box", display: "block", width: "100%",
   padding: "6px 9px", background: "var(--bg-inset)",
-  border: "1px solid var(--border-soft)", borderRadius: 5,
+  border: "1px solid var(--border-soft)", borderRadius: "var(--radius-sm)",
   fontFamily: "var(--mono)", fontSize: 11, color: "var(--text)",
 };
 
@@ -385,7 +385,7 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
       width: 360, background: "var(--bg-panel)",
       borderLeft: "1px solid var(--border-soft)",
       display: "flex", flexDirection: "column", zIndex: 10,
-      boxShadow: "-4px 0 24px rgba(0,0,0,0.4)",
+      boxShadow: "var(--glow)",
     }}>
       <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid var(--border-soft)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "var(--text)" }}>Settings</span>
@@ -394,7 +394,7 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
 
       <div className="wnv-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 14px 14px" }}>
         {err && (
-          <div style={{ marginTop: 12, padding: "7px 9px", borderRadius: 5, fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--red)", background: "rgba(217,83,79,0.1)", border: "1px solid rgba(217,83,79,0.3)" }}>
+          <div style={{ marginTop: 12, padding: "7px 9px", borderRadius: "var(--radius-sm)", fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--red)", background: "rgba(217,83,79,0.1)", border: "1px solid rgba(217,83,79,0.3)" }}>
             ⚠ {err}
           </div>
         )}
@@ -437,7 +437,7 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
                 style={{
                   all: "unset", cursor: "pointer",
                   display: "flex", alignItems: "center", gap: 8,
-                  padding: "7px 10px", borderRadius: 6,
+                  padding: "7px 10px", borderRadius: "var(--radius)",
                   background: on ? col + "18" : "var(--bg-inset)",
                   border: `1px solid ${on ? col + "55" : "var(--border-soft)"}`,
                   transition: "all 0.15s",
@@ -474,7 +474,7 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
           {categories.map(cat => (feedsByCat[cat.id] || []).map(f => (
             <div key={f.id} style={{
               display: "flex", alignItems: "center", gap: 7, padding: "5px 8px",
-              borderRadius: 5, background: "var(--bg-inset)",
+              borderRadius: "var(--radius-sm)", background: "var(--bg-inset)",
               border: "1px solid var(--border-soft)", borderLeft: `3px solid ${cat.color}`,
               opacity: f.enabled ? 1 : 0.5,
             }}>
@@ -498,16 +498,16 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
           <input style={{ ...FIELD_STYLE, flex: 1 }} placeholder="Category name" value={nc.name}
             onChange={e => setNc({ ...nc, name: e.target.value })} />
           <input type="color" value={nc.color} onChange={e => setNc({ ...nc, color: e.target.value })}
-            style={{ all: "unset", width: 30, height: 30, borderRadius: 5, border: "1px solid var(--border-soft)", cursor: "pointer", background: nc.color }} />
+            style={{ all: "unset", width: 30, height: 30, borderRadius: "var(--radius-sm)", border: "1px solid var(--border-soft)", cursor: "pointer", background: nc.color }} />
           <button onClick={addCategory} disabled={busy} className="wnv-btn wnv-btn-primary" style={{ fontSize: 11 }}>+ Add</button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {categories.map(cat => (
             <div key={cat.id} style={{
               display: "flex", alignItems: "center", gap: 8, padding: "5px 8px",
-              borderRadius: 5, background: "var(--bg-inset)", border: "1px solid var(--border-soft)",
+              borderRadius: "var(--radius-sm)", background: "var(--bg-inset)", border: "1px solid var(--border-soft)",
             }}>
-              <span style={{ width: 12, height: 12, borderRadius: 3, background: cat.color, flexShrink: 0 }} />
+              <span style={{ width: 12, height: 12, borderRadius: "var(--radius-sm)", background: cat.color, flexShrink: 0 }} />
               <span style={{ flex: 1, fontSize: 11, color: "var(--text)" }}>{cat.name}</span>
               <span style={{ fontSize: 9, color: "var(--text-dim)", fontFamily: "var(--mono)" }}>{(feedsByCat[cat.id] || []).length} feeds</span>
               <button title="Delete category + its feeds" onClick={() => api("DELETE", `/api/news/categories/${cat.id}`)}
@@ -525,7 +525,7 @@ function SettingsPanel({ allFeeds, prefs, onChange, onClose, categories, colors,
             display: "block", width: "100%", boxSizing: "border-box",
             padding: "9px 0", textAlign: "center",
             background: "var(--accent)", color: "var(--bg)",
-            borderRadius: 6, fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700,
+            borderRadius: "var(--radius)", fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700,
           }}
         >
           Apply & Fetch
@@ -813,14 +813,14 @@ export default function WebNewsView() {
             style={{
               all: "unset", padding: "5px 10px",
               background: "var(--bg-panel)", border: "1px solid var(--border-soft)",
-              borderRadius: 6, fontFamily: "var(--mono)", fontSize: 11, color: "var(--text)",
+              borderRadius: "var(--radius)", fontFamily: "var(--mono)", fontSize: 11, color: "var(--text)",
               width: 140,
             }}
           />
 
           {/* sort toggle */}
           {ranked && (
-            <div style={{ display: "flex", gap: 0, border: "1px solid var(--border-soft)", borderRadius: 6, overflow: "hidden" }}>
+            <div style={{ display: "flex", gap: 0, border: "1px solid var(--border-soft)", borderRadius: "var(--radius)", overflow: "hidden" }}>
               {["date", "score"].map(s => (
                 <button key={s} onClick={() => setSortBy(s)} style={{
                   all: "unset", cursor: "pointer", padding: "5px 10px",
@@ -835,7 +835,7 @@ export default function WebNewsView() {
           )}
 
           {/* view toggle: list / grid */}
-          <div style={{ display: "flex", gap: 0, border: "1px solid var(--border-soft)", borderRadius: 6, overflow: "hidden" }}>
+          <div style={{ display: "flex", gap: 0, border: "1px solid var(--border-soft)", borderRadius: "var(--radius)", overflow: "hidden" }}>
             {["list", "grid"].map(v => (
               <button key={v} onClick={() => { setViewMode(v); try { localStorage.setItem(LS_VIEW, v); } catch {} }}
                 title={v === "grid" ? "Grid view — responsive columns" : "List view"}
@@ -900,7 +900,7 @@ export default function WebNewsView() {
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {prefs.keywords.slice(0, 8).map(k => (
                   <span key={k} style={{
-                    padding: "1px 6px", borderRadius: 3,
+                    padding: "1px 6px", borderRadius: "var(--radius-sm)",
                     background: "var(--bg-inset)", border: "1px solid var(--border-soft)",
                     fontSize: 9, color: "var(--text-dim)", fontFamily: "var(--mono)",
                   }}>{k}</span>
@@ -920,7 +920,7 @@ export default function WebNewsView() {
           {error && (
             <div style={{
               color: "var(--red)", fontSize: 12, fontFamily: "var(--mono)", marginBottom: 12,
-              padding: "8px 10px", borderRadius: 6,
+              padding: "8px 10px", borderRadius: "var(--radius)",
               background: "rgba(217,83,79,0.1)", border: "1px solid rgba(217,83,79,0.3)",
             }}>
               ⚠ {error}
@@ -974,7 +974,7 @@ export default function WebNewsView() {
                     background: "var(--bg-inset)",
                     border: "1px solid var(--border-soft)",
                     borderLeft: `3px solid ${c}`,
-                    borderRadius: 6,
+                    borderRadius: "var(--radius)",
                     opacity: empty ? 0.6 : 1,
                   }}
                 >
@@ -986,7 +986,7 @@ export default function WebNewsView() {
                     {cat}
                   </span>
                   {!isActive && (
-                    <span style={{ fontSize: 8.5, fontFamily: "var(--mono)", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.5, border: "1px solid var(--border-soft)", borderRadius: 3, padding: "0 4px" }}>off</span>
+                    <span style={{ fontSize: 8.5, fontFamily: "var(--mono)", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.5, border: "1px solid var(--border-soft)", borderRadius: "var(--radius-sm)", padding: "0 4px" }}>off</span>
                   )}
                   <span style={{ marginLeft: "auto", fontSize: 9, fontFamily: "var(--mono)", color: empty ? "var(--text-dim)" : "var(--text)", padding: "1px 7px", borderRadius: 999, border: "1px solid var(--border-soft)" }}>
                     {arts.length}

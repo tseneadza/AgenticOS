@@ -1,3 +1,26 @@
+## 2026-07-24 — Theme token adoption pass (FR-60c closed): the skins finally reach every surface
+
+The FR-60 token contract existed in `theme.css` but the views barely consumed
+it — `var(--radius)` was used once, `var(--glow)` once, so switching themes
+swapped colors but never the mockup's shape/elevation language. Restyle only,
+zero behavior change; vitest 670 green.
+
+- **`theme.css`** — new derived token `--radius-sm: calc(var(--radius) * 0.55)`
+  (chips/inputs/badges; tracks each theme's radius automatically).
+- **`App.css` + 10 components** — 91 radius literals → `var(--radius)` /
+  `var(--radius-sm)` (pills `50%`/`999px` and hairline ≤2px radii stay literal);
+  hardcoded drawer/panel shadows (`WebNewsView` settings drawer,
+  `ProjectCreationDrawer`) → `box-shadow: var(--glow)`.
+- **FR-60c audit** — `ScriptsExplorer` type badges already use the prescribed
+  `color-mix(hue, var(--bg-inset))` pattern; WebNews category hex are semantic
+  hues (DB-seeded data, allowed fixed per the plan). Closed.
+- **`docs/gui-frontend-conventions.md`** — token rule updated: shape tokens
+  exist since FR-60 (`--radius`, `--radius-sm`, `--glow`, `--accent2`,
+  `--sans`), theme.css is the single source of truth, plus the
+  literal→token mapping rules.
+
+⚠️ On-device visual pass by Tony still pending (all 4 themes + HUD in Tauri).
+
 ## 2026-07-23 — Phase 17 design locked: OSA Self-Model ("The Sentiency of OSA")
 
 Design-only change (no behavior yet). OSA gets a generated self-model of all

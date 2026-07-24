@@ -296,7 +296,7 @@ export default function EnvironmentPanel({ onClose }) {
               onKeyDown={(e) => { if (e.key === "Enter") commitUrl(urlDraft); }}
               spellCheck={false}
               style={{
-                flex: 1, padding: "6px 8px", borderRadius: "4px",
+                flex: 1, padding: "6px 8px", borderRadius: "var(--radius-sm)",
                 border: urlError ? "2px solid var(--red)" : "1px solid var(--border)",
                 background: "var(--bg-inset)", color: "var(--text)",
                 fontSize: "12px", fontFamily: "var(--mono)",
@@ -330,7 +330,7 @@ export default function EnvironmentPanel({ onClose }) {
 
         {/* ── Diagnostics ── */}
         <Section title="Diagnostics" hint="Read-only snapshot — refreshed when you open Settings or change the sidecar URL.">
-          <div style={{ border: "1px solid var(--border-soft)", borderRadius: "4px", background: "var(--bg-inset)" }}>
+          <div style={{ border: "1px solid var(--border-soft)", borderRadius: "var(--radius-sm)", background: "var(--bg-inset)" }}>
             <DiagRow label="Sidecar" testid="diag-sidecar">
               {sidecarUp == null ? "checking…" : sidecarUp ? (
                 <span style={{ color: "var(--green)" }}>● online</span>

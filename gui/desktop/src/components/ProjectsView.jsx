@@ -400,7 +400,7 @@ export default function ProjectsView() {
 
       {error && (
         <div style={{
-          marginBottom: 10, padding: "8px 12px", borderRadius: 6, fontSize: 12,
+          marginBottom: 10, padding: "8px 12px", borderRadius: "var(--radius)", fontSize: 12,
           border: "1px solid var(--red)", color: "var(--red)", background: "var(--bg-inset)",
         }}>
           {error}

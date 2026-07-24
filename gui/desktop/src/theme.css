@@ -85,6 +85,7 @@
   --yellow: #e0b84c;
 
   --radius: 8px;
+  --radius-sm: calc(var(--radius) * 0.55); /* chips/inputs/badges; derives per-theme */
   --glow:   0 4px 14px rgba(0, 0, 0, 0.28);
 
   --density-pad: 14px;

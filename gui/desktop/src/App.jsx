@@ -828,7 +828,7 @@ function SysOpsView({ ctx }) {
         onClick={(e) => { e.stopPropagation(); setShowNewProject(true); }}
         style={{
           marginBottom: 8, background: "var(--accent)", color: "#1b1b19",
-          border: "none", borderRadius: 4, padding: "5px 11px",
+          border: "none", borderRadius: "var(--radius-sm)", padding: "5px 11px",
           fontSize: "0.76rem", fontWeight: 600, cursor: "pointer",
         }}
       >

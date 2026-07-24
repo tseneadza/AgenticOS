@@ -368,13 +368,13 @@ export default function ScriptsExplorer() {
   // ── Style helpers ────────────────────────────────────────────────────────
   const badge = (type) => ({
     fontFamily:"var(--mono)", fontSize:10, fontWeight:700,
-    padding:"2px 6px", borderRadius:3, minWidth:62, textAlign:"center",
+    padding:"2px 6px", borderRadius: "var(--radius-sm)", minWidth:62, textAlign:"center",
     display:"inline-block", whiteSpace:"nowrap", flexShrink:0,
     ...(TYPE_STYLE[type] || TYPE_STYLE["Unknown"]),
   });
   const sortBtn = (key) => ({
     padding:"2px 7px", fontSize:10, cursor:"pointer",
-    border:"1px solid var(--border-soft)", borderRadius:3,
+    border:"1px solid var(--border-soft)", borderRadius: "var(--radius-sm)",
     background: sortBy===key ? "var(--accent)" : "none",
     color: sortBy===key ? "var(--bg)" : "var(--text-dim)",
     fontWeight: sortBy===key ? 700 : 400,
@@ -382,13 +382,13 @@ export default function ScriptsExplorer() {
   });
   const groupBtn = (val) => ({
     padding:"2px 7px", fontSize:10, cursor:"pointer",
-    border:"1px solid var(--border-soft)", borderRadius:3,
+    border:"1px solid var(--border-soft)", borderRadius: "var(--radius-sm)",
     background: groupBy===val ? "var(--bg-panel)" : "none",
     color: groupBy===val ? "var(--text)" : "var(--text-dim)",
     fontWeight: groupBy===val ? 600 : 400,
   });
   const sectionLabel = { fontSize:10, textTransform:"uppercase", letterSpacing:1, color:"var(--text-dim)", marginBottom:5 };
-  const card = { background:"var(--bg-inset)", borderRadius:4, border:"1px solid var(--border-soft)", overflow:"hidden" };
+  const card = { background:"var(--bg-inset)", borderRadius: "var(--radius-sm)", border:"1px solid var(--border-soft)", overflow:"hidden" };
 
   const hubDot   = hubOk===null ? "var(--yellow)" : hubOk ? "var(--green)" : "var(--red)";
   const hubLabel = hubOk===null ? "checking…" : hubOk ? "sidecar:5130 · online" : "sidecar:5130 · offline";
@@ -435,7 +435,7 @@ export default function ScriptsExplorer() {
         <div style={{ width:300, minWidth:300, borderRight:"1px solid var(--border-soft)", display:"flex", flexDirection:"column", background:"var(--bg-inset)", overflow:"hidden" }}>
           <div style={{ padding:"7px 10px 4px", borderBottom:"1px solid var(--border-soft)", flexShrink:0 }}>
             <input
-              style={{ width:"100%", background:"var(--bg)", border:"1px solid var(--border-soft)", color:"var(--text)", borderRadius:4, padding:"4px 9px", fontFamily:"inherit", fontSize:12, outline:"none", boxSizing:"border-box" }}
+              style={{ width:"100%", background:"var(--bg)", border:"1px solid var(--border-soft)", color:"var(--text)", borderRadius: "var(--radius-sm)", padding:"4px 9px", fontFamily:"inherit", fontSize:12, outline:"none", boxSizing:"border-box" }}
               placeholder="Filter by name, project, type…"
               value={filter} onChange={e => setFilter(e.target.value)}
             />
@@ -514,7 +514,7 @@ export default function ScriptsExplorer() {
                 <div style={sectionLabel}>Run history · {runLog.length} entries</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                   {runLog.map((l,i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"baseline", gap:8, padding:"5px 10px", background:"var(--bg-inset)", borderRadius:4, borderLeft:`3px solid ${l.ok?"var(--green)":"var(--red)"}` }}>
+                    <div key={i} style={{ display:"flex", alignItems:"baseline", gap:8, padding:"5px 10px", background:"var(--bg-inset)", borderRadius: "var(--radius-sm)", borderLeft:`3px solid ${l.ok?"var(--green)":"var(--red)"}` }}>
                       <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text-dim)", minWidth:64 }}>{l.ts.toLocaleTimeString("en-US",{hour12:false})}</span>
                       <ScriptTypeBadge type={l.type} />
                       <span style={{ fontFamily:"var(--mono)", fontSize:11 }}>{l.name}</span>
@@ -535,19 +535,19 @@ export default function ScriptsExplorer() {
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4 }}>
                   <span style={badge(sc.type)}>{sc.type}</span>
                   <span style={{ fontFamily:"var(--mono)", fontSize:13 }}>{sc.name}</span>
-                  <span style={{ fontSize:10, color:"var(--text-dim)", padding:"2px 7px", background:"var(--bg-inset)", borderRadius:3, border:"1px solid var(--border-soft)" }}>{sc.project}</span>
+                  <span style={{ fontSize:10, color:"var(--text-dim)", padding:"2px 7px", background:"var(--bg-inset)", borderRadius: "var(--radius-sm)", border:"1px solid var(--border-soft)" }}>{sc.project}</span>
                   {scriptInfo?.lineCount > 0 && <span style={{ fontSize:10, color:"var(--text-dim)", marginLeft:"auto" }}>{scriptInfo.lineCount} lines</span>}
                 </div>
-                <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text-dim)", marginBottom:9, padding:"4px 8px", background:"var(--bg-inset)", borderRadius:3, border:"1px solid var(--border-soft)", overflowX:"auto", whiteSpace:"nowrap" }}>
+                <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text-dim)", marginBottom:9, padding:"4px 8px", background:"var(--bg-inset)", borderRadius: "var(--radius-sm)", border:"1px solid var(--border-soft)", overflowX:"auto", whiteSpace:"nowrap" }}>
                   {sc.path}
                 </div>
                 <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                   <button onClick={runScript} disabled={running||!hubOk}
-                    style={{ padding:"4px 14px", background:"var(--accent)", color:"var(--bg)", border:"none", borderRadius:4, fontFamily:"inherit", fontWeight:700, fontSize:12, cursor:running||!hubOk?"not-allowed":"pointer", opacity:running||!hubOk?0.6:1 }}>
+                    style={{ padding:"4px 14px", background:"var(--accent)", color:"var(--bg)", border:"none", borderRadius: "var(--radius-sm)", fontFamily:"inherit", fontWeight:700, fontSize:12, cursor:running||!hubOk?"not-allowed":"pointer", opacity:running||!hubOk?0.6:1 }}>
                     {running ? "Running…" : "▶ Run"}
                   </button>
                   <button onClick={copyCmd}
-                    style={{ padding:"4px 11px", background:"none", border:"1px solid var(--border-soft)", color:"var(--text-dim)", borderRadius:4, fontFamily:"inherit", fontSize:12, cursor:"pointer" }}>
+                    style={{ padding:"4px 11px", background:"none", border:"1px solid var(--border-soft)", color:"var(--text-dim)", borderRadius: "var(--radius-sm)", fontFamily:"inherit", fontSize:12, cursor:"pointer" }}>
                     {copied ? "Copied!" : "Copy command"}
                   </button>
                   {!hubOk && <span style={{ fontSize:11, color:"var(--red)" }}>⚠ Hub offline</span>}
@@ -565,7 +565,7 @@ export default function ScriptsExplorer() {
                 )}
 
                 {infoErr && (
-                  <div style={{ fontSize:11, color:"var(--accent)", padding:"6px 10px", background:"color-mix(in srgb, var(--accent) 12%, var(--bg-inset))", borderRadius:4, border:"1px solid color-mix(in srgb, var(--accent) 30%, var(--border-soft))" }}>
+                  <div style={{ fontSize:11, color:"var(--accent)", padding:"6px 10px", background:"color-mix(in srgb, var(--accent) 12%, var(--bg-inset))", borderRadius: "var(--radius-sm)", border:"1px solid color-mix(in srgb, var(--accent) 30%, var(--border-soft))" }}>
                     ⚠ Could not read script file: {infoErr}
                   </div>
                 )}
@@ -576,7 +576,7 @@ export default function ScriptsExplorer() {
                     {scriptInfo.purpose && (
                       <div>
                         <div style={sectionLabel}>Purpose</div>
-                        <div style={{ fontSize:12, lineHeight:1.7, color:"var(--text)", padding:"8px 12px", background:"var(--bg-inset)", borderRadius:4, borderLeft:"3px solid var(--accent)" }}>
+                        <div style={{ fontSize:12, lineHeight:1.7, color:"var(--text)", padding:"8px 12px", background:"var(--bg-inset)", borderRadius: "var(--radius-sm)", borderLeft:"3px solid var(--accent)" }}>
                           {scriptInfo.purpose}
                         </div>
                       </div>
@@ -623,7 +623,7 @@ export default function ScriptsExplorer() {
                             <div style={sectionLabel}>Env Variables</div>
                             <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                               {scriptInfo.envVars.map(v => (
-                                <span key={v} style={{ fontFamily:"var(--mono)", fontSize:10, padding:"2px 8px", background:"color-mix(in srgb, var(--yellow) 14%, var(--bg-inset))", color:"var(--yellow)", borderRadius:3, border:"1px solid color-mix(in srgb, var(--yellow) 30%, var(--border-soft))" }}>{v}</span>
+                                <span key={v} style={{ fontFamily:"var(--mono)", fontSize:10, padding:"2px 8px", background:"color-mix(in srgb, var(--yellow) 14%, var(--bg-inset))", color:"var(--yellow)", borderRadius: "var(--radius-sm)", border:"1px solid color-mix(in srgb, var(--yellow) 30%, var(--border-soft))" }}>{v}</span>
                               ))}
                             </div>
                           </div>
@@ -633,7 +633,7 @@ export default function ScriptsExplorer() {
                             <div style={sectionLabel}>Requires</div>
                             <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                               {scriptInfo.deps.map(d => (
-                                <span key={d} style={{ fontFamily:"var(--mono)", fontSize:10, padding:"2px 8px", background:"color-mix(in srgb, #4fa8d9 14%, var(--bg-inset))", color:"#4fa8d9", borderRadius:3, border:"1px solid color-mix(in srgb, #4fa8d9 30%, var(--border-soft))" }}>{d}</span>
+                                <span key={d} style={{ fontFamily:"var(--mono)", fontSize:10, padding:"2px 8px", background:"color-mix(in srgb, #4fa8d9 14%, var(--bg-inset))", color:"#4fa8d9", borderRadius: "var(--radius-sm)", border:"1px solid color-mix(in srgb, #4fa8d9 30%, var(--border-soft))" }}>{d}</span>
                               ))}
                             </div>
                           </div>
@@ -659,7 +659,7 @@ export default function ScriptsExplorer() {
                         <summary style={{ ...sectionLabel, cursor:"pointer", userSelect:"none", marginBottom:4, listStyle:"none", display:"flex", alignItems:"center", gap:5 }}>
                           <span style={{ fontSize:9 }}>▶</span> Full Header Comment
                         </summary>
-                        <pre style={{ fontFamily:"var(--mono)", fontSize:10, lineHeight:1.6, color:"var(--text-dim)", background:"var(--bg-inset)", borderRadius:4, border:"1px solid var(--border-soft)", padding:"8px 12px", overflowX:"auto", margin:"6px 0 0", whiteSpace:"pre-wrap" }}>
+                        <pre style={{ fontFamily:"var(--mono)", fontSize:10, lineHeight:1.6, color:"var(--text-dim)", background:"var(--bg-inset)", borderRadius: "var(--radius-sm)", border:"1px solid var(--border-soft)", padding:"8px 12px", overflowX:"auto", margin:"6px 0 0", whiteSpace:"pre-wrap" }}>
                           {scriptInfo.fullHeader}
                         </pre>
                       </details>
@@ -673,7 +673,7 @@ export default function ScriptsExplorer() {
                   <div style={{
                     background:"var(--bg-inset)",
                     border:`1px solid ${running?"var(--border-soft)":output?.ok?"color-mix(in srgb, var(--green) 35%, var(--bg-inset))":output?"color-mix(in srgb, var(--red) 35%, var(--bg-inset))":"var(--border-soft)"}`,
-                    borderRadius:4, padding:"10px 12px",
+                    borderRadius: "var(--radius-sm)", padding:"10px 12px",
                     fontFamily:"var(--mono)", fontSize:11, lineHeight:1.7,
                     whiteSpace:"pre-wrap", overflowX:"auto",
                     minHeight:80, maxHeight:220, overflowY:"auto",
@@ -681,7 +681,7 @@ export default function ScriptsExplorer() {
                   }}>
                     {running ? "Running script…" : output ? (
                       <>
-                        <span style={{ display:"inline-block", fontFamily:"var(--mono)", fontSize:11, padding:"2px 8px", borderRadius:3, marginRight:8, background:output.ok?"color-mix(in srgb, var(--green) 18%, var(--bg-inset))":"color-mix(in srgb, var(--red) 18%, var(--bg-inset))", color:output.ok?"var(--green)":"var(--red)" }}>
+                        <span style={{ display:"inline-block", fontFamily:"var(--mono)", fontSize:11, padding:"2px 8px", borderRadius: "var(--radius-sm)", marginRight:8, background:output.ok?"color-mix(in srgb, var(--green) 18%, var(--bg-inset))":"color-mix(in srgb, var(--red) 18%, var(--bg-inset))", color:output.ok?"var(--green)":"var(--red)" }}>
                           {output.ok?"OK":`exit ${output.exitCode||"ERR"}`}
                         </span>
                         <span style={{ color:"var(--text-dim)", fontSize:10 }}>{output.dur}ms</span>

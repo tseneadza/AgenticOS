@@ -119,7 +119,7 @@ function StepNode({ step, index, isLast }) {
           style={{
             all: "unset", cursor: hasOutput ? "pointer" : "default",
             display: "flex", alignItems: "center", gap: 8,
-            background: "var(--bg-inset)", borderRadius: 6, padding: "7px 10px",
+            background: "var(--bg-inset)", borderRadius: "var(--radius)", padding: "7px 10px",
             width: "100%", boxSizing: "border-box",
             border: "1px solid var(--border-soft)",
             userSelect: "none",
@@ -156,7 +156,7 @@ function StepNode({ step, index, isLast }) {
         {open && hasOutput && (
           <div style={{
             marginTop: 4, padding: "8px 10px",
-            background: "var(--bg-panel)", borderRadius: 6,
+            background: "var(--bg-panel)", borderRadius: "var(--radius)",
             border: "1px solid var(--border-soft)",
             fontFamily: "var(--mono)", fontSize: 11,
             lineHeight: 1.6, overflow: "auto", maxHeight: 280,
@@ -178,7 +178,7 @@ function RunListItem({ run, selected, onClick }) {
       style={{
         all: "unset", cursor: "pointer",
         display: "flex", flexDirection: "column", gap: 2,
-        padding: "9px 12px", borderRadius: 6,
+        padding: "9px 12px", borderRadius: "var(--radius)",
         background: selected ? "var(--bg-inset)" : "transparent",
         border: `1px solid ${selected ? "var(--accent)" : "transparent"}`,
         marginBottom: 3,
@@ -315,7 +315,7 @@ export default function ToolCallVisualizer() {
             style={{
               all: "unset", width: "100%", boxSizing: "border-box",
               padding: "5px 8px", background: "var(--bg-inset)",
-              border: "1px solid var(--border-soft)", borderRadius: 5,
+              border: "1px solid var(--border-soft)", borderRadius: "var(--radius-sm)",
               fontFamily: "var(--mono)", fontSize: 12, color: "var(--fg)",
             }}
           />

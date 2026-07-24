@@ -29,9 +29,17 @@ Canonical tokens (keep this list in sync with `App.css :root`):
 | `--mono`         | font     | Monospace stack                      |
 
 **Rules:**
-- There is **no** `--fg`, `--fg-muted`, `--radius`, etc. Use `--text` /
-  `--text-dim`. If you think you need a new token, add it to `:root` in
-  `App.css` first — don't reference a token that doesn't exist.
+- There is **no** `--fg` / `--fg-muted`. Use `--text` / `--text-dim`. Shape
+  tokens DO exist since FR-60: `--radius`, `--radius-sm` (derived,
+  chips/inputs), `--glow` (elevation), `--accent2`, `--sans` — defined in
+  `theme.css` (the single source of truth; the table above shows terra
+  defaults). New tokens go in `theme.css :root` first — never reference a
+  token that doesn't exist.
+- Prefer tokens over literals: `border-radius: var(--radius)` (panels/cards)
+  / `var(--radius-sm)` (chips, inputs, badges); elevation shadows =
+  `box-shadow: var(--glow)`; fixed semantic hues get token-derived
+  backgrounds via `color-mix(in srgb, <hue> 14%, var(--bg-inset))`.
+  Pills (`50%`/`999px`) and hairline radii (≤2px) stay literal.
 - When you paste a component from elsewhere (or another design system), grep it
   for `var(--` and confirm **every** token appears in `App.css :root`.
 - Undefined CSS vars fail silently. A component can "work" and still be wrong.

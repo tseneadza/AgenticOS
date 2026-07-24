@@ -489,13 +489,13 @@ export default function HubApiExplorer() {
               <span style={{ fontSize: 10, color: "var(--text-dim)" }}>Collapse:</span>
               <button
                 onClick={() => setGroupOpen(Object.fromEntries(groups.map(g => [g, false])))}
-                style={{ padding: "2px 8px", fontSize: 10, cursor: "pointer", border: "1px solid var(--border-soft)", borderRadius: 3, background: "none", color: "var(--text-dim)" }}
+                style={{ padding: "2px 8px", fontSize: 10, cursor: "pointer", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-sm)", background: "none", color: "var(--text-dim)" }}
               >
                 All
               </button>
               <button
                 onClick={() => setGroupOpen(Object.fromEntries(groups.map(g => [g, true])))}
-                style={{ padding: "2px 8px", fontSize: 10, cursor: "pointer", border: "1px solid var(--border-soft)", borderRadius: 3, background: "none", color: "var(--text-dim)" }}
+                style={{ padding: "2px 8px", fontSize: 10, cursor: "pointer", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-sm)", background: "none", color: "var(--text-dim)" }}
               >
                 Expand
               </button>
@@ -560,13 +560,13 @@ export default function HubApiExplorer() {
                   <button
                     onClick={tryIt}
                     disabled={loading}
-                    style={{ padding: "4px 14px", background: "var(--accent)", color: "#1b1b19", border: "none", borderRadius: 4, fontFamily: "inherit", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                    style={{ padding: "4px 14px", background: "var(--accent)", color: "#1b1b19", border: "none", borderRadius: "var(--radius-sm)", fontFamily: "inherit", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
                   >
                     {loading ? "…" : "▶ Run"}
                   </button>
                   <button
                     onClick={copyCurl}
-                    style={{ padding: "4px 11px", background: "none", border: "1px solid var(--border-soft)", color: "var(--text-dim)", borderRadius: 4, fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}
+                    style={{ padding: "4px 11px", background: "none", border: "1px solid var(--border-soft)", color: "var(--text-dim)", borderRadius: "var(--radius-sm)", fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}
                   >
                     {copied ? "Copied!" : "Copy curl"}
                   </button>

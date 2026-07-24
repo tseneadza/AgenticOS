@@ -115,7 +115,7 @@ function LogFilter({ activeFilters, onChange }) {
           style={{
             padding: "4px 10px",
             border: activeFilters.includes(level) ? "2px solid var(--accent)" : "1px solid var(--border)",
-            borderRadius: "4px",
+            borderRadius: "var(--radius-sm)",
             background: activeFilters.includes(level) ? "var(--bg-panel)" : "transparent",
             color: LEVEL_COLORS[level]?.color || "var(--text)",
             cursor: "pointer",
@@ -148,7 +148,7 @@ function LogSearch({ searchTerm, onChange }) {
           width: "100%",
           padding: "6px 8px",
           border: "1px solid var(--border)",
-          borderRadius: "4px",
+          borderRadius: "var(--radius-sm)",
           background: "var(--bg-inset)",
           color: "var(--text)",
           fontSize: "12px",
@@ -264,7 +264,7 @@ export default function LogsExplorer({ logs = [], onLogsUpdate }) {
             style={{
               padding: "4px 8px",
               border: autoScroll ? "2px solid var(--green)" : "1px solid var(--border)",
-              borderRadius: "4px",
+              borderRadius: "var(--radius-sm)",
               background: autoScroll ? "var(--bg-panel)" : "transparent",
               color: autoScroll ? "var(--green)" : "var(--text-dim)",
               cursor: "pointer",
@@ -280,7 +280,7 @@ export default function LogsExplorer({ logs = [], onLogsUpdate }) {
             style={{
               padding: "4px 8px",
               border: "1px solid var(--border)",
-              borderRadius: "4px",
+              borderRadius: "var(--radius-sm)",
               background: "transparent",
               color: "var(--text-dim)",
               cursor: "pointer",
@@ -296,7 +296,7 @@ export default function LogsExplorer({ logs = [], onLogsUpdate }) {
             style={{
               padding: "4px 8px",
               border: "1px solid var(--border)",
-              borderRadius: "4px",
+              borderRadius: "var(--radius-sm)",
               background: "transparent",
               color: "var(--text-dim)",
               cursor: "pointer",
@@ -327,7 +327,7 @@ export default function LogsExplorer({ logs = [], onLogsUpdate }) {
           flex: 1,
           overflow: "auto",
           border: "1px solid var(--border)",
-          borderRadius: "4px",
+          borderRadius: "var(--radius-sm)",
           backgroundColor: "var(--bg-inset)",
         }}
       >

@@ -41,7 +41,7 @@ export default class ErrorBoundary extends Component {
               whiteSpace: "pre-wrap",
               background: "var(--bg-inset, #2a2a27)",
               padding: "0.75rem 1rem",
-              borderRadius: 6,
+              borderRadius: "var(--radius)",
               fontSize: 12,
               overflow: "auto",
             }}
