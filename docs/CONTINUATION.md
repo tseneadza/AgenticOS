@@ -1,3 +1,65 @@
+# ⏹ SESSION 2026-07-24 — PHASE 17 DESIGN LOCKED (OSA Self-Model) + THEME PASS SHIPPED ✅ · NEXT: Tony's visual pass, then build 17a
+
+Cowork-surface session. Two workstreams, five commits (5df29ba, b53249d,
+d473a37, eeacfc6, d2d3a02 + this checkpoint), vitest **678 green** (was 670),
+tree clean, app rebuilt + installed + signed + launched.
+
+## A. Phase 17 — OSA Self-Model ("The Sentiency of OSA") — DESIGN LOCKED
+Tony wants OSA aware of all it has access to. Decisions locked (interview):
+full scope (tools+brains, rules, system, memory), **hybrid** delivery (tiered
+generated "Self" prompt block + read-only `introspect` tool in
+LOCAL_TOOL_NAMES), **generated tool-map prose replaces the hand-written
+OSA_SYSTEM paragraph** (per-tool TOOL_SPECS registry = single source of truth
+— also fixes local pins being told about cloud-only tools), purpose = both
+self-answers and behavior. Full design: `docs/PHASE17_OSA_SELF_MODEL.md`
+(sub-phases 17a–17c, tests, arming-pattern guardrail §6.1, no-secrets rule).
+Roadmap + glossary (both copies) updated. **security-verifier REQUIRED on
+17b/17c.** ▶ Build 17a next (registry + generated prompt + parity/snapshot
+tests).
+
+## B. Aesthetic touchup (from Tony's "Enhanced app views mockup" zip)
+- ⚠️ Zip held only handoff docs — the actual mockup HTML
+  (`AgenticOS Enhanced.dc.html`, tuned style values) is MISSING; recover if
+  found (IDEA_LEDGER 2026-07-24 #3).
+- **Token adoption pass (b53249d):** contract existed but views consumed it
+  ONCE (--radius, --glow each 1 use). 91 radius literals → var(--radius) /
+  new derived --radius-sm; drawer shadows → var(--glow); FR-60c closed on
+  audit (color-mix pattern already in place; category hex = semantic data).
+- **Light themes were unreachable (d473a37):** theme.css/theme.js had 8
+  variants all along; lib.rs View ▸ Theme menu listed only 4 legacy dark ids.
+  Menu now mirrors THEMES (8 items). Root causes of "themes gone": menu gap +
+  stale installed bundle.
+- **Tripwires + skill (d2d3a02):** `themeIntegrity.test.js` (8 tests —
+  three-way theme.js↔theme.css↔lib.rs parity, labels, 16-token per-theme
+  completeness, undefined-var scan, adoption floor) +
+  `.claude/skills/theme-integrity/SKILL.md` (repo skill; Cowork does NOT load
+  repo skills — Settings → Capabilities for that).
+- **Phase 18 PARKED (eeacfc6):** flourishes (scanlines/glass/neon) + mockup §5
+  enhanced views. Tony: "functionality absolutely rules."
+- App rebuilt (debug), installed to /Applications, re-signed, launched.
+
+## Lessons captured
+CLAUDE.md gained **"Cowork-surface rules"** (TCC folders hang the shell
+helper; big reads need head/tail; test-author/security-verifier not spawnable
+→ inline fallback; nohup long builds; repo skills invisible to Cowork; list
+archive contents before trusting names).
+
+## ▶ NEXT
+1. **Tony:** visual pass — all 8 themes across views + HUD in the freshly
+   installed app (open DoD from b53249d).
+2. **Build Phase 17a** (TOOL_SPECS + generated prompt; test-author pattern in
+   a Claude Code session, or documented inline fallback).
+3. Optional: recover the mockup HTML → tune tokens verbatim (Phase 18 intake).
+
+## Human items (unchanged from 2026-07-23)
+- Anthropic API credits top-up (console.anthropic.com → Billing).
+- ⚠️ SECURITY: rotate ANTHROPIC_API_KEY + move secrets out of process env
+  (Cursor helper exposes them to `ps`).
+- Auto-continue runner PAUSED (`data/.auto_continue_off`); pi-node `/login`.
+- Voice: first live mic run still pending.
+
+---
+
 # ⏹ SESSION 2026-07-23 — OSA LOCAL BRAIN DOES MENIAL TASKS ✅ (Ollama :12434 + curated toolset + routing) · NEXT: cloud-down fallback (optional)
 
 Spit-shine session. Tony: (1) OSA should do menial things locally (notes, apps,

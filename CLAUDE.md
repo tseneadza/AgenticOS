@@ -222,3 +222,30 @@ change. A shipped endpoint missing from the Explorer is incomplete.
 - Full contract, checklist, and the recommended auto-discovery approach
   (Explorer reads the sidecar's `/openapi.json`) are in
   `docs/api-registry.md`. Read it before adding any API.
+
+## Cowork-surface rules (learned 2026-07-24)
+
+When the session runs in the Cowork desktop surface (not Claude Code CLI),
+these operational facts apply:
+
+1. **On-device commands go through the macOS shell helper** (MacOS-MCP), and
+   git / cargo check / vitest / npm builds all work normally from it.
+   Background anything long (`nohup … > /tmp/x.log 2>&1 & disown`) — helper
+   calls have short timeouts.
+2. **NEVER touch TCC-protected folders (~/Downloads, ~/Desktop, ~/Documents)
+   from the shell helper** — the permission prompt can't be answered and the
+   call hangs to timeout. Repo (~/Codehome), ~/Brain2, and /tmp are safe. If
+   a file is needed from a protected folder, ask Tony to move/upload it.
+3. **Large file reads blow the tool token limit** (CONTINUATION.md is ~200KB)
+   — read with head/tail/offset, never whole.
+4. **`test-author` and `security-verifier` subagents are not spawnable from
+   this surface.** Documented fallback: author tests inline, note it in the
+   commit/CONTINUATION, and flag security-spine diffs for a review pass in a
+   Claude Code session.
+5. **Repo-versioned skills (`.claude/skills/`) load in Claude Code sessions
+   but NOT in Cowork** — Cowork skills install via Settings → Capabilities.
+   Put lasting procedure in the repo skill + docs; don't assume Cowork picks
+   it up.
+6. Uploaded archives may not contain what their name implies (an "Enhanced
+   app views mockup" zip contained only handoff docs, not the mockup) —
+   list contents before building on assumptions.
