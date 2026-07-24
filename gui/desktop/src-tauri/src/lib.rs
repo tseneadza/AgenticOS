@@ -163,13 +163,26 @@ fn build_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     // Full-skin theme switch. Each id is "theme-<key>"; the menu handler derives
     // the key generically and calls window.__agenticOsSetTheme (App.jsx) — the
     // exact mirror of the view-<id> bridge above.
-    let t_terra  = MenuItem::with_id(app, "theme-terra",  "Terracotta Dark", true, None::<&str>)?;
-    let t_cyber  = MenuItem::with_id(app, "theme-cyber",  "Cyber Neon",      true, None::<&str>)?;
-    let t_future = MenuItem::with_id(app, "theme-future", "Bold Futuristic", true, None::<&str>)?;
-    let t_term   = MenuItem::with_id(app, "theme-term",   "Terminal Green",  true, None::<&str>)?;
+    // Keys mirror theme.js THEMES exactly (8 = 4 looks x light/dark). The old
+    // 4 legacy dark-only ids ("theme-terra" etc.) still resolve via theme.js's
+    // LEGACY_THEMES upgrade, but the menu now exposes every variant.
+    let t_terra_d  = MenuItem::with_id(app, "theme-terracotta-dark",  "Terracotta Dark",       true, None::<&str>)?;
+    let t_terra_l  = MenuItem::with_id(app, "theme-terracotta-light", "Terracotta Light",      true, None::<&str>)?;
+    let t_cyber_d  = MenuItem::with_id(app, "theme-cyber-dark",       "Cyber Neon Dark",       true, None::<&str>)?;
+    let t_cyber_l  = MenuItem::with_id(app, "theme-cyber-light",      "Cyber Neon Light",      true, None::<&str>)?;
+    let t_future_d = MenuItem::with_id(app, "theme-future-dark",      "Bold Futuristic Dark",  true, None::<&str>)?;
+    let t_future_l = MenuItem::with_id(app, "theme-future-light",     "Bold Futuristic Light", true, None::<&str>)?;
+    let t_term_d   = MenuItem::with_id(app, "theme-term-dark",        "Terminal Green Dark",   true, None::<&str>)?;
+    let t_term_l   = MenuItem::with_id(app, "theme-term-light",       "Terminal Green Light",  true, None::<&str>)?;
+    let sep_ld1 = PredefinedMenuItem::separator(app)?;
+    let sep_ld2 = PredefinedMenuItem::separator(app)?;
+    let sep_ld3 = PredefinedMenuItem::separator(app)?;
     let theme_menu = Submenu::with_items(
         app, "Theme", true,
-        &[&t_terra, &t_cyber, &t_future, &t_term],
+        &[&t_terra_d, &t_terra_l, &sep_ld1,
+          &t_cyber_d, &t_cyber_l, &sep_ld2,
+          &t_future_d, &t_future_l, &sep_ld3,
+          &t_term_d, &t_term_l],
     )?;
     let sep_theme   = PredefinedMenuItem::separator(app)?;
 

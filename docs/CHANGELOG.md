@@ -1,3 +1,12 @@
+## 2026-07-24 — View ▸ Theme menu exposes all 8 variants (light themes were unreachable)
+
+`theme.css` + `theme.js` have had 4 looks x light/dark since FR-60 landed, but
+the native menu in `lib.rs` still listed only the 4 legacy dark ids — so light
+themes existed and were switchable in code, with no way to pick them from the
+UI. Menu now mirrors `theme.js THEMES` exactly (8 items, grouped dark/light
+per look); legacy ids still resolve via the LEGACY_THEMES upgrade. Rust-side
+change: needs a rebuild to appear (cargo check clean).
+
 ## 2026-07-24 — Theme token adoption pass (FR-60c closed): the skins finally reach every surface
 
 The FR-60 token contract existed in `theme.css` but the views barely consumed
