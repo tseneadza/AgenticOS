@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 from typing import Any, Callable
 
 from langgraph.errors import GraphBubbleUp
@@ -160,6 +161,90 @@ def reset_ollama_warm_cache() -> None:
     with _warm_lock:
         _warm_done = False
         _ollama_ready = False
+
+
+# --------------------------------------------------------------------------- #
+# Cloud-brain health (2026-07-24) — the billing-error fallback.
+# A DURABLE cloud failure (billing / auth — dead until a human acts) arms a
+# sticky in-memory flag so subsequent turns stop re-burning the dead key:
+# local-capable turns route local as usual; cloud-worthy turns fast-fail in
+# persona WITHOUT an API call (locked with Tony 2026-07-24 — the local-pin
+# keys guardrail means web/heavy turns have no safe local home, so they fail
+# rather than run degraded). Recovery is a LAZY TTL re-probe: past the TTL the
+# next cloud-worthy turn simply attempts cloud again — that attempt IS the
+# probe (a billing 400 costs nothing); failure re-arms quietly, success
+# clears. "Try your cloud brain again" clears on demand. Transient kinds
+# (rate_limit / overloaded) never trip this — they keep the plain in-persona
+# message. In-memory on purpose: a sidecar restart resets the flag and a
+# single failed attempt re-arms it, so no DB row can go stale.
+# --------------------------------------------------------------------------- #
+CLOUD_RETRY_TTL_SECONDS = 15 * 60
+DURABLE_ERROR_KINDS = frozenset({"billing", "auth"})
+
+_cloud_lock = threading.Lock()
+_cloud_dead: dict = {"kind": None, "since": 0.0}
+
+
+def mark_cloud_dead(kind: str) -> bool:
+    """Arm (or re-arm) the cloud-dead flag for a durable failure kind.
+
+    Args:
+        kind: A ``_classify_api_error`` kind ("billing" / "auth" arm;
+            anything else is ignored).
+
+    Returns:
+        True when this call NEWLY armed the flag — the caller should announce
+        the degradation once. False on a re-arm or an ignored transient kind.
+    """
+    if kind not in DURABLE_ERROR_KINDS:
+        return False
+    with _cloud_lock:
+        newly = _cloud_dead["kind"] is None
+        _cloud_dead.update(kind=kind, since=time.time())
+        return newly
+
+
+def clear_cloud_dead() -> None:
+    """Drop the flag — manual retry, observed recovery, or tests."""
+    with _cloud_lock:
+        _cloud_dead.update(kind=None, since=0.0)
+
+
+def note_cloud_ok() -> None:
+    """A cloud turn succeeded — clear any armed flag (recovery observed)."""
+    if _cloud_dead["kind"] is not None:
+        clear_cloud_dead()
+
+
+def cloud_dead_status() -> dict:
+    """Snapshot of the flag: ``{kind, since, fresh}``.
+
+    ``fresh`` is True while the flag is armed AND inside the TTL — the window
+    where cloud-worthy turns fast-fail without an API call. Past the TTL the
+    flag stays armed (``kind`` still set, so the HUD chip stays honest) but
+    ``fresh`` flips False, letting the next cloud-worthy turn act as the lazy
+    re-probe.
+    """
+    with _cloud_lock:
+        kind, since = _cloud_dead["kind"], _cloud_dead["since"]
+    fresh = kind is not None and (time.time() - since) < CLOUD_RETRY_TTL_SECONDS
+    return {"kind": kind, "since": since, "fresh": fresh}
+
+
+# "Try your cloud brain again" — the manual-clear phrase. Only consulted while
+# the flag is armed, so a stray "check the cloud logs" in normal operation
+# never routes differently; a false positive while degraded merely turns that
+# turn into the probe, which is the safe direction.
+_CLOUD_RETRY_RE = re.compile(
+    r"\bcloud\b.{0,40}\b(again|back|retry|now)\b"
+    r"|\b(try|retry|check|use)\b.{0,40}\bcloud\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def is_cloud_retry_request(message: str) -> bool:
+    """Whether a turn is asking OSA to retry its cloud brain."""
+    return bool(_CLOUD_RETRY_RE.search(message or ""))
 
 
 # --------------------------------------------------------------------------- #

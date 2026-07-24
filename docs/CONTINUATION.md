@@ -1,3 +1,29 @@
+# ⏹ SESSION 2026-07-24 (later) — CLOUD-BRAIN FALLBACK SHIPPED ✅ · Phase 17a still NEXT
+
+Chat-surface session (claude.ai + Mac MCP; subagents unavailable → documented
+inline fallback). Trigger: live billing error — Osa "out of credits" while
+claude.ai worked (separate wallets: API prepaid credits vs. subscription).
+
+## Shipped: billing/auth resilience (docs/OSA_CLOUD_FALLBACK.md)
+Interview-locked (Q1 "Both" rescue+sticky · Q2 cloud-worthy turns fail in
+persona · Q3 lazy TTL re-probe + manual phrase). Durable failures arm an
+in-memory flag in `agents/osa_agent.py`; sync + WS routes in `api_osa.py` do:
+same-turn local rescue (announced once) → pre-emptive local downgrade for
+local-capable turns (cloud pin yields) → zero-API fast-fail for cloud-worthy
+turns → recovery via 15-min lazy probe / "try your cloud brain again" /
+observed success. `/api/osa/state` gains `cloud_degraded`. Suite **918 green**
+(14 new in `test_osa_cloud_fallback.py`; graceful-errors suite gained an
+autouse flag-disarm fixture). CHANGELOG + glossary (both copies) updated.
+**Sidecar restart required** for the fallback to be live in OSA chat.
+
+## Follow-ups from this work
+- GUI: rail/HUD "cloud degraded" chip off the existing 15s state poll
+  (`cloud_degraded.kind` stays set past the TTL on purpose).
+- Known cosmetic tradeoff: a rescued turn can duplicate the user message in
+  the thread (failed cloud invoke may checkpoint it first) — see design note.
+
+---
+
 # ⏹ SESSION 2026-07-24 — PHASE 17 DESIGN LOCKED (OSA Self-Model) + THEME PASS SHIPPED ✅ · NEXT: Tony's visual pass, then build 17a
 
 Cowork-surface session. Two workstreams, five commits (5df29ba, b53249d,

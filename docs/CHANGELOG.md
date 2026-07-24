@@ -1,3 +1,20 @@
+## 2026-07-24 — Cloud-brain fallback: billing/auth failures degrade to local instead of dying
+
+Born from a live moment: Osa reported "out of Anthropic credits" while
+Claude.ai worked fine (separate wallets — API credits vs. subscription).
+Detection existed (2026-07-22 graceful errors) but nothing changed behavior.
+Now a DURABLE cloud failure (billing/auth) arms a sticky in-memory flag
+(`agents/osa_agent.py`): the failed local-capable turn gets a same-turn local
+rescue (announced once), later local-capable turns pre-emptively downgrade to
+the local brain (a cloud pin yields to survival), and cloud-worthy turns
+fast-fail in persona with ZERO API calls. Recovery: lazy 15-min TTL re-probe
+(the next cloud attempt IS the probe — a billing 400 costs $0), "try your
+cloud brain again", or any successful cloud turn. Transients (rate-limit/529)
+never arm it. `/api/osa/state` exposes `cloud_degraded` for a future HUD
+chip. Sync + WS paths; 14 new hermetic tests (suite 918 green); authored
+inline (subagents unavailable in this surface — documented fallback). Design:
+`docs/OSA_CLOUD_FALLBACK.md`; interview decisions locked with Tony 2026-07-24.
+
 ## 2026-07-24 — Theme-integrity tripwires + repo skill (never lose a theme again)
 
 Hardening after the unreachable-light-themes mishap. New

@@ -270,13 +270,14 @@ _API_ERROR_SIGNATURES: list[tuple[str, tuple[str, ...], str]] = [
       "insufficient credit", "billing"),
      "My cloud brain is out of Anthropic API credits, Sir. I can't reach Claude "
      "until the balance is topped up at the Anthropic console under Billing. My "
-     "local brain is still here for anything that doesn't need the web."),
+     "local brain is still here for anything that doesn't need the web — and "
+     "say 'try your cloud brain again' once the balance is back."),
     ("auth",
      ("invalid x-api-key", "authentication_error", "invalid api key",
       "could not resolve authentication", "permission_error"),
      "My cloud brain's API key is being rejected, Sir — it looks invalid or "
      "revoked. Worth checking ANTHROPIC_API_KEY in the config. My local brain "
-     "still works."),
+     "still works — say 'try your cloud brain again' once the key is fixed."),
     ("rate_limit",
      ("rate_limit", "rate limit", "too many requests", "429"),
      "My cloud brain is rate-limited right now, Sir. Give it a minute and ask me "
@@ -304,6 +305,85 @@ def _classify_api_error(err) -> tuple[str, str] | None:
         if any(n in text for n in needles):
             return kind, message
     return None
+
+
+# Cloud-brain fallback (2026-07-24, locked with Tony) — persona strings for the
+# degraded window. _CLOUD_DEAD_ANNOUNCE is spoken ONCE (the turn that armed the
+# flag); _CLOUD_STILL_DEAD_MSG is the short fast-fail for cloud-worthy turns
+# while the flag is fresh (no API call is made for these).
+_CLOUD_DEAD_ANNOUNCE: dict[str, str] = {
+    "billing": (
+        "Heads-up, Sir — my cloud brain is out of Anthropic API credits, so I "
+        "handled that with my local brain. I'll keep to local-friendly work "
+        "until the balance is topped up at the Anthropic console; say 'try "
+        "your cloud brain again' when it is."
+    ),
+    "auth": (
+        "Heads-up, Sir — my cloud brain's API key is being rejected, so I "
+        "handled that with my local brain. Say 'try your cloud brain again' "
+        "once ANTHROPIC_API_KEY is fixed."
+    ),
+}
+_CLOUD_STILL_DEAD_MSG: dict[str, str] = {
+    "billing": (
+        "Still out of Anthropic credits, Sir — that one needs my cloud brain. "
+        "Local tasks I can handle; say 'try your cloud brain again' once the "
+        "balance is topped up."
+    ),
+    "auth": (
+        "My cloud brain's API key is still being rejected, Sir — that one "
+        "needs Claude. Say 'try your cloud brain again' once the key is fixed."
+    ),
+}
+
+
+def _retry_turn_local(message: str, thread_id: str, approval_fn, brain_line: str | None):
+    """Re-run one cloud-failed turn on the local brain (same-turn rescue).
+
+    Best-effort by design — ANY problem (Ollama down, no local model, the
+    local run itself failing) returns ``None`` and the caller falls back to
+    the in-persona error message. Known cosmetic tradeoff (documented in
+    docs/OSA_CLOUD_FALLBACK.md): the failed cloud attempt may already have
+    checkpointed the user message, so the thread can show it twice.
+
+    Returns:
+        ``(reply, local_model_id)`` on success, else ``None``.
+    """
+    from agents import osa_agent
+    from core import llm, memory
+
+    conn = None
+    try:
+        if not llm.ollama_up():
+            return None
+        local_id = llm.resolve("local")
+        info = llm.get_model_info(local_id) or llm.discover_ollama().get(local_id)
+        if info is None or not info.is_local:
+            return None
+        conn = memory.checkpointer_conn()
+        checkpointer = memory.get_checkpointer(conn)
+        agent = osa_agent.build_agent(
+            local_id, approval_fn=approval_fn, checkpointer=checkpointer,
+            system_suffix=brain_line, voice_aware=_voice_is_on(),
+        )
+        config = {"configurable": {"thread_id": thread_id}}
+        _heal_pending_interrupt(agent, config)
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": message}]}, config=config
+        )
+        messages = result.get("messages", []) if isinstance(result, dict) else []
+        reply = _extract_text(getattr(messages[-1], "content", "")) if messages else ""
+        reply = _scrub_reply(reply, brain_line, escalated=False)
+        return (reply, local_id) if reply else None
+    except Exception as exc:  # noqa: BLE001 — a failed rescue is just no rescue
+        logger.warning("cloud-fallback: local rescue failed: %s", exc)
+        return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 class OSAChat(BaseModel):
@@ -422,6 +502,39 @@ def osa_chat(body: OSAChat) -> dict:
     # pin can escalate; a cloud pin always gets its turns.
     escalated = bool(pin) and osa_agent._pin_is_local(pin) and chosen != pin
 
+    # Cloud-brain fallback (2026-07-24): while a durable cloud failure
+    # (billing/auth) is FRESH, cloud-worthy turns fast-fail in persona with NO
+    # API call. 'Try your cloud brain again' clears the flag first, so that
+    # very turn becomes the probe; past the TTL the check no-ops and the
+    # attempt below IS the lazy re-probe.
+    _degraded = osa_agent.cloud_dead_status()
+    if _degraded["kind"] and osa_agent.is_cloud_retry_request(message):
+        osa_agent.clear_cloud_dead()
+        _degraded = {"kind": None, "since": 0.0, "fresh": False}
+    if _degraded["fresh"] and route == "default":
+        _local_id = llm.resolve("local")
+        _linfo = llm.get_model_info(_local_id) or llm.discover_ollama().get(_local_id)
+        if (ollama_ready and osa_agent.route_turn(message) == "local"
+                and _linfo is not None and _linfo.is_local):
+            # Local-capable turn ⇒ PRE-EMPTIVE downgrade — run it locally now
+            # rather than burning the dead key and rescuing after the fact.
+            # A cloud pin yields to survival here (the pin can't run anyway).
+            model_id = _local_id
+            route = "local"
+            escalated = False
+        else:
+            reply = _CLOUD_STILL_DEAD_MSG[_degraded["kind"]]
+            _LAST_TURN.update(model=model_id, escalated=escalated)
+            _maybe_speak_reply(reply)
+            return {
+                "reply": reply, "thread_id": thread_id, "model": model_id,
+                "route": route, "pinned_model": pin, "escalated": escalated,
+                "ollama_ready": ollama_ready, "tool_trace": [],
+                "awaiting_confirm": False, "pending_action": None,
+                "confirmed": False, "error_kind": _degraded["kind"],
+                "cloud_degraded": True,
+            }
+
     # Phase 14b: destructive-action confirmation. Decide THIS turn's approval
     # policy up-front (the sync route can't block on a human):
     #   * A live pending-confirm + an affirmative turn => approve this turn.
@@ -480,6 +593,27 @@ def osa_chat(body: OSAChat) -> dict:
         # Recognized backend failure (dead key, rate limit, Ollama down): reply
         # in-persona instead of leaking a raw provider error to the user.
         kind, friendly = classified
+        newly_dead = osa_agent.mark_cloud_dead(kind)
+        # Same-turn local rescue (locked 'Both', 2026-07-24): a LOCAL-capable
+        # turn that happened to run on cloud (cloud pin / confirm escalation)
+        # re-runs on the local brain instead of dying with an apology.
+        # Cloud-worthy turns skip this — locked Q2: they fail in persona.
+        if kind in osa_agent.DURABLE_ERROR_KINDS and osa_agent.route_turn(message) == "local":
+            rescued = _retry_turn_local(message, thread_id, approval_fn, brain_line)
+            if rescued is not None:
+                r_reply, local_id = rescued
+                if newly_dead:
+                    r_reply = f"{_CLOUD_DEAD_ANNOUNCE[kind]} {r_reply}".strip()
+                _LAST_TURN.update(model=local_id, escalated=False)
+                _maybe_speak_reply(r_reply)
+                return {
+                    "reply": r_reply, "thread_id": thread_id, "model": local_id,
+                    "route": "local", "pinned_model": pin, "escalated": False,
+                    "ollama_ready": ollama_ready, "tool_trace": [],
+                    "awaiting_confirm": False, "pending_action": None,
+                    "confirmed": False, "error_kind": kind,
+                    "cloud_degraded": True,
+                }
         _LAST_TURN.update(model=model_id, escalated=escalated)
         _maybe_speak_reply(friendly)
         return {
@@ -495,10 +629,15 @@ def osa_chat(body: OSAChat) -> dict:
             "pending_action": None,
             "confirmed": False,
             "error_kind": kind,
+            "cloud_degraded": kind in osa_agent.DURABLE_ERROR_KINDS,
         }
     finally:
         if conn is not None:
             conn.close()
+
+    # A successful cloud turn is observed recovery — drop any armed flag.
+    if route == "default":
+        osa_agent.note_cloud_ok()
 
     messages = result.get("messages", []) if isinstance(result, dict) else []
     reply = _extract_text(getattr(messages[-1], "content", "")) if messages else ""
@@ -651,6 +790,9 @@ def osa_state() -> dict:
         "soul": osa_agent.OSA_SOUL_NAME,
         # 14e: newest proactive event id — lets the orb's existing state poll
         # cheaply detect news without pulling the events list.
+        # Cloud-brain fallback (2026-07-24): armed while billing/auth has the
+        # cloud brain down — the HUD/rail can chip off this, no new endpoint.
+        "cloud_degraded": osa_agent.cloud_dead_status(),
         "latest_event_id": osa_proactive.latest_id(),
     }
 
@@ -1012,6 +1154,44 @@ async def osa_chat_ws(ws: WebSocket) -> None:
             payload = {"messages": [{"role": "user", "content": message}]}
             confirmed = False
 
+            # Cloud-brain fallback (2026-07-24): same fast-fail as the sync
+            # route — fresh messages only (a resume is mid-interrupt and rare;
+            # if cloud is dead its failure lands in the classifier below).
+            _degraded = osa_agent.cloud_dead_status()
+            if _degraded["kind"] and osa_agent.is_cloud_retry_request(message):
+                osa_agent.clear_cloud_dead()
+                _degraded = {"kind": None, "since": 0.0, "fresh": False}
+            if _degraded["fresh"] and route == "default":
+                _local_id = llm.resolve("local")
+                _linfo = (llm.get_model_info(_local_id)
+                          or llm.discover_ollama().get(_local_id))
+                if (ollama_ready and osa_agent.route_turn(message) == "local"
+                        and _linfo is not None and _linfo.is_local):
+                    # Pre-emptive downgrade (see the sync route) — run the
+                    # local-capable turn locally instead of burning the key.
+                    model_id = _local_id
+                    route = "local"
+                    escalated = False
+                    brain_line = osa_agent.brain_prompt_line(
+                        pin=pin, effective=model_id, escalated=False
+                    )
+                else:
+                    reply = _CLOUD_STILL_DEAD_MSG[_degraded["kind"]]
+                    _maybe_speak_reply(reply)
+                    await ws.send_json({
+                        "type": "start", "thread_id": thread_id,
+                        "model": model_id, "route": route,
+                        "pinned_model": pin, "escalated": escalated,
+                    })
+                    await ws.send_json({
+                        "type": "final", "reply": reply, "thread_id": thread_id,
+                        "model": model_id, "route": route, "pinned_model": pin,
+                        "escalated": escalated, "tool_trace": [],
+                        "confirmed": False, "error_kind": _degraded["kind"],
+                        "cloud_degraded": True,
+                    })
+                    return
+
         conn = memory.checkpointer_conn()
         checkpointer = memory.get_checkpointer(conn)
         agent = osa_agent.build_agent(
@@ -1045,12 +1225,40 @@ async def osa_chat_ws(ws: WebSocket) -> None:
                 # Recognized backend failure: deliver an in-persona reply as a
                 # normal final frame (shows in the transcript, not an error banner).
                 kind, friendly = classified
+                newly_dead = osa_agent.mark_cloud_dead(kind)
+                # Same-turn local rescue (locked 'Both', 2026-07-24) — fresh
+                # local-capable messages only; runs off the event loop like
+                # every other sync graph call on this path.
+                rescued = None
+                if (kind in osa_agent.DURABLE_ERROR_KINDS
+                        and resume_val is None and message
+                        and osa_agent.route_turn(message) == "local"):
+                    rescued = await asyncio.get_running_loop().run_in_executor(
+                        None, _retry_turn_local,
+                        message, thread_id, _ws_approval_fn, brain_line,
+                    )
+                if rescued is not None:
+                    r_reply, local_id = rescued
+                    if newly_dead:
+                        r_reply = f"{_CLOUD_DEAD_ANNOUNCE[kind]} {r_reply}".strip()
+                    _LAST_TURN.update(model=local_id, escalated=False)
+                    _maybe_speak_reply(r_reply)
+                    await ws.send_json({
+                        "type": "final", "reply": r_reply,
+                        "thread_id": thread_id, "model": local_id,
+                        "route": "local", "pinned_model": pin,
+                        "escalated": False, "tool_trace": trace,
+                        "confirmed": confirmed, "error_kind": kind,
+                        "cloud_degraded": True,
+                    })
+                    return
                 _maybe_speak_reply(friendly)
                 await ws.send_json({
                     "type": "final", "reply": friendly, "thread_id": thread_id,
                     "model": model_id, "route": route, "pinned_model": pin,
                     "escalated": escalated, "tool_trace": trace,
                     "confirmed": confirmed, "error_kind": kind,
+                    "cloud_degraded": kind in osa_agent.DURABLE_ERROR_KINDS,
                 })
                 return
             if outcome["interrupt"] is not None:
@@ -1073,6 +1281,9 @@ async def osa_chat_ws(ws: WebSocket) -> None:
             break
 
         _WS_TURN_STATE.pop(thread_id, None)
+        # A successful cloud turn is observed recovery — drop any armed flag.
+        if route == "default":
+            osa_agent.note_cloud_ok()
         reply = _scrub_reply(reply, brain_line, escalated=escalated)
         _LAST_TURN.update(model=model_id, escalated=escalated)
         # Voice-OUT (2026-07-08): speak the streamed reply too. The app's

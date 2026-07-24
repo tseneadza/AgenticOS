@@ -437,6 +437,16 @@ OSA has access to (tools, rules, brains, system, memory), built live by
 reasoning. Requires a standard `sk-ant-api03-` key; `sk-admin-` keys
 cannot call the Messages API.
 
+**Cloud-degraded mode** — OSA's fallback state after a DURABLE cloud
+failure (Anthropic billing/auth). An in-memory flag in `agents/osa_agent.py`
+arms on the classified error: local-capable turns pre-emptively downgrade to
+the local brain, cloud-worthy turns fast-fail in persona with no API call,
+and the turn that hit the error gets a same-turn local rescue. Recovery:
+lazy 15-min TTL re-probe (the next cloud attempt IS the probe), the phrase
+"try your cloud brain again", or any successful cloud turn. Transient errors
+(rate-limit / 529) never arm it. Surfaced as `cloud_degraded` in
+`GET /api/osa/state`. See `docs/OSA_CLOUD_FALLBACK.md`.
+
 **Conversation mode / follow-up window** — After a spoken reply finishes, an
 ~8s window (`followup_window_s`) in which the next utterance needs no wake
 word. Guarded by an echo check (opens only post-playback), a hallucination

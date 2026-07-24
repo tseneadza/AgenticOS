@@ -22,6 +22,16 @@ _BILLING = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clean_cloud_flag():
+    """The billing test arms the cloud-dead fallback flag (2026-07-24) —
+    disarm around every test so this suite stays order-independent."""
+    from agents import osa_agent
+    osa_agent.clear_cloud_dead()
+    yield
+    osa_agent.clear_cloud_dead()
+
+
 class TestClassifier:
     @pytest.mark.parametrize("text,kind", [
         (_BILLING, "billing"),
