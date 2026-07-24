@@ -1,3 +1,66 @@
+# ⏹ SESSION 2026-07-23 — OSA LOCAL BRAIN DOES MENIAL TASKS ✅ (Ollama :12434 + curated toolset + routing) · NEXT: cloud-down fallback (optional)
+
+Spit-shine session. Tony: (1) OSA should do menial things locally (notes, apps,
+status, mail, texts, dev-status) instead of "out of credits, can't help"; (2)
+local Ollama should run on **:12434** with an app mechanism to keep it up. Both
+delivered + verified LIVE with cloud credits exhausted. Three commits (f22bbfc,
+e63ca9c, 82b70b9), suite **894 green**.
+
+## What shipped
+- **Ollama :12434** (Tony's curated instance — llama3.3/qwen2.5/llama3.1:8b/
+  gpt-oss/qwen3-coder). `settings.yaml agent.ollama_base_url`; `_ensure_ollama_up`
+  startup hook (ensure_ollama_running off the event loop); registered 12434 in
+  the DB `ports` ledger (`SERVICE_PORTS` in seed_port_ledger.py — **port
+  assignments are in MySQL now**, the old hub PORT_ASSIGNMENTS.md is a generated
+  artifact).
+- **Curated local toolset** — `agents/osa_agent.py LOCAL_TOOL_NAMES` (~19 menial
+  tools) bound to LOCAL models; cloud keeps all 29. A 7B crawls/mis-picks with 29
+  schemas (measured ~7s for a 2-tool call vs minutes with 29). `build_tools(only=)`
+  + `build_agent` binds the subset when `_pin_is_local(model_id)`. Sharp tools
+  (run_command/delete/move/search) stay CLOUD-only.
+- **Local-first routing** — `route_turn`: menial → local, web/heavy/sharp
+  (`_HEAVY_HINTS`) → cloud (checked first). Local pins keep menial turns; only
+  web/heavy escalate. Ollama-down still downgrades to cloud.
+- **warm_ollama re-probe fix** — it cached not-ready permanently; a transient
+  first-probe failure stranded ALL local turns on cloud. Now success sticky,
+  not-ready re-probes.
+
+## LIVE proof (cloud credits DEAD)
+"what time is it" → model `llama3.2:latest`, route `local`, tool `get_time`,
+reply "It's 10:58 PM EDT." Fully offline. ⚠️ Latency: ~90s COLD (llama3.2 3B +
+curated toolset). A keep-warm / faster-model / tighter-subset pass is a follow-up.
+
+## Gotchas paid
+- CLAUDE.md #1/#10: a **stray pre-change sidecar held :5130**, so every
+  `agentic-gui restart`/`kickstart` no-op'd (new instance saw the port taken and
+  exited) and served STALE code for ~5 test fires. Fix: `pkill -9 -f "python -m
+  gui.sidecar"` → `launchctl kickstart -k`. ALWAYS confirm the :5130 owner's
+  start-time after a restart when behavior looks stale.
+- Richer :12434 model set broke 2 discovery-coupled tests (bare "llama"/"opus"
+  now resolve) — made hermetic.
+
+## ▶ NEXT — cloud-down fallback (Part C of "Both") — OPTIONAL, reassess value
+Original plan: when a CLOUD-routed turn fails on a billing/auth error, retry on a
+local model before the friendly message. But with local-first routing now live,
+menial tasks never hit cloud — so the "out of credits" message ONLY shows for
+genuine **web/heavy** turns, which local can't do well anyway (no web browsing).
+So Part C is now lower-value + risks a weak local model hallucinating a "web"
+answer. RECOMMEND: confirm with Tony whether he still wants it, or whether the
+current graceful message ("…local brain is still here for anything that doesn't
+need the web") is the right behavior for web turns. Design sketched in api_osa
+(`_classify_api_error` already detects the errors; add `_local_fallback_reply`).
+
+## Human items (unchanged)
+- **Anthropic API credits** — top up at console.anthropic.com → Billing (the
+  `.env.local` key; separate from any Claude.ai sub). Cloud/web turns need it.
+- **⚠️ SECURITY:** a Cursor helper's process env exposes the real ANTHROPIC_API_KEY
+  + HUB_MYSQL_PASS in plaintext (visible to any `ps`). Recommend rotating the key
+  + moving secrets out of process env.
+- Auto-continue runner still PAUSED (`data/.auto_continue_off`); pi-node `/login`.
+- Voice: first live mic run still pending.
+
+---
+
 # ⏹ SESSION 2026-07-22 — OSA CHAT UNWEDGED ✅ (cross-path checkpoint-corruption fix + live thread healed) · runner PAUSED
 
 Diagnosed + fixed a durable `INVALID_CHAT_HISTORY` crash Tony hit in OSA chat.
