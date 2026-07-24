@@ -34,6 +34,7 @@ from pathlib import Path
 SERVICE_PORTS: list[tuple[int, str, str]] = [
     (5130, "agenticos-sidecar", "AgenticOS FastAPI sidecar (AG-UI + orchestrator API, TR-10)"),
     (5111, "dreamcatcher-backend", "dreamcatcher separate API server"),
+    (12434, "ollama-local", "OSA local brain — Ollama server (curated instance, tool-capable models); settings.yaml agent.ollama_base_url"),
 ]
 
 DOC_PATH = Path.home() / "Codehome" / "hub" / "docs" / "PORT_ASSIGNMENTS.md"

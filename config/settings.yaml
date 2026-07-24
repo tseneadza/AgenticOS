@@ -66,7 +66,10 @@ settings:
     # escalate to cloud one toggle away. Falls back to cloud if Ollama is down.
     default_model: "qwen2.5:7b-instruct"
     # Local Ollama service. Optional: if unreachable, only cloud models offered.
-    ollama_base_url: "http://localhost:11434"
+    # Port 12434 (Tony's curated instance — richer model set incl. tool-capable
+    # llama3.x/qwen2.5/gpt-oss). External service, not an AgenticOS-owned port.
+    # The sidecar ensures this is up at startup via ensure_ollama_running().
+    ollama_base_url: "http://localhost:12434"
     # Cloud (Anthropic) endpoint. Pinned so the OS's cloud path is NOT hijacked
     # by an ambient ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN the shell exports to
     # route other tools (e.g. Claude Code) through a local proxy/Ollama. Only

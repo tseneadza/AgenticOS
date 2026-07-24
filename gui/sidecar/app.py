@@ -157,6 +157,36 @@ async def _start_health_poller() -> None:
 
 
 @app.on_event("startup")
+async def _ensure_ollama_up() -> None:
+    """Bring OSA's local Ollama brain up on the configured port at startup.
+
+    Points at ``settings.yaml agent.ollama_base_url`` (currently :12434, Tony's
+    curated instance). ``ensure_ollama_running`` spawns ``ollama serve`` bound to
+    that port only if nothing answers there — a no-op when it's already up. Done
+    proactively so local turns and the cloud-down fallback have a brain ready
+    without waiting for the first chat to warm it. Off the event loop (may wait
+    up to ~8s); best-effort — Ollama must never block or break startup.
+    """
+    import logging
+    _log = logging.getLogger("agenticos.osa")
+
+    async def _go() -> None:
+        try:
+            from core import llm
+            result = await asyncio.to_thread(llm.ensure_ollama_running)
+            if result.get("up"):
+                _log.info("ollama ready at %s (started=%s)",
+                          llm.ollama_base_url(), result.get("started"))
+            else:
+                _log.warning("ollama not up at %s: %s",
+                             llm.ollama_base_url(), result.get("error"))
+        except Exception:  # noqa: BLE001 — Ollama must never break startup
+            _log.warning("ollama ensure skipped", exc_info=True)
+
+    app.state.ollama_ensure = asyncio.create_task(_go())
+
+
+@app.on_event("startup")
 async def _start_osa_briefing() -> None:
     """Phase 14e: daily OSA briefing as an in-process asyncio timer.
 

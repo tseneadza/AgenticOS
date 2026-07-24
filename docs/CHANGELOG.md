@@ -1,3 +1,20 @@
+## 2026-07-23 — OSA local brain on Ollama :12434 (richer, tool-capable models)
+
+Pointed OSA's local brain at Tony's curated Ollama instance on **:12434**
+(llama3.3 / qwen2.5 / llama3.1:8b / gpt-oss / qwen3-coder — several strong
+tool-callers) instead of the default :11434.
+
+- **`config/settings.yaml`** — `agent.ollama_base_url` → `http://localhost:12434`.
+- **`gui/sidecar/app.py`** — new `_ensure_ollama_up` startup hook: calls
+  `llm.ensure_ollama_running()` off the event loop so the local brain is
+  proactively up on the configured port (spawns `ollama serve` bound to it only
+  if nothing answers; no-op when already up). Best-effort — never blocks startup.
+- **`gui/sidecar/seed_port_ledger.py`** — registered 12434 (`ollama-local`) in
+  `SERVICE_PORTS` so the DB `ports` ledger reserves it (never handed out by
+  `allocate_port`). Verified: ledger row `12434 → ollama-local/reserved`.
+- Verified live: `llm.ollama_base_url()` → :12434, `ollama_up()` True, sidecar
+  discovers the 12434 model set.
+
 ## 2026-07-22 — OSA chat: graceful backend-error replies (no raw provider errors)
 
 A dead Anthropic key surfaced as a raw `400 … credit balance is too low` (Tony
