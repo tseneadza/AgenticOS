@@ -26,9 +26,13 @@ e63ca9c, 82b70b9), suite **894 green**.
   not-ready re-probes.
 
 ## LIVE proof (cloud credits DEAD)
-"what time is it" → model `llama3.2:latest`, route `local`, tool `get_time`,
-reply "It's 10:58 PM EDT." Fully offline. ⚠️ Latency: ~90s COLD (llama3.2 3B +
-curated toolset). A keep-warm / faster-model / tighter-subset pass is a follow-up.
+"what time is it" → `llama3.2:latest`, route `local`, tool `get_time`, "It's 10:58
+PM EDT." "list my projects" → local, `list_projects`, "You have 28 projects…".
+Fully offline. **Latency:** COLD ~90s → fixed with a startup PRELOAD (commit
+a5108d7: `_ensure_ollama_up` warms the effective local model, verified "ollama
+preload llama3.2:latest: ok"). WARM ~20s (get_time) to ~50s (list_projects, big
+tool output) — inherent to the 3B pin. FOLLOW-UP if wanted: pin a faster local
+model (qwen2.5:7b?), trim tool-output size, or shrink the local toolset further.
 
 ## Gotchas paid
 - CLAUDE.md #1/#10: a **stray pre-change sidecar held :5130**, so every
