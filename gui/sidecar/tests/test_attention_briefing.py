@@ -119,3 +119,23 @@ def test_post_briefing_uses_attention_brief(monkeypatch):
     assert entry["text"] == "the attention brief"
     assert entry["kind"] == "briefing"
     assert entry["announced"] is False
+
+
+def test_local_model_skips_cost_gate(monkeypatch, tmp_path):
+    """A $0 local brief composes even with the cost ledger (MySQL) down."""
+    from core import llm, memory
+
+    class _Info:
+        provider = "ollama"
+
+    monkeypatch.setattr(op, "_PROFILE_PATH", tmp_path / "attention_profile.md")
+    monkeypatch.setattr(llm, "resolve", lambda a: "qwen-test")
+    monkeypatch.setattr(llm, "is_available", lambda m: True)
+    monkeypatch.setattr(llm, "get_model_info", lambda m: _Info())
+
+    def _db_down():
+        raise RuntimeError("2003 (HY000): Can't connect to MySQL server")
+
+    monkeypatch.setattr(memory, "cost_today", _db_down)
+    monkeypatch.setattr(llm, "complete", lambda *a, **k: _Result("Local brief."))
+    assert op.compose_attention_briefing() == "Local brief."

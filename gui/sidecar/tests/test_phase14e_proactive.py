@@ -312,6 +312,11 @@ class TestBriefing:
         monkeypatch.setattr(launch_config, "list_all_health",
                             lambda session=None: {"apps": apps, "total": len(apps)})
         monkeypatch.setattr(pro, "_project_count", lambda: projects)
+        # post_briefing composes via the attention brief (Phase B v1); these
+        # policy tests pin announce/quiet-hours behavior, not the LLM — route
+        # composition to the deterministic line so no real model is called.
+        monkeypatch.setattr(pro, "compose_attention_briefing",
+                            pro.compose_briefing)
 
     def test_all_healthy_with_projects(self, monkeypatch):
         self._patch_sources(monkeypatch, {
@@ -425,20 +430,20 @@ class TestBriefMeNow:
         return TestClient(fastapi_app)
 
     def test_force_announce_beats_quiet_and_asleep(self, monkeypatch):
-        monkeypatch.setattr(pro, "compose_briefing", lambda: "All systems nominal.")
+        monkeypatch.setattr(pro, "compose_attention_briefing", lambda: "All systems nominal.")
         _active(monkeypatch, False)                    # 23:30 and idle …
         msg = pro.post_briefing(force_announce=True, now=NIGHT)
         assert msg["announced"] is True                # … but he ASKED
         assert msg["kind"] == "briefing"
 
     def test_force_announce_stamps_rate_limit_window(self, monkeypatch):
-        monkeypatch.setattr(pro, "compose_briefing", lambda: "Nominal.")
+        monkeypatch.setattr(pro, "compose_attention_briefing", lambda: "Nominal.")
         pro.post_briefing(force_announce=True, now=DAY)
         # A scheduled briefing straight after is rate-limited → silent.
         assert pro.post_briefing(now=DAY)["announced"] is False
 
     def test_route_always_announces_and_records(self, monkeypatch):
-        monkeypatch.setattr(pro, "compose_briefing", lambda: "All quiet, Tony.")
+        monkeypatch.setattr(pro, "compose_attention_briefing", lambda: "All quiet, Tony.")
         _active(monkeypatch, False)   # policy would silence — the route must not
         body = self._client().post("/api/osa/briefing").json()
         assert body["announced"] is True
@@ -449,7 +454,7 @@ class TestBriefMeNow:
         assert got["latest_id"] == body["id"]
 
     def test_route_notes_activity(self, monkeypatch):
-        monkeypatch.setattr(pro, "compose_briefing", lambda: "Nominal.")
+        monkeypatch.setattr(pro, "compose_attention_briefing", lambda: "Nominal.")
         called = []
         monkeypatch.setattr(pro, "note_chat_turn", lambda: called.append(True))
         self._client().post("/api/osa/briefing")

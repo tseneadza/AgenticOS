@@ -509,10 +509,15 @@ def compose_attention_briefing() -> str:
         if not llm.is_available(model_id):
             return compose_briefing()
 
-        from core import memory
-        from core.constitution import Constitution
+        # Cost gate only for models that cost money — a $0 local brief must
+        # not die because the cost ledger (MySQL) is unreachable. Cloud stays
+        # gated; a failed gate falls back below, spending nothing.
+        info = llm.get_model_info(model_id)
+        if not (info and info.provider == "ollama"):
+            from core import memory
+            from core.constitution import Constitution
 
-        Constitution.load().check_cost_budget(memory.cost_today())
+            Constitution.load().check_cost_budget(memory.cost_today())
 
         context = {
             "attention_profile": _attention_profile(),
