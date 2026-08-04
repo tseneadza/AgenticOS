@@ -49,6 +49,16 @@
 | PHASE15_OSA_SYSTEM_MCP.md | ✅ ACCOMPLISHED | 15a–15e complete 2026-07-14 (29 OSA tools, effect mode live) |
 | PHASE16_BRAIN_SCANNER.md | 🟧 IN PROGRESS | 16a–16c built 2026-07-15; Tony's on-device pass → 16d writes → 16e polish |
 
+## OSA_ATTENTION_MODEL.md (attention model + debauchery clause, 2026-08-04)
+
+| Idea | Status | What came of it |
+|---|---|---|
+| Attention model (profile doc + learning loop) | 🟧 IN PROGRESS | Designed 08-04 (doc §1-§7); Phase 0 testbed live as Cowork artifact `today-attention`; Phase B v1 SHIPPED same day ("Brief me" = attention brief, ccbd0c7/d12fe7b/8586fc8); Phase A (MySQL profile + 3 OSA tools) queued behind 17a |
+| Debauchery clause (§8: vices lane, NSFW discretion, nudges, forgiveness) | ✅ SHIPPED (Phase 0 + brief prompt) | Live in artifact prompts + _ATTENTION_SYSTEM 08-04; A-C inherit via weak_hour on events |
+| Flexibility guarantees (§9: profile Behavior overrides beat defaults) | ✅ SHIPPED (Phase 0 + brief prompt) | Live 08-04; meta-feedback rides the learning loop |
+| Acting on low-value items (auto-archive/decline) | 🅿 PARKED | Tony's call 08-04: trust first; revisit after the model earns it |
+| In-app Attention dashboard (VIEWS registry entry) | 🅿 PARKED | Tony OK'd displayed briefs 08-04; natural Phase B v2 slice |
+
 ## Open questions worth a verdict (carried from docs)
 
 | Question | Source | Status |
