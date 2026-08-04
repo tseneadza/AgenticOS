@@ -1,4 +1,4 @@
-# ⏹ SESSION 2026-08-04 — OSA ATTENTION MODEL DESIGNED ✅ (Cowork) · Phase-0 testbed LIVE · Phase A QUEUED (Phase 17a still the build NEXT)
+# ⏹ SESSION 2026-08-04 — OSA ATTENTION MODEL DESIGNED ✅ + "BRIEF ME" NOW THE ATTENTION BRIEF ✅ (live on local brain) · Phase A queued (17a still build NEXT)
 
 Cowork (non-dev) session with Tony. Designed how OSA learns what concerns him —
 full design: **docs/OSA_ATTENTION_MODEL.md** (read it first). Decisions locked
@@ -21,7 +21,30 @@ insured (doc §9):** defaults-in-code/decisions-in-data — profile "Behavior
 overrides" beat every default; meta-feedback (rules about rules) rides the same
 learning loop; all versioned/revertible; design re-reviewed at each phase gate.
 
-## ▶ NEXT — Phase A (then B, C) — QUEUED behind Phase 17a
+## Shipped same session — Phase B v1: "Brief me" = attention brief (3 commits)
+ccbd0c7 + d12fe7b + 8586fc8. `compose_attention_briefing()` in
+`gui/sidecar/osa_proactive.py` now backs POST /api/osa/briefing AND the
+scheduled daily briefing: attention profile (`data/attention_profile.md`,
+auto-seeded, gitignored) + CONTINUATION top-session dev state + health line,
+composed via core.llm on the ACTIVE brain (local pin works credit-free);
+compose_briefing() stays the always-composable fallback. §8/§9 ride in the
+system prompt. Local $0 briefs skip the MySQL cost gate (gate stays for
+cloud). LIVE-verified on qwen2.5:7b with cloud credits dead AND MySQL down;
+spoken + displayed in the rail. 14e briefing tests re-pointed to mock
+compose_attention_briefing (they'd started calling live Ollama). Suite
+**860 green** (+9 new). Sidecar restarted via `agentic-gui install` (launchd
+agents were not loaded; a stray sidecar on :5130 was killed first — gotcha #1
+paid again). NOTE: v1 sources are dev-state+system+profile; mail/calendar in
+the OSA brief = Phase B v2. Tony OK'd displayed (not only spoken) briefs —
+an in-app Attention dashboard (VIEWS registry entry) is a natural B v2 slice.
+
+## ⚠️ NEW human item — MySQL is DOWN (localhost:3306 refused)
+`sudo /usr/local/mysql/support-files/mysql.server start` (needs Tony's
+password; docs/MYSQL_MAINTENANCE.md). Cost ledger, project ledger, ports
+ledger, durable chat all depend on it. The mysql-health-check launchd job is
+failing (status 1) — worth a look while at it.
+
+## ▶ NEXT — Phase A (then B v2, C) — QUEUED behind Phase 17a
 **Precedence:** Phase 17a (Self-Model registry) is still the active build NEXT,
 and the 07-24 fallback session needs its **sidecar restart**. Attention Model
 Phase A slots in after, or whenever Tony calls it up.
