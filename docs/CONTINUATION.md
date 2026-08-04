@@ -1,3 +1,49 @@
+# ⏹ SESSION 2026-08-04 — OSA ATTENTION MODEL DESIGNED ✅ (Cowork) · Phase-0 testbed LIVE · Phase A QUEUED (Phase 17a still the build NEXT)
+
+Cowork (non-dev) session with Tony. Designed how OSA learns what concerns him —
+full design: **docs/OSA_ATTENTION_MODEL.md** (read it first). Decisions locked
+with Tony: explicit+implicit signals; model = an editable profile DOCUMENT (OSA
+rewrites it, Tony corrects it, every change announced — never a black box);
+powers = rank/summarize + proactive interrupts. Acting on items (auto-archive
+etc.) deliberately PARKED — trust first.
+
+## Phase 0 — LIVE (Cowork artifact `today-attention`)
+Gmail unread 2d + today's calendar + CONTINUATION/IDEA_LEDGER state, with a
+working learning loop: sender mutes, 👍/👎 brief feedback + free-text teaching,
+event log, LLM profile consolidation (versioned). Seed data accumulates in
+artifact localStorage (`osa.concerns`, `osa.mutedSenders`, `osa.events`) — the
+export format for seeding Phase A. IDEA_LEDGER: add a 🟧 row when dev starts.
+**Debauchery clause (doc §8, 08-04):** vices-protected lane in briefs, NSFW =
+flag-and-phrase-discreetly (never suppress), ≤1 wry nudge per brief,
+forgiveness-by-design (weak-hour + rage-mute signals discounted) — live in the
+artifact prompts; Phases A–C inherit via `weak_hour` on events. **Flexibility
+insured (doc §9):** defaults-in-code/decisions-in-data — profile "Behavior
+overrides" beat every default; meta-feedback (rules about rules) rides the same
+learning loop; all versioned/revertible; design re-reviewed at each phase gate.
+
+## ▶ NEXT — Phase A (then B, C) — QUEUED behind Phase 17a
+**Precedence:** Phase 17a (Self-Model registry) is still the active build NEXT,
+and the 07-24 fallback session needs its **sidecar restart**. Attention Model
+Phase A slots in after, or whenever Tony calls it up.
+MySQL `osa_attention_profile` (versioned rows) + `osa_attention_events`
+(append-only); OSA tools `get_attention_profile` / `log_attention_event` /
+`consolidate_attention_profile` (read+log menial/local-safe; consolidate =
+cloud judgment, fits 07-23 local-first routing). Then Phase B (OSA owns the
+brief), Phase C (implicit signals + ALWAYS-FLAG scanner → orb announcement
+path). Open questions for Tony in doc §7.
+
+## Human items (carried from 07-23, unchanged)
+- **Anthropic API credits** — top up at console.anthropic.com → Billing (the
+  `.env.local` key; separate from any Claude.ai sub). Cloud/web turns need it.
+- **⚠️ SECURITY:** a Cursor helper's process env exposes the real
+  ANTHROPIC_API_KEY + HUB_MYSQL_PASS in plaintext — rotate the key + move
+  secrets out of process env.
+- Auto-continue runner still PAUSED (`data/.auto_continue_off`); pi-node `/login`.
+- Voice: first live mic run still pending.
+
+
+---
+
 # ⏹ SESSION 2026-07-24 (later) — CLOUD-BRAIN FALLBACK SHIPPED ✅ · Phase 17a still NEXT
 
 Chat-surface session (claude.ai + Mac MCP; subagents unavailable → documented

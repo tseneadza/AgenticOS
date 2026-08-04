@@ -35,12 +35,14 @@ take an injectable ``now`` for tests.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import subprocess
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from datetime import datetime, time as dtime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
@@ -408,6 +410,125 @@ def compose_briefing() -> str:
     return f"{first} The ledger holds {count} {plural}."
 
 
+
+# --------------------------------------------------------------------------- #
+# Attention brief — docs/OSA_ATTENTION_MODEL.md Phase B v1 (2026-08-04).
+# "Brief me" (and the scheduled daily briefing) now compose a profile-ranked
+# attention brief (dev-state + system + attention profile) via the unified LLM
+# layer. The deterministic compose_briefing() remains the fallback on ANY
+# failure, preserving the always-composable guarantee.
+# --------------------------------------------------------------------------- #
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_PROFILE_PATH = _REPO_ROOT / "data" / "attention_profile.md"
+_CONTINUATION_PATH = _REPO_ROOT / "docs" / "CONTINUATION.md"
+
+_DEFAULT_PROFILE = """# Tony's Attention Profile (v1, seeded 2026-08-04)
+
+## Hard rules
+- ALWAYS FLAG: security incidents, exposed keys/secrets, billing or
+  API-credit issues, hard deadlines.
+
+## Standing concerns
+- AgenticOS/OSA development is the top standing priority; the CONTINUATION.md
+  top session's NEXT and Human items usually outrank everything else.
+- Job alerts, retail promos, and newsletters are noise unless explicitly
+  starred.
+
+## Vices (protected)
+- (learning - show premieres, hobbies, and genuinely good deals belong here,
+  surfaced without moralizing.)
+
+## Behavior overrides
+- (none yet - feedback about the rules themselves lands here and beats
+  defaults.)
+"""
+
+_ATTENTION_SYSTEM = (
+    "You are OSA, Tony's personal assistant, composing his on-demand spoken "
+    "brief. From the JSON context, tell him what most needs his attention, "
+    "ranked by his attention profile. Output 4-6 plain sentences, no markdown, "
+    "no lists - this is spoken aloud. Cover: the top 1-2 priorities and why, "
+    "one human-item reminder if any stand out, system health only if something "
+    "is down, and (if the profile's vices or the context offer one) a single "
+    "light 'for your vices' line. Anything questionable gets flagged 'not safe "
+    "for work' but never omitted. At most one wry nudge, never preachy. The "
+    "profile's Behavior overrides section beats every default above. Keep it "
+    "under 120 words."
+)
+
+
+def _attention_profile() -> str:
+    """Read the attention profile, seeding the default on first use."""
+    try:
+        if not _PROFILE_PATH.exists():
+            _PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _PROFILE_PATH.write_text(_DEFAULT_PROFILE)
+        return _PROFILE_PATH.read_text()
+    except Exception:  # noqa: BLE001 - profile is an enhancer, never a blocker
+        return _DEFAULT_PROFILE
+
+
+def _dev_state(max_chars: int = 2400) -> dict:
+    """Top CONTINUATION.md session: title + NEXT/Human sections (no LLM)."""
+    try:
+        text = _CONTINUATION_PATH.read_text()
+    except Exception:  # noqa: BLE001
+        return {}
+    top = text.split("\n---\n", 1)[0][:max_chars]
+    lines = top.splitlines()
+    title = lines[0].lstrip("# ").strip() if lines else ""
+    sections: dict[str, str] = {}
+    current = None
+    for ln in lines[1:]:
+        if ln.startswith("## "):
+            current = ln[3:].strip()
+            sections[current] = ""
+        elif current is not None and len(sections[current]) < 700:
+            sections[current] += ln + "\n"
+    wanted = {k: v.strip() for k, v in sections.items()
+              if any(w in k.lower() for w in ("next", "human"))}
+    return {"latest_session": title, **wanted}
+
+
+def compose_attention_briefing() -> str:
+    """Profile-ranked attention brief; falls back to compose_briefing().
+
+    LLM-composed (active model via core.llm) from the attention profile +
+    dev-state + the deterministic system line. ANY failure - model
+    unavailable, cost budget, timeout - degrades to compose_briefing(), so a
+    briefing can never fail to compose.
+    """
+    try:
+        from core import llm
+
+        model_id = llm.resolve("default")
+        if not llm.is_available(model_id):
+            return compose_briefing()
+
+        from core import memory
+        from core.constitution import Constitution
+
+        Constitution.load().check_cost_budget(memory.cost_today())
+
+        context = {
+            "attention_profile": _attention_profile(),
+            "dev_state": _dev_state(),
+            "system": compose_briefing(),
+        }
+        result = llm.complete(
+            [{"role": "user",
+              "content": "Context:\n" + json.dumps(context, indent=2)}],
+            system=_ATTENTION_SYSTEM,
+            model=model_id,
+            max_tokens=400,
+        )
+        text = (result.text or "").strip()
+        return text or compose_briefing()
+    except Exception:  # noqa: BLE001 - the brief must always compose
+        logger.debug("attention briefing fell back", exc_info=True)
+        return compose_briefing()
+
+
 def post_briefing(*, force_announce: bool = False, now: datetime | None = None) -> dict:
     """Compose + record the daily briefing (kind="briefing").
 
@@ -420,7 +541,7 @@ def post_briefing(*, force_announce: bool = False, now: datetime | None = None) 
     stamp the rate-limit window (an on-demand brief defers the next
     scheduled one's announce window like any other).
     """
-    text = compose_briefing()
+    text = compose_attention_briefing()
     announced = force_announce or should_announce("osa-briefing", "briefing", now=now)
     if announced:
         mark_announced("osa-briefing", now=now)
