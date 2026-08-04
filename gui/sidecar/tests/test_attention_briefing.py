@@ -8,6 +8,13 @@ monkeypatched throughout.
 """
 from __future__ import annotations
 
+# Pre-warm numpy: compose_briefing()'s health probe can kick off a worker
+# thread that lazily imports numpy; if a later test file's pytest.approx runs
+# while that import is mid-flight it sees a partially initialized module
+# (observed with test_phase14e_proactive's ioreg parse). Importing eagerly at
+# collection time makes these tests hermetic (same precedent as 07-23).
+import numpy  # noqa: F401
+
 from gui.sidecar import osa_proactive as op
 
 

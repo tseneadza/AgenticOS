@@ -501,7 +501,11 @@ def compose_attention_briefing() -> str:
     try:
         from core import llm
 
-        model_id = llm.resolve("default")
+        # Prefer the ACTIVE brain (may be a local pin — works offline/credit-
+        # free, per 07-23 local-first routing); fall back to default alias.
+        model_id = llm.resolve(llm.active_model() or "default")
+        if not llm.is_available(model_id):
+            model_id = llm.resolve("default")
         if not llm.is_available(model_id):
             return compose_briefing()
 
