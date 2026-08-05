@@ -189,6 +189,43 @@ npm start
         assert len(steps) == 1
         assert any("make build" in n for n in notes)
 
+    def test_venv_activation_captured_bare_python(self):
+        # Calculator-style: `source .venv/bin/activate` is consumed (no step of
+        # its own) but its venv dir rides along on the following bare `python`.
+        steps, _ = parse_start_sh(
+            "source .venv/bin/activate\npython src/server.py\n")
+        assert len(steps) == 1
+        assert steps[0].command == "python"
+        assert steps[0].args == ["src/server.py"]
+        assert steps[0].venv == ".venv"
+
+    def test_venv_activation_dot_form_and_alt_dir_name(self):
+        # `.` (dot) is equivalent to `source`; venv dir name is not fixed.
+        steps, _ = parse_start_sh(". venv/bin/activate\npython3 app.py\n")
+        assert len(steps) == 1
+        assert steps[0].command == "python3"
+        assert steps[0].venv == "venv"
+
+    def test_venv_activation_quoted_path(self):
+        steps, _ = parse_start_sh(
+            'source ".venv/bin/activate"\npython app.py\n')
+        assert steps[0].venv == ".venv"
+
+    def test_no_activation_leaves_venv_none(self):
+        # Regression: without an activation line, venv stays None (unchanged
+        # behavior for the vast majority of start.sh scripts).
+        steps, _ = parse_start_sh("python app.py\n")
+        assert steps[0].venv is None
+
+    def test_venv_activation_does_not_special_case_non_python(self):
+        # The parser only records the venv dir — it does NOT decide what to
+        # rewrite. A non-python command after activation keeps its own name;
+        # the plan builder (not the parser) is what compiles a bare `python`.
+        steps, _ = parse_start_sh(
+            "source .venv/bin/activate\nuvicorn main:app --port 5100\n")
+        assert steps[0].command == "uvicorn"
+        assert steps[0].venv == ".venv"
+
 
 # ── port_type inference ────────────────────────────────────────────────────────
 
@@ -289,6 +326,40 @@ class TestTemplating:
         # No projects.venv_path -> never emit {venv_path}; app_path still used.
         assert plan.command_plans[0].steps[0]["command"] == \
             "{app_path}/.venv/bin/python"
+
+    def test_source_activate_bare_python_templated_via_app_path(self, db_session):
+        # DIFFERENT case from above: no explicit venv path in the command —
+        # start.sh activates a venv, then runs bare `python`. The builder must
+        # compile that into the venv interpreter. With no projects.venv_path,
+        # it templates through {app_path} using the activated dir (.venv).
+        _add_project(db_session, "actvenv", "/tmp/codehome/actvenv")
+        db_session.add(Port(port=5701, app_id="actvenv", port_type="api"))
+        db_session.commit()
+
+        script = "source .venv/bin/activate\npython src/server.py\n"
+        apps = [_mk_app("actvenv", "/tmp/codehome/actvenv", 5701)]
+        plan = build_plan(apps, db_session, read_start_sh=lambda a: script)
+
+        step = plan.command_plans[0].steps[0]
+        assert step["command"] == "{app_path}/.venv/bin/python3"
+        assert step["args"] == ["src/server.py"]
+
+    def test_source_activate_bare_python_templated_via_venv_path(self, db_session):
+        # Same activation script, but the project HAS an explicit venv_path ->
+        # the interpreter templates through {venv_path} (venv wins over app_path
+        # since the venv lives under the app root).
+        _add_project(db_session, "actvenvvp", "/tmp/codehome/actvenvvp",
+                     venv_path="/tmp/codehome/actvenvvp/.venv")
+        db_session.add(Port(port=5702, app_id="actvenvvp", port_type="api"))
+        db_session.commit()
+
+        script = "source .venv/bin/activate\npython src/server.py\n"
+        apps = [_mk_app("actvenvvp", "/tmp/codehome/actvenvvp", 5702)]
+        plan = build_plan(apps, db_session, read_start_sh=lambda a: script)
+
+        step = plan.command_plans[0].steps[0]
+        assert step["command"] == "{venv_path}/bin/python3"
+        assert step["args"] == ["src/server.py"]
 
 
 # ── collision path ─────────────────────────────────────────────────────────────

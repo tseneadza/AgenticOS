@@ -1,3 +1,26 @@
+## 2026-08-05 — Launch-config binds `source .venv/bin/activate` → venv python (venv-app Start no longer 500s)
+
+`gui/sidecar/scripts/backfill_launch_config.py` dropped every `source <dir>/bin/activate`
+line in an app's `start.sh` as housekeeping, so an app that activates a venv and then runs
+a bare `python`/`python3` was stored in `app_commands` as `command="python", venv=null`.
+At spawn the sidecar's minimal PATH (`/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin` — no
+`python`) → `[Errno 2] No such file or directory` → HTTP 500. Two edits: `_StartShParser`
+captures the venv dir from a `source`/`.` activate line into a new `ParsedStep.venv`, and
+`_plan_from_steps` compiles a bare `python`/`python3` under an active venv into
+`posixpath.join(app_path, venv, "bin", "python3")`, templated to `{app_path}/.venv/bin/python3`
+(or `{venv_path}/bin/python3` when `projects.venv_path` is set) — mirrors
+`process_manager._apply_venv_rewrite`. No schema change (uses the existing `command` column).
++7 tests in `test_phase13b.py` (file 27; full sidecar suite 942 green — the only 2 failures
+are pre-existing, unrelated `test_phase15d_mail_mcp.py` env leaks to the real Mail app).
+Security reviewed inline (the `security-verifier` subagent hit the session limit — CLAUDE.md
+spend-limit fallback) with adversarial proofs → PASS: no argv-injection / path-escape
+regression (every derived venv path is a single `argv[0]` element; `..`/absolute escapes are
+pre-existing start.sh-author control, not a new capability). Proven live: calculator Start →
+200, serves `:8094/docs`, Stop cleans up. NOTE (see CONTINUATION 2026-08-05): this rescues
+only the `source-activate + bare python` pattern; two SEPARATE fleet-wide blockers remain —
+the sidecar's homebrew-less PATH fails bare `npm`/`node`/`uv`/`jupyter`, and the registry
+`python3 app.py` apps need `projects.venv_path` set to use their venv.
+
 ## 2026-07-24 — Cloud-brain fallback: billing/auth failures degrade to local instead of dying
 
 Born from a live moment: Osa reported "out of Anthropic credits" while

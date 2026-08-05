@@ -1,3 +1,69 @@
+# ⏹ SESSION 2026-08-05 — CodeHome app launches: venv-binding parser fix SHIPPED ✅ (calculator proven) · fleet-wide PATH + registry-venv_path blockers mapped (follow-ups)
+
+Fixed the diagnosed venv-binding bug in the data-driven launch system (Phase 13) and proved
+it end-to-end on calculator. Also measured WHY most other apps still 500 — two SEPARATE,
+larger issues the parser fix does not cover.
+
+## Shipped ✅ — parser binds venv activation (this commit)
+`gui/sidecar/scripts/backfill_launch_config.py`: `_StartShParser` now captures the venv dir
+from `source <dir>/bin/activate` / `. <dir>/bin/activate` into new `ParsedStep.venv` (and
+consumes the line); `_plan_from_steps` compiles a bare `python`/`python3` under an active
+venv into the venv interpreter → templated `{app_path}/.venv/bin/python3` (or
+`{venv_path}/bin/python3` when `projects.venv_path` set). No schema change (existing `command`
+column). +7 tests in `gui/sidecar/tests/test_phase13b.py` (file now 27) — parser venv capture
+across `source`/`.`/quoted/alt-dir/no-activation, plus compile→venv-python. Full sidecar suite
+**942 green**; the ONLY 2 failures are PRE-EXISTING + unrelated (`test_phase15d_mail_mcp.py`
+`TestReads` — the osascript spy leaks to the real Mail app; my diff never touches mail). Test
+authorship delegated to a test-author subagent (green run independently re-verified here).
+Security: the `security-verifier` subagent died on the session limit → reviewed INLINE per the
+CLAUDE.md spend-limit fallback, with adversarial proofs run against the real parser → **PASS**
+(no argv-injection / path-escape; every derived venv path is a single `argv[0]` element; `..`
+and absolute escapes are pre-existing start.sh-author control, not a new capability).
+calculator: deleted its stale `app_commands` row, surgically re-inserted from the fixed plan
+(NOT a blanket `--apply` — that would have inserted rows for infra agenticos/brain-scanner,
+which are intentionally rowless); plan now `/Users/…/calculator/.venv/bin/python3 src/server.py`;
+POST /start → 200 (managed pid, :8094), `/docs` 200, POST /stop → killed_pids, port freed.
+**MySQL is BACK UP** (the 08-04 note below said it was down).
+
+## 🔑 KEY DISCOVERY — the fix rescues only `source-activate + bare python`; the fleet has TWO more independent blockers
+Sidecar real spawn PATH = `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin` (GUI/launchd default,
+NO `/opt/homebrew/bin`). `projects.venv_path` is None for ALL 25 apps. So:
+1. **Homebrew-only commands fail at spawn regardless of venv.** Bare `npm`,`node`,`uv`,
+   `jupyter` are in `/opt/homebrew/bin` → `[Errno 2]`. Hits queensgame, worldwise (uv+npm),
+   jupyter-notebook (`jupyter lab`; jupyter isn't installed at all), astro-physics-hub +
+   dreamcatcher + startrek-facts (npm build steps), igotyou/projmanager/taste-dees
+   (`npm run dev`). Bare `python3` DOES resolve (`/usr/bin/python3` + `/usr/local/bin/python3`);
+   only bare `python` (no 3) was missing — that's the calculator case the fix nails.
+2. **Registry `python3 app.py` apps run SYSTEM python3, not their venv.** The 8 no-start.sh
+   apps (blackjack, chem, keno, solar-system, songtrans, template-app, ufc, weather) go through
+   `_plan_from_registry` (the fix is in `_plan_from_steps`, start.sh path only). They spawn fine
+   but import deps from system python → ModuleNotFoundError. They need `projects.venv_path` set
+   so `process_manager._apply_venv_rewrite` swaps python3→venv-python at spawn.
+
+## In progress / done this session — venv bootstrap (background, exit 0)
+Bootstrapped the 14 need-venv apps with the CORRECT dir name (start.sh tokens: `venv` for
+agentic/ai-voice/battester/dreamcatcher/mazegame/shuffle; `.venv` for the 8 registry apps).
+Script + per-app logs + `_results.json`: `scratchpad/venv_boot/` (session scratchpad).
+
+## Exact next steps
+1. Read `scratchpad/venv_boot/_results.json` for per-app install pass/fail (heavy-dep apps
+   like ai-voice/songtrans may fail on py3.14 — record, don't chase).
+2. Re-backfill the source-activate start.sh apps (ai-voice, mazegame, shuffle; agentic already
+   stores `venv/bin/python3`) via the surgical delete-row + re-insert pattern used for
+   calculator, then verify each POST /start → poll health → POST /stop.
+3. For the 8 registry apps: set `projects.venv_path = <app>/.venv` (data-only; leans on the
+   existing `_apply_venv_rewrite`) and verify. Open Q for Tony: seed venv_path during app
+   discovery so this is automatic.
+4. **Biggest remaining blocker (separate change, NOT this fix):** give the sidecar spawn env
+   `/opt/homebrew/bin` on PATH (or rewrite bare `npm`/`node`/`uv`/`uvicorn`/`jupyter` to
+   absolute/venv paths in the plan) so node/uv/jupyter apps launch. Install `jupyter` for
+   jupyter-notebook.
+5. Oddballs: `learner` start_command is `./start.sh` but there is NO start.sh on disk — restore
+   it or set a registry `start_command`. igotyou/projmanager/taste-dees are npm apps (blocked
+   by #4). startrek-facts = npm + venv (blocked by #4 for its frontend).
+
+---
+
 # ⏹ SESSION 2026-08-04 — OSA ATTENTION MODEL DESIGNED ✅ + "BRIEF ME" NOW THE ATTENTION BRIEF ✅ (live on local brain) · Phase A queued (17a still build NEXT)
 
 Cowork (non-dev) session with Tony. Designed how OSA learns what concerns him —

@@ -116,6 +116,7 @@ class ParsedStep:
     env: dict[str, str] = field(default_factory=dict)
     background: bool = False                      # ran with a trailing ``&``
     ports: list[int] = field(default_factory=list)  # literal ports found
+    venv: str | None = None                       # venv dir from `source .../activate`
 
 
 def _valid_port(value: str) -> int | None:
@@ -170,6 +171,7 @@ class _StartShParser:
         self.variables: dict[str, str] = {}
         self.exported: dict[str, str] = {}
         self.cwd = "."
+        self._venv: str | None = None
         self.steps: list[ParsedStep] = []
         self.notes: list[str] = []
         self._in_function = False
@@ -322,6 +324,15 @@ class _StartShParser:
         if not tokens:
             return
 
+        # Virtualenv activation (`source .venv/bin/activate`, `. venv/bin/activate`):
+        # consume the line but remember the venv dir so the plan builder can
+        # compile the later bare `python` into this venv's interpreter. Works
+        # for any venv dir name (.venv, venv, ...).
+        if (tokens[0] in ("source", ".") and len(tokens) >= 2
+                and posixpath.basename(tokens[1]) == "activate"):
+            self._venv = posixpath.dirname(posixpath.dirname(tokens[1])) or None
+            return
+
         # Inline env prefix: KEY=val [KEY=val ...] command args.
         inline_env: dict[str, str] = {}
         while tokens and (m := _ASSIGN_RE.match(tokens[0])):
@@ -348,6 +359,7 @@ class _StartShParser:
         self.steps.append(ParsedStep(
             command=command, args=args, cwd=self.cwd, env=env,
             background=background, ports=_extract_ports(args, inline_env),
+            venv=self._venv,
         ))
 
 
@@ -525,10 +537,19 @@ def _plan_from_steps(app: dict, project, steps: list[ParsedStep],
     for i, (ps, step_type) in enumerate(zip(steps, step_types), start=1):
         wait_done, wait_port = _wait_flags(ps, step_type is not None,
                                            is_last=(i == len(steps)))
+        # A bare `python`/`python3` under a start.sh `source .venv/bin/activate`
+        # must launch from that venv — bare `python` isn't on the sidecar's
+        # PATH, so it spawns with [Errno 2]. Compile it to the venv interpreter;
+        # templating below rewrites it to {app_path}/.venv/bin/python3 (or
+        # {venv_path}/bin/python3 when projects.venv_path is set). Mirrors
+        # process_manager._apply_venv_rewrite.
+        command = ps.command
+        if ps.venv and posixpath.basename(command) in ("python", "python3"):
+            command = posixpath.join(app_path or ".", ps.venv, "bin", "python3")
         rows.append(dict(
             app_id=app_id,
             step_order=i,
-            command=_template(ps.command, app_path, venv_path, {}),
+            command=_template(command, app_path, venv_path, {}),
             args=[_template(a, app_path, venv_path, port_vars)
                   for a in ps.args],
             working_directory=ps.cwd,
