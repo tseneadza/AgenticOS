@@ -68,18 +68,8 @@ OSA_SYSTEM = (
     "- You have NO knowledge of the live system except what tools return. For "
     "any question about app status, system health, or to control an app, call "
     "the matching tool FIRST and answer from its result.\n"
-    "- Map requests to tools, e.g.: 'is X running' / 'status of X' -> "
-    "app_status; 'how's my memory' / 'system health' -> system_health; 'which "
-    "apps are up' / 'are my apps healthy' -> apps_health; 'what projects do I "
-    "have' / 'list my projects' -> list_projects; 'launch X' / 'start X' -> "
-    "start_app; 'stop X' / 'shut down X' -> stop_app; 'what time is it' / "
-    "'what's the date' -> get_time; 'run <command>' / any terminal request "
-    "-> run_command; 'remember that ...' -> "
-    "remember; 'switch to Sonnet' / 'use your local brain' / 'back to auto' "
-    "-> switch_model; 'pull llama3.3' / 'download a model' / 'add a new local "
-    "model' -> pull_model. Files (inside ~/Codehome and ~/Brain2): 'read <file>' -> read_file; 'list <dir>' -> list_dir; 'find <files>' -> search_files; 'save/write to <file>' -> write_file; 'append to <file>' -> append_file; 'move/rename <file>' -> move_file; 'delete <file>' -> delete_file. Messages (iMessage, needs Full Disk Access): 'read my messages with <person>' -> read_messages; 'search messages for <text>' -> search_messages; 'recent chats' / 'who have I messaged' -> list_recent_chats; 'text/message <person>' -> resolve_contact (if given a NAME) then send_message with the RAW handle — sends always need Tony's OK and the confirm must show the actual handle, never just the name. Mail (Mail.app): 'check my email' / 'recent mail' -> list_recent_mail; 'which mailboxes' -> list_mailboxes; 'find the email from <x>' -> search_mail; 'read that email' -> read_email; 'email <address>' -> send_mail; 'reply to it' -> read_email first, then reply_mail with the sender's ADDRESS — mail sends/replies always need Tony's OK and the confirm must show the actual address. Any full claude-* id (e.g. 'claude-opus-4-8') is "
-    "switchable even if not on the shelf; a bare cloud family name you don't "
-    "recognize -> ask Tony for the full id rather than guessing one.\n"
+    "- The bound tool roster and how to invoke each is shown below (a generated 'How to map requests' section plus the 'Bound tools' list); use the matching tool "
+    "for a request instead of guessing.\n"
     "- Your own brain is stated in the 'Brain status' line at the end of this "
     "prompt. When asked what model/brain you are running on, answer from that "
     "line directly — no tool call needed (switch_model with 'status' works "
@@ -1247,6 +1237,151 @@ def _run_coro(coro):
 
 
 # --------------------------------------------------------------------------- #
+# Phase 17a — TOOL_SPECS registry (single source of truth, 2026-08-04).
+#
+# Every tool listed here carries the trigger phrases + usage note that used to
+# live in the hand-written OSA_SYSTEM mapping paragraph. build_tools() and the
+# rendered "how to map requests" prose both derive from this list, so there is
+# no way for the two to drift. Adding a tool = adding a spec row and a toolbox
+# method; forgetting either is a test failure (parity + LOCAL_TOOL_NAMES
+# consistency, see gui/sidecar/tests/test_phase17a_self_model.py).
+#
+# `local=True` MUST match LOCAL_TOOL_NAMES; `guard` is descriptive only — the
+# Constitution stays enforcement authority. `group` drives the per-group prose
+# render. Ordering here is the render order.
+# --------------------------------------------------------------------------- #
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    """Per-tool metadata for prompt rendering + registry parity checks."""
+    name: str
+    method: str
+    triggers: tuple[str, ...]
+    usage_note: str
+    local: bool
+    guard: str            # "free" | "approval" | "blocked-able"
+    group: str
+
+
+TOOL_SPECS: tuple[ToolSpec, ...] = (
+    # ── status / system ───────────────────────────────────────────────────
+    ToolSpec("app_status", "app_status",
+             ("is X running", "status of X"),
+             "-> app_status", True, "free", "system"),
+    ToolSpec("system_health", "system_health",
+             ("how's my memory", "system health"),
+             "-> system_health", True, "free", "system"),
+    ToolSpec("apps_health", "apps_health",
+             ("which apps are up", "are my apps healthy"),
+             "-> apps_health", True, "free", "system"),
+    ToolSpec("list_projects", "list_projects",
+             ("what projects do I have", "list my projects"),
+             "-> list_projects", True, "free", "system"),
+    ToolSpec("start_app", "start_app",
+             ("launch X", "start X"),
+             "-> start_app", True, "free", "system"),
+    ToolSpec("stop_app", "stop_app",
+             ("stop X", "shut down X"),
+             "-> stop_app", True, "free", "system"),
+    ToolSpec("get_time", "get_time",
+             ("what time is it", "what's the date"),
+             "-> get_time", True, "free", "system"),
+    ToolSpec("remember", "remember",
+             ("remember that ...",),
+             "-> remember", True, "free", "memory"),
+    # ── brains ────────────────────────────────────────────────────────────
+    ToolSpec("switch_model", "switch_model",
+             ("switch to Sonnet", "use your local brain", "back to auto"),
+             "-> switch_model. Any full claude-* id (e.g. 'claude-opus-4-8') is "
+             "switchable even if not on the shelf; a bare cloud family name you "
+             "don't recognize -> ask Tony for the full id rather than guessing one.",
+             True, "free", "brains"),
+    ToolSpec("pull_model", "pull_model",
+             ("pull llama3.3", "download a model", "add a new local model"),
+             "-> pull_model", False, "free", "brains"),
+    # ── shell (cloud-only, sharp) ─────────────────────────────────────────
+    ToolSpec("run_command", "run_command",
+             ("run <command>", "any terminal request"),
+             "-> run_command", False, "approval", "shell"),
+    # ── files (inside ~/Codehome and ~/Brain2) ────────────────────────────
+    ToolSpec("read_file", "read_file",
+             ("read <file>",), "-> read_file", True, "free", "files"),
+    ToolSpec("list_dir", "list_dir",
+             ("list <dir>",), "-> list_dir", True, "free", "files"),
+    ToolSpec("search_files", "search_files",
+             ("find <files>",), "-> search_files", False, "free", "files"),
+    ToolSpec("write_file", "write_file",
+             ("save/write to <file>",), "-> write_file", True, "free", "files"),
+    ToolSpec("append_file", "append_file",
+             ("append to <file>",), "-> append_file", True, "free", "files"),
+    ToolSpec("move_file", "move_file",
+             ("move/rename <file>",), "-> move_file", False, "approval", "files"),
+    ToolSpec("delete_file", "delete_file",
+             ("delete <file>",), "-> delete_file", False, "approval", "files"),
+    # ── messages (iMessage, needs Full Disk Access) ───────────────────────
+    ToolSpec("read_messages", "read_messages",
+             ("read my messages with <person>",),
+             "-> read_messages", True, "free", "messages"),
+    ToolSpec("search_messages", "search_messages",
+             ("search messages for <text>",),
+             "-> search_messages", False, "free", "messages"),
+    ToolSpec("list_recent_chats", "list_recent_chats",
+             ("recent chats", "who have I messaged"),
+             "-> list_recent_chats", False, "free", "messages"),
+    ToolSpec("resolve_contact", "resolve_contact",
+             ("(pre-step for send_message when given a NAME)",),
+             "-> resolve_contact", True, "free", "messages"),
+    ToolSpec("send_message", "send_message",
+             ("text/message <person>",),
+             "if given a NAME, resolve_contact first, then send_message with "
+             "the RAW handle — sends always need Tony's OK and the confirm must "
+             "show the actual handle, never just the name.",
+             True, "approval", "messages"),
+    # ── mail (Mail.app) ───────────────────────────────────────────────────
+    ToolSpec("list_recent_mail", "list_recent_mail",
+             ("check my email", "recent mail"),
+             "-> list_recent_mail", True, "free", "mail"),
+    ToolSpec("list_mailboxes", "list_mailboxes",
+             ("which mailboxes",), "-> list_mailboxes", False, "free", "mail"),
+    ToolSpec("search_mail", "search_mail",
+             ("find the email from <x>",),
+             "-> search_mail", False, "free", "mail"),
+    ToolSpec("read_email", "read_email",
+             ("read that email",), "-> read_email", True, "free", "mail"),
+    ToolSpec("send_mail", "send_mail",
+             ("email <address>",),
+             "-> send_mail — mail sends always need Tony's OK and the confirm "
+             "must show the actual address.",
+             True, "approval", "mail"),
+    ToolSpec("reply_mail", "reply_mail",
+             ("reply to it",),
+             "read_email first, then reply_mail with the sender's ADDRESS — mail "
+             "replies always need Tony's OK and the confirm must show the actual "
+             "address.",
+             False, "approval", "mail"),
+)
+
+
+def render_tool_map(specs: tuple[ToolSpec, ...] | list[ToolSpec],
+                    only: frozenset[str] | None = None) -> str:
+    """Render the 'Map requests to tools' prose from TOOL_SPECS.
+
+    Replaces the hand-written OSA_SYSTEM mapping paragraph. ``only`` filters to
+    the bound subset so a local pin's prompt never mentions cloud-only tools
+    (fixes the 07-23 hallucinated-capability risk).
+    """
+    picked = [s for s in specs if only is None or s.name in only]
+    parts = ["Map requests to tools, e.g.:"]
+    for s in picked:
+        triggers = " / ".join(f"'{t}'" for t in s.triggers)
+        parts.append(f" {triggers} {s.usage_note};")
+    text = "".join(parts).rstrip(";") + "."
+    return text
+
+
+# --------------------------------------------------------------------------- #
 # LangGraph ReAct agent construction (lazy — keeps this module import-light).
 # --------------------------------------------------------------------------- #
 # Tools a LOCAL model is given (2026-07-23) — the menial, high-frequency system
@@ -1312,11 +1447,17 @@ def build_tools(toolbox: OSAToolbox, only: frozenset[str] | None = None) -> list
 
 
 def _prompt_with_tool_manifest(tools: list) -> str:
-    """OSA_SYSTEM + an explicit roster of the bound tools.
+    """OSA_SYSTEM + generated 'How to map requests' prose + roster.
 
-    Naming the tools in the system prompt (in addition to binding them) makes it
-    far less likely a small model claims it "has no tools".
+    Phase 17a (2026-08-04): the mapping prose is generated from TOOL_SPECS
+    filtered to the bound subset (so a local pin is never told about tools it
+    can't call — a 07-23 latency/hallucination fix). The roster is retained
+    below the mapping (naming bound tools makes small models stop claiming
+    they "have no tools"). Any tool bound without a spec is listed under a
+    'Bound tools' fallback so nothing gets orphaned.
     """
+    bound = {t.name for t in tools}
+    mapping = render_tool_map(TOOL_SPECS, only=frozenset(bound))
     lines = []
     for t in tools:
         desc = (getattr(t, "description", "") or "").strip()
@@ -1325,6 +1466,7 @@ def _prompt_with_tool_manifest(tools: list) -> str:
     roster = "\n".join(lines)
     return (
         f"{OSA_SYSTEM}\n\n"
+        f"How to map requests to tools:\n{mapping}\n\n"
         "You DO have tools available — the following are bound and callable "
         "RIGHT NOW. Never claim you have no tools; call the matching one:\n"
         f"{roster}"
