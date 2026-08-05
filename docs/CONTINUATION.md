@@ -40,27 +40,40 @@ NO `/opt/homebrew/bin`). `projects.venv_path` is None for ALL 25 apps. So:
    but import deps from system python → ModuleNotFoundError. They need `projects.venv_path` set
    so `process_manager._apply_venv_rewrite` swaps python3→venv-python at spawn.
 
-## In progress / done this session — venv bootstrap (background, exit 0)
-Bootstrapped the 14 need-venv apps with the CORRECT dir name (start.sh tokens: `venv` for
-agentic/ai-voice/battester/dreamcatcher/mazegame/shuffle; `.venv` for the 8 registry apps).
-Script + per-app logs + `_results.json`: `scratchpad/venv_boot/` (session scratchpad).
+## Bootstrap + verification — DONE this session (DB state changed, see below)
+Bootstrapped the 14 need-venv apps with the CORRECT dir name (`venv` for agentic/ai-voice/
+battester/dreamcatcher/mazegame/shuffle; `.venv` for the 8 registry apps): 13/14 OK, only
+**shuffle** pip-failed (script + per-app logs + `_results.json` in session scratchpad
+`venv_boot/`). Then set `projects.venv_path = <app>/.venv` for the 8 registry apps (data-only,
+leans on the existing `process_manager._apply_venv_rewrite` to swap `python3`→venv-python at
+spawn) and surgically re-backfilled ai-voice + mazegame (delete rows + scoped `apply_plan`).
+**These are agenticos-DB (MySQL) runtime-state changes, not repo files.**
 
-## Exact next steps
-1. Read `scratchpad/venv_boot/_results.json` for per-app install pass/fail (heavy-dep apps
-   like ai-voice/songtrans may fail on py3.14 — record, don't chase).
-2. Re-backfill the source-activate start.sh apps (ai-voice, mazegame, shuffle; agentic already
-   stores `venv/bin/python3`) via the surgical delete-row + re-insert pattern used for
-   calculator, then verify each POST /start → poll health → POST /stop.
-3. For the 8 registry apps: set `projects.venv_path = <app>/.venv` (data-only; leans on the
-   existing `_apply_venv_rewrite`) and verify. Open Q for Tony: seed venv_path during app
-   discovery so this is automatic.
-4. **Biggest remaining blocker (separate change, NOT this fix):** give the sidecar spawn env
-   `/opt/homebrew/bin` on PATH (or rewrite bare `npm`/`node`/`uv`/`uvicorn`/`jupyter` to
-   absolute/venv paths in the plan) so node/uv/jupyter apps launch. Install `jupyter` for
-   jupyter-notebook.
-5. Oddballs: `learner` start_command is `./start.sh` but there is NO start.sh on disk — restore
-   it or set a registry `start_command`. igotyou/projmanager/taste-dees are npm apps (blocked
-   by #4). startrek-facts = npm + venv (blocked by #4 for its frontend).
+Verified each with bounded non-blocking POST /start → poll health_check.url → POST /stop.
+
+### Fleet launch status — 25 real apps (infra agenticos/brain-scanner/hub excluded)
+**✅ LAUNCH + health-check verified (12):** calculator (parser fix), physics (venv-ready
+explicit `.venv/bin/python3`), agentic (`venv/bin/python3`), learner (start.sh finds `go` by
+absolute path), and the 8 registry apps now on venv_path — blackjack, chem, keno, solar-system,
+songtrans, template-app (running; no HC configured), ufc, weather.
+**◑ Launch mechanism works, app-level residue (2):** mazegame (venv-python spawns & runs;
+configured health URL mismatches — it's a game, not that endpoint), ai-voice (venv-python
+spawns — NO more Errno 2; app then EXITS before binding :5106 → its own startup crash to debug).
+**⛔ Blocked by a SEPARATE issue, NOT the venv bug (10):** the sidecar's spawn PATH lacks
+`/opt/homebrew/bin`, so bare `npm`/`node`/`uv`/`jupyter` → `[Errno 2]` (proven live: igotyou
+`Spawn failed (step 1): [Errno 2]`). Hits queensgame, worldwise, dreamcatcher, astro-physics-hub,
+battester (bare `uvicorn`), igotyou, projmanager, taste-dees, startrek-facts, jupyter-notebook
+(`jupyter` also not installed). **shuffle** is separate again (its pip bootstrap failed).
+
+## Exact next steps (all SEPARATE from the shipped venv-binding fix)
+1. **Biggest remaining blocker:** put `/opt/homebrew/bin` on the sidecar's spawn PATH (or rewrite
+   bare `npm`/`node`/`uv`/`uvicorn`/`jupyter` to absolute/venv paths in the plan, same shape as
+   the python rewrite) → unblocks the 10 node/uv/uvicorn apps. Install `jupyter` for jupyter-notebook.
+2. Debug ai-voice's startup crash (spawns fine, exits before binding :5106 — check
+   `~/.agentic-os/logs/ai-voice.log`); fix mazegame's health-check endpoint (or mark it HC-exempt).
+3. Retry shuffle's venv bootstrap (pip-failed:1 — see `venv_boot/shuffle.log`).
+4. Open Q for Tony: seed `projects.venv_path` during app discovery so registry `python3 app.py`
+   apps get their venv automatically (I set it by hand for the 8 today).
 
 ---
 
