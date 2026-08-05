@@ -44,7 +44,27 @@ password; docs/MYSQL_MAINTENANCE.md). Cost ledger, project ledger, ports
 ledger, durable chat all depend on it. The mysql-health-check launchd job is
 failing (status 1) — worth a look while at it.
 
-## ▶ NEXT — Phase A (then B v2, C) — QUEUED behind Phase 17a
+## Also shipped this session — Phase 17a ✅ (commit 358d5ea)
+PHASE17_OSA_SELF_MODEL.md §5.1 landed: module-level `TOOL_SPECS`
+dataclass registry in `agents/osa_agent.py` = single source of truth
+(name, method, triggers, usage_note, local, guard, group). `build_tools`
+binds from it; new `render_tool_map` generates the 'How to map requests'
+prose filtered to the bound subset — a local pin's prompt no longer
+mentions cloud-only tools (kills the 07-23 hallucinated-capability +
+latency risk). Retired hand-written OSA_SYSTEM mapping paragraph;
+every battle-tuned phrase (handle-confirm, address-confirm, claude-id-
+guessing, arming pattern) moved into per-tool usage_note fields and is
+snapshot-tested. **10 new tests** — parity, LOCAL flag consistency,
+phrase preservation, generated-sections-are-clean, guard-class sanity;
+OSA_SYSTEM prose may still cite `run_command` as an anti-workaround
+example (deliberate behavioral guidance, not capability advertisement).
+Suite **937 green**. Next inside Phase 17: 17b (`core/self_model.py`
+manifest builders + tiered Self block) then 17c (`introspect` tool);
+security-verifier REQUIRED on 17b/17c per doc §7.
+
+## ▶ NEXT — Phase 17b (self_model.py + tiered Self block) — active build queue
+Then 17c; then Attention Model Phase A (MySQL profile + 3 OSA tools —
+waits on MySQL being up); then B v2 (in-app Attention dashboard), then C.
 **Precedence:** Phase 17a (Self-Model registry) is still the active build NEXT,
 and the 07-24 fallback session needs its **sidecar restart**. Attention Model
 Phase A slots in after, or whenever Tony calls it up.
