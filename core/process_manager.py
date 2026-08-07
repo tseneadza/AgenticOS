@@ -587,6 +587,29 @@ class _ProcessManager:
         except Exception as exc:  # noqa: BLE001
             log.debug("stop(%s): DB orphan sweep skipped: %s", app_id, exc)
 
+        # Port sweep: reap anything still holding the app's port that the
+        # pid-based sweeps missed — e.g. a start.sh child reparented to init
+        # after its parent exited, or an orphan from a previous sidecar life
+        # (the tracked pid was the parent that's now gone). Makes Stop reliable
+        # for untracked-but-live apps.
+        try:
+            app = app_registry.get(app_id)
+            port = app.get("expected_port") if app else None
+            if port and _port_in_use(port):
+                import subprocess as _sp
+                try:
+                    _out = _sp.run(["lsof", "-ti", f":{port}"],
+                                   capture_output=True, text=True, timeout=5).stdout
+                    _orphans = [int(x) for x in _out.split() if x.strip().isdigit()]
+                except Exception:  # noqa: BLE001
+                    _orphans = []
+                log.info("stop(%s): port :%d held after sweeps \u2014 reaping %s",
+                         app_id, port, _orphans)
+                _kill_port(port)
+                killed_pids.extend(p for p in _orphans if p not in killed_pids)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("stop(%s): port sweep skipped: %s", app_id, exc)
+
         log.info("stop(%s): stopped (killed_pids=%s)", app_id, killed_pids)
         result = _make_status(app_id, log_file=log_file)
         result["killed_pids"] = killed_pids

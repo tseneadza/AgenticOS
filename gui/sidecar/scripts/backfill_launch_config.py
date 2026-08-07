@@ -660,13 +660,15 @@ def build_plan(apps: list[dict] | None = None, session=None,
         text = read_start_sh(app)
         notes: list[str] = []
         if text is not None:
-            steps, notes = parse_start_sh(text, app_path=project.path)
-            if steps:
-                plan.command_plans.append(_plan_from_steps(
-                    app, project, steps, notes, intended, port_owner,
-                    plan.allocations, plan.collisions))
-                continue
-            notes.append("start.sh present but no launch commands recognized")
+            # Option D: run self-managing start.sh scripts directly instead of
+            # parsing them into granular steps. process_manager injects PORT and
+            # kills the whole process group on stop; the script owns venv, deps,
+            # and any backgrounded child processes itself.
+            cp = _plan_from_registry(app, project, ["bash", "start.sh"], intended)
+            cp.source = "start.sh"
+            cp.notes = ["Option D: launch via ./start.sh"] + cp.notes
+            plan.command_plans.append(cp)
+            continue
 
         start_command = app.get("start_command") or []
         if start_command:

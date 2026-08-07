@@ -5,17 +5,22 @@ the MySQL-everywhere testing rule. Covers:
 
   * start.sh parser — worldwise-style 2-step script (cwd tracking, env
     capture, background detection, shell-variable substitution), housekeeping
-    filtering, inline env, unrecognized-command notes
+    filtering, inline env, unrecognized-command notes. ``parse_start_sh`` is
+    exercised directly here; note that under **Option D** ``build_plan`` no
+    longer feeds start.sh through it (see below).
   * port_type inference — expected_port -> 'frontend', headless services stay
     'api', uk_app_port_type conflicts skipped, idempotent second pass
-  * templating — literal port -> {backend_port}/{frontend_port}, app path ->
-    {app_path}, venv -> {venv_path} only when projects.venv_path is set
-  * collision path — start.sh port owned by another app -> PortCollisionLog
-    row, no ports insert, literal kept in args
-  * no-start.sh fallback to the registry start_command
-  * apply end-to-end — extra start.sh port allocated via the ONE allocator
-    (incl. preferred-port-unavailable), build_launch_command resolves the
-    inserted rows with zero leftover tokens, second run inserts 0
+  * Option D — an app that ships a ``start.sh`` is planned as a single
+    ``bash start.sh`` step (source ``"start.sh"``), NOT parsed into granular
+    steps. The script self-manages venv/deps/child procs; process_manager
+    injects ``PORT`` and group-kills on stop. So the backfill does no
+    interpreter/venv templating, no per-literal port allocation, and no
+    script-internal port cross-check for these apps.
+  * no-start.sh fallback to the registry start_command (still a single step,
+    templated through {app_path}/{venv_path}/{<type>_port})
+  * apply end-to-end — a start.sh app inserts ONE command, allocates no extra
+    port, re-types its expected_port ledger row, and ``build_launch_command``
+    resolves it to ``bash start.sh``; second run inserts 0 (idempotent).
 
 No real ~/Codehome apps are touched: registry entries are injected as plain
 dicts and start.sh content is injected via ``read_start_sh``; the allocator's
@@ -270,103 +275,73 @@ class TestPortTypeInference:
 
 # ── templating ─────────────────────────────────────────────────────────────────
 
-class TestTemplating:
-    def test_worldwise_plan_paths_and_ports_templated(self, db_session):
+class TestOptionD:
+    """A start.sh app is planned as a single ``bash start.sh`` step — the
+    script self-manages venv/deps/child procs (Option D)."""
+
+    def test_worldwise_start_sh_plans_bash_start_sh(self, db_session):
         apps = _worldwise_setup(db_session)
         plan = build_plan(apps, db_session,
                           read_start_sh=lambda app: WORLDWISE_SH)
 
         (cp,) = plan.command_plans
         assert cp.status == "planned" and cp.source == "start.sh"
-        step1, step2 = cp.steps
+        assert any("Option D" in n for n in cp.notes)
 
-        assert step1["command"] == "uvicorn"
-        assert step1["args"] == [
-            "backend.app.main:app", "--reload", "--port", "{backend_port}"]
-        assert step1["environment_json"] == {"PYTHONPATH": "{app_path}/backend"}
-        assert step1["port_type"] == "backend"
-        assert step1["port_variable_name"] == "backend_port"
-        assert step1["wait_for_completion"] is False
-        assert step1["wait_for_port"] is True
+        # The whole (multi-process) script collapses to ONE bash step; the
+        # backfill does not parse it, so no per-step uvicorn/npm rows appear.
+        (step,) = cp.steps
+        assert step["command"] == "bash"
+        assert step["args"] == ["start.sh"]
+        assert step["working_directory"] == "."
+        assert step["environment_json"] is None
+        assert step["wait_for_completion"] is False
+        assert step["wait_for_port"] is True
+        # expected_port (5173) is re-typed to frontend, so the one step waits
+        # on the frontend port.
+        assert step["port_type"] == "frontend"
+        assert step["port_variable_name"] == "frontend_port"
 
-        assert step2["args"] == ["run", "dev", "--", "--port", "{frontend_port}"]
-        assert step2["working_directory"] == "web"
-        assert step2["port_type"] == "frontend"
-
-        # 8000 is in no ledger row -> planned allocation, not a collision.
-        assert plan.allocations == [{"app_id": "worldwise",
-                                     "preferred_port": 8000,
-                                     "port_type": "backend", "step": 1}]
+        # No script parsing => no extra-port allocation, no collision check.
+        assert plan.allocations == []
         assert plan.collisions == []
-        # Ledger row 5173 (currently 'api') is re-typed to frontend.
+        # Ledger row 5173 (currently 'api') is still re-typed to frontend
+        # (port_type inference is independent of the launch-command plan).
         assert plan.port_type_updates == [{"app_id": "worldwise", "port": 5173,
                                            "from": "api", "to": "frontend"}]
 
-    def test_venv_templated_only_when_project_has_venv(self, db_session):
+    def test_start_sh_app_ignores_script_internals(self, db_session):
+        # Option D contract: venv/deps are the SCRIPT's concern. Even when the
+        # project has an explicit venv_path and the script invokes a venv
+        # interpreter directly, the plan is just `bash start.sh` — the backfill
+        # does no interpreter/venv templating for start.sh apps.
         _add_project(db_session, "withvenv", "/tmp/codehome/withvenv",
                      venv_path="/tmp/codehome/withvenv/.venv")
-        _add_project(db_session, "novenv", "/tmp/codehome/novenv")
-        db_session.add_all([
-            Port(port=5601, app_id="withvenv", port_type="api"),
-            Port(port=5602, app_id="novenv", port_type="api"),
-        ])
+        db_session.add(Port(port=5601, app_id="withvenv", port_type="api"))
         db_session.commit()
 
         script = ("#!/bin/bash\n"
+                  "source .venv/bin/activate\n"
                   "/tmp/codehome/withvenv/.venv/bin/python api.py\n")
         apps = [_mk_app("withvenv", "/tmp/codehome/withvenv", 5601)]
         plan = build_plan(apps, db_session, read_start_sh=lambda a: script)
-        assert plan.command_plans[0].steps[0]["command"] == \
-            "{venv_path}/bin/python"
 
-        script = ("#!/bin/bash\n"
-                  "/tmp/codehome/novenv/.venv/bin/python api.py\n")
-        apps = [_mk_app("novenv", "/tmp/codehome/novenv", 5602)]
-        plan = build_plan(apps, db_session, read_start_sh=lambda a: script)
-        # No projects.venv_path -> never emit {venv_path}; app_path still used.
-        assert plan.command_plans[0].steps[0]["command"] == \
-            "{app_path}/.venv/bin/python"
-
-    def test_source_activate_bare_python_templated_via_app_path(self, db_session):
-        # DIFFERENT case from above: no explicit venv path in the command —
-        # start.sh activates a venv, then runs bare `python`. The builder must
-        # compile that into the venv interpreter. With no projects.venv_path,
-        # it templates through {app_path} using the activated dir (.venv).
-        _add_project(db_session, "actvenv", "/tmp/codehome/actvenv")
-        db_session.add(Port(port=5701, app_id="actvenv", port_type="api"))
-        db_session.commit()
-
-        script = "source .venv/bin/activate\npython src/server.py\n"
-        apps = [_mk_app("actvenv", "/tmp/codehome/actvenv", 5701)]
-        plan = build_plan(apps, db_session, read_start_sh=lambda a: script)
-
-        step = plan.command_plans[0].steps[0]
-        assert step["command"] == "{app_path}/.venv/bin/python3"
-        assert step["args"] == ["src/server.py"]
-
-    def test_source_activate_bare_python_templated_via_venv_path(self, db_session):
-        # Same activation script, but the project HAS an explicit venv_path ->
-        # the interpreter templates through {venv_path} (venv wins over app_path
-        # since the venv lives under the app root).
-        _add_project(db_session, "actvenvvp", "/tmp/codehome/actvenvvp",
-                     venv_path="/tmp/codehome/actvenvvp/.venv")
-        db_session.add(Port(port=5702, app_id="actvenvvp", port_type="api"))
-        db_session.commit()
-
-        script = "source .venv/bin/activate\npython src/server.py\n"
-        apps = [_mk_app("actvenvvp", "/tmp/codehome/actvenvvp", 5702)]
-        plan = build_plan(apps, db_session, read_start_sh=lambda a: script)
-
-        step = plan.command_plans[0].steps[0]
-        assert step["command"] == "{venv_path}/bin/python3"
-        assert step["args"] == ["src/server.py"]
+        (cp,) = plan.command_plans
+        assert cp.source == "start.sh"
+        (step,) = cp.steps
+        assert step["command"] == "bash"
+        assert step["args"] == ["start.sh"]
 
 
 # ── collision path ─────────────────────────────────────────────────────────────
 
 class TestCollisions:
-    def test_foreign_port_logged_not_inserted_literal_kept(
+    def test_start_sh_internal_port_not_cross_checked(
             self, db_session, monkeypatch):
+        # Under Option D the backfill no longer parses start.sh, so a port the
+        # SCRIPT happens to bind — even one owned by another app in the ledger —
+        # is NOT cross-checked and NOT logged as a collision. The script owns
+        # its own ports; the backfill only records the expected_port ledger row.
         _no_live_ports(monkeypatch)
         _add_project(db_session, "appa", "/tmp/codehome/appa")
         db_session.add_all([
@@ -379,19 +354,15 @@ class TestCollisions:
         apps = [_mk_app("appa", "/tmp/codehome/appa", expected_port=5109)]
         plan = build_plan(apps, db_session, read_start_sh=lambda a: script)
 
-        assert len(plan.collisions) == 1
-        assert plan.collisions[0]["port"] == 5112
-        assert plan.collisions[0]["owner"] == "astro-physics-hub"
+        assert plan.collisions == []
         assert plan.allocations == []
-        # Literal survives — a colliding port must never become a template.
-        step = plan.command_plans[0].steps[0]
-        assert step["args"] == ["main:app", "--port", "5112"]
+        # The plan is the opaque bash step — the script's 5112 never surfaces.
+        (step,) = plan.command_plans[0].steps
+        assert step["command"] == "bash" and step["args"] == ["start.sh"]
 
-        apply_plan(plan, db_session)
-        row = db_session.query(PortCollisionLog).one()
-        assert (row.port, row.app_id_1, row.app_id_2, row.phase) == \
-            (5112, "appa", "astro-physics-hub", "backfill")
-        assert row.resolved is False
+        result = apply_plan(plan, db_session)
+        assert result["collisions_logged"] == 0
+        assert db_session.query(PortCollisionLog).count() == 0
         # 5112 still has exactly one owner in the ledger.
         owners = [p.app_id for p in
                   db_session.query(Port).filter_by(port=5112).all()]
@@ -453,72 +424,48 @@ class TestRegistryFallback:
 # ── apply: allocation, contract, idempotency ───────────────────────────────────
 
 class TestApplyEndToEnd:
-    def test_apply_allocates_extra_port_and_resolves(self, db_session,
-                                                     monkeypatch):
+    def test_apply_inserts_single_bash_start_sh_command(self, db_session,
+                                                        monkeypatch):
         _no_live_ports(monkeypatch)
         apps = _worldwise_setup(db_session)
         plan = build_plan(apps, db_session,
                           read_start_sh=lambda a: WORLDWISE_SH)
         result = apply_plan(plan, db_session)
 
-        # Ledger: 5173 re-typed frontend; 8000 allocated as backend via the
-        # ONE allocator (preferred port honoured).
+        # 5173 re-typed frontend; Option D allocates NO extra port and inserts
+        # exactly ONE command (the whole script is one opaque step).
         assert result["port_type_updated"] == [
             {"app_id": "worldwise", "port": 5173, "from": "api",
              "to": "frontend"}]
-        assert result["allocated"][0]["allocated_port"] == 8000
-        row = db_session.query(Port).filter_by(port=8000).one()
-        assert (row.app_id, row.port_type) == ("worldwise", "backend")
+        assert result["allocated"] == []
         assert result["collisions_logged"] == 0
-        assert result["commands_inserted"] == 2
+        assert result["commands_inserted"] == 1
 
-        # The 13a contract: build_launch_command resolves with no leftovers.
+        # The 13a contract still holds: build_launch_command resolves cleanly.
         steps = launch_config.build_launch_command(
             "worldwise", session=db_session)
-        assert steps[0]["args"] == [
-            "backend.app.main:app", "--reload", "--port", "8000"]
-        assert steps[0]["env"] == {"PYTHONPATH": f"{WORLDWISE_PATH}/backend"}
-        assert steps[1]["args"][-1] == "5173"
-        assert steps[1]["cwd"] == f"{WORLDWISE_PATH}/web"
-
-    def test_preferred_port_unavailable_logs_and_retemplates(
-            self, db_session, monkeypatch):
-        # 8000 is busy on the machine -> allocator scans 5200..5999 instead.
-        _no_live_ports(monkeypatch, in_use=lambda p: p == 8000)
-        apps = _worldwise_setup(db_session)
-        plan = build_plan(apps, db_session,
-                          read_start_sh=lambda a: WORLDWISE_SH)
-        result = apply_plan(plan, db_session)
-
-        allocated = result["allocated"][0]["allocated_port"]
-        assert allocated != 8000
-        row = db_session.query(Port).filter_by(port=allocated).one()
-        assert (row.app_id, row.port_type) == ("worldwise", "backend")
-
-        # The mismatch is logged (backfill phase) …
-        logged = db_session.query(PortCollisionLog).one()
-        assert (logged.port, logged.app_id_1, logged.phase) == \
-            (8000, "worldwise", "backfill")
-        # … and the templated command resolves to the ALLOCATED port.
-        steps = launch_config.build_launch_command(
-            "worldwise", session=db_session)
-        assert steps[0]["args"][-1] == str(allocated)
+        assert len(steps) == 1
+        assert steps[0]["command"] == "bash"
+        assert steps[0]["args"] == ["start.sh"]
+        assert steps[0]["cwd"] == WORLDWISE_PATH        # working_directory "."
+        assert steps[0]["port_type"] == "frontend"
+        assert steps[0]["port"] == 5173
 
     def test_second_run_inserts_zero(self, db_session, monkeypatch):
         _no_live_ports(monkeypatch)
         apps = _worldwise_setup(db_session)
         first = apply_plan(build_plan(
             apps, db_session, read_start_sh=lambda a: WORLDWISE_SH), db_session)
-        assert first["commands_inserted"] == 2
+        assert first["commands_inserted"] == 1
 
         plan2 = build_plan(apps, db_session,
                            read_start_sh=lambda a: WORLDWISE_SH)
         (cp2,) = plan2.command_plans
         assert cp2.status == "existing"
         assert plan2.port_type_updates == []      # 5173 already frontend
-        assert plan2.allocations == []            # 8000 already in the ledger
+        assert plan2.allocations == []
         second = apply_plan(plan2, db_session)
         assert second["commands_inserted"] == 0
         assert second["apps_inserted"] == []
         assert db_session.query(AppCommand).filter_by(
-            app_id="worldwise").count() == 2
+            app_id="worldwise").count() == 1

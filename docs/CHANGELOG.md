@@ -1,3 +1,31 @@
+## 2026-08-06 — Codehome App-Launch Hardening phase kickoff (Option D committed on green)
+
+Opened the **Codehome App-Launch Hardening** phase and committed the three
+launch/stop fixes the prior session left uncommitted (see
+`docs/PHASE_CODEHOME_LAUNCH_HARDENING_KICKOFF.md`):
+- **Option D** (`gui/sidecar/scripts/backfill_launch_config.py`) — an app that
+  ships a `start.sh` is now planned as a single `bash start.sh` step
+  (`source="start.sh"`) instead of a parsed step list. The script self-manages
+  venv/deps/child procs; `process_manager` injects `PORT` and group-kills on
+  stop. The backfill no longer does interpreter/venv templating, per-literal
+  port allocation, or script-internal port cross-check for these apps.
+- **Stop port-sweep** (`core/process_manager.py`) — `stop()` reaps orphaned
+  port owners (`lsof`/`_kill_port`) that the tracked-only stop missed.
+- **Stop-button root cause** (`gui/sidecar/app.py`) — `panel_hub_action` routes
+  to the native process manager instead of proxying to the retired Hub Go
+  server on :8085 (every Stop was 502ing).
+
+**Tests:** rewrote the 8 Phase-13b tests that asserted the removed parse
+behavior into Option-D intent (single `bash start.sh` step, no allocation, no
+cross-check, idempotent single insert); dropped 3 whose premises are gone
+(source-activate templating ×2, preferred-port retemplate). `test_phase13b.py`
+green (24); full sidecar suite 939 green — the only 2 failures are the
+pre-existing, unrelated `test_phase15d_mail_mcp.py` env leaks to the real Mail
+app. `parse_start_sh` is retained + unit-tested but no longer wired into
+`build_plan` (dead in the plan path — removal candidate once Option D is proven
+across the fleet). Remaining phase work (fleet launch/stop verification, port
+reconciliation, GUI launch mode) tracked in the kickoff doc.
+
 ## 2026-08-05 — Launch-config binds `source .venv/bin/activate` → venv python (venv-app Start no longer 500s)
 
 `gui/sidecar/scripts/backfill_launch_config.py` dropped every `source <dir>/bin/activate`

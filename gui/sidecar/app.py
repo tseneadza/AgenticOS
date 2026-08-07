@@ -612,19 +612,25 @@ def panel_hub() -> dict:
 
 
 @app.post("/api/panels/hub/{app_id}/{action}")
-def panel_hub_action(app_id: str, action: str) -> dict:
-    """Execute a start/stop/restart action on a Hub-managed app.
-
-    Args:
-        app_id: Identifier of the Hub application.
-        action: Action to perform (start, stop, restart).
-    """
-    try:
-        return panels.hub_app_action(app_id, action)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, f"Hub action failed: {exc}") from exc
+async def panel_hub_action(app_id: str, action: str) -> dict:
+    """Execute start/stop/restart on a Codehome app via the NATIVE process
+    manager. Phase 9 migrated hub_status to native but left this action path
+    proxying to the retired Hub server on :8085 (hub_mcp._post_json ->
+    /api/cards/...), which 502'd once the Hub was gone. Now mirrors
+    POST /api/apps/{app_id}/{action} so the Hub panel and Projects panel share
+    one launch/stop system (incl. the stop port-sweep for orphans)."""
+    from core.process_manager import manager
+    if action == "start":
+        result = await manager.start(app_id)
+    elif action == "stop":
+        result = await manager.stop(app_id)
+    elif action == "restart":
+        result = await manager.restart(app_id)
+    else:
+        raise HTTPException(400, f"Unsupported action '{action}'")
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(500, result["error"])
+    return result
 
 
 @app.post("/api/panels/hub/start")
