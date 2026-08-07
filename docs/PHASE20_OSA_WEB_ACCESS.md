@@ -1,6 +1,6 @@
 # Phase 20 — OSA Web Access ("give the local brains the open web")
 
-**Status:** 🟨 DESIGN KICKOFF — decisions locked with Tony 2026-08-06.
+**Status:** 🟨 DESIGN KICKOFF — decisions locked with Tony 2026-08-06 (all 5 §10 open questions resolved same day).
 **Goal:** bring the **local** OSA brains (Ollama pins: qwen2.5:7b, etc.) to
 web-capability parity with cloud/Claude agents — search the web, fetch and
 read pages, and (this phase) drive a headless browser — through the Phase 15
@@ -67,13 +67,14 @@ System-MCP capability framework, gated by the same Constitution safety ladder.
 - **Read-only is the default lane.** `web_search` + `web_fetch` are the common
   path; Playwright is only spun up when a page needs JS or an action. Cheap,
   safe, fast path first (same instinct as local-first LLM routing).
-- **Small-context safety.** Local pins are 8–32k ctx. `web_fetch` returns
-  **extracted, truncated** markdown, and a sibling `web_read` capability offers
-  an **optional LLM-summarize-on-fetch** (composed on the ACTIVE brain, $0 on a
-  local pin) so a 7B model doesn't drown. (This is the "summarize" half of the
-  option you passed over — reintroduced as an *optional layer* because it's
-  orthogonal to depth and clearly needed for 7B models. Kill it if you'd rather
-  keep fetch raw.)
+- **Small-context safety.** Local pins are 8–32k ctx. `web_fetch` ALWAYS
+  returns **extracted, truncated** markdown and, when it truncates, a
+  `{truncated: true, full_len: N}` flag hinting the model to escalate. The
+  `web_read` capability (fetch + LLM-summarize-on-active-brain, $0 on a local
+  pin) is **opt-in, default OFF** — lazy-invoked only when the model needs the
+  whole page condensed rather than one fact off it. Always-on summarize is the
+  wrong default (extra round-trip, fidelity loss); truncation protects the
+  context window for free.
 - **Fetch audit log in MySQL.** A `web_fetch_log` table (via `models.py` +
   idempotent `migrations.py` ALTER — the sole-DB rule) records what the agent
   read (url, ts, brain, bytes, blocked?). Fits the trust-first / "announce
@@ -136,10 +137,13 @@ gate in strict; "mutate" = always gate; "denied" = never.
 | `browse_submit` | browse | **mutate** | Submit a form / press Enter. **Gates to approval.** |
 | `browse_close` | browse | read | Tear down the browsing session/context. |
 
-**Session model:** one isolated, ephemeral Chromium context per browsing
-session — **no persisted cookies/logins by default**, downloads disabled,
-capped duration. Teardown on `browse_close` or timeout. (Optional persistent
-profile is a later, explicitly-opt-in slice — not v1.)
+**Session model:** v1 is **stateless** — one isolated, ephemeral Chromium
+context per browsing session, **no persisted cookies/logins**, downloads
+disabled, capped duration, teardown on `browse_close` or timeout. A
+pre-authorized **persistent profile** (OSA acting inside a site you logged into
+yourself) is the highest-risk surface in the phase and is **PARKED to
+IDEA_LEDGER** as its own design-locked slice — per-site allowlist, and actions
+that gate to approval **regardless of effect mode**. Not v1.
 
 ---
 
@@ -147,9 +151,14 @@ profile is a later, explicitly-opt-in slice — not v1.)
 
 1. **Run SearXNG locally.** `docker run -d -p <PORT>:8080 searxng/searxng`
    (JSON output format enabled). Register `<PORT>` in
-   `hub/docs/PORT_ASSIGNMENTS.md` (TR-10) before use. `searxng_url` in the
-   `web:` config points at it. Fallback: a configurable remote instance URL if
-   Docker isn't running.
+   `hub/docs/PORT_ASSIGNMENTS.md` (TR-10) before use. `searxng_url` points at
+   it. **Local only** — a remote/public instance sees every query (kills the
+   privacy win) and rate-limits automated traffic; skip it. `searxng_url` is a
+   **health-probed dependency**: when the backend is down, search returns a
+   clean `search_unavailable` error (same shape as the `cloud_dead` fallback),
+   never a hang. Recommended: register SearXNG as a **managed app** in the
+   registry so the Hub panel can start/stop it like the other 28 apps — it fits
+   that mold exactly.
 2. **Install Playwright browser** (20d): `.venv/bin/python -m playwright
    install chromium` (~150 MB, one-time). Gate 20d build on this being present.
 3. Confirm `httpx`, `trafilatura`, `selectolax`/`lxml`, `playwright` land in
@@ -186,8 +195,9 @@ out-of-process dependency.
      — mirrors the mail-domain "re-check the recipient on every step" pattern
      that caught the reply-target bug;
    - enforce `max_bytes`, `timeout_s`, `allowed_content_types`;
-   - honor `respect_robots` for search-driven bulk fetch (single explicit
-     user-intent fetch may bypass per config).
+   - `respect_robots` governs the **auto/bulk** path (OSA hoovering many
+     search-result URLs unattended); an **explicit single-URL fetch** (you or
+     OSA naming one page) is **exempt** — equivalent to opening it in a browser.
 
 3. **Effect ladder (into `_policy.py`).**
    - **strict mode (start):** all `web.*` gate to approval.
@@ -238,7 +248,12 @@ A **Web** view (VIEWS registry entry — not another always-on dashboard panel):
   brain, blocked-or-not) — the trust surface,
 - pending web-action approvals surfaced inline (reuse the 14 HITL affordance).
 
-GUI can land as **20f** or be parked behind the backend — Tony's call.
+**Decision (2026-08-06): backend-first — 20f is PARKED.** The value (local
+brains reaching the open web) is fully delivered at the tool/MCP layer; the Web
+view is observability, not capability. Interim trust surface for ~zero cost:
+surface `web_fetch_log` rows in the **existing EventsView**. Revisit a dedicated
+Web view against the rest of the queue (17b/c, Attention Model Phase A, the
+CodeHome launch-fleet PATH blockers).
 
 ---
 
@@ -293,25 +308,29 @@ exposed.** *(Full prompt at top of doc.)*
 > green; restart the sidecar so OSA gets the tools live (gotcha #1: kill any
 > stray :5130 first).
 
-### 20f — Web GUI view (optional / parkable)
-> VIEWS-registry "Web" nav link: session viewer + audit feed + inline web-action
-> approvals. vitest + a live click-through. Or park behind the backend.
+### 20f — Web GUI view (PARKED — backend-first)
+> Deferred by decision 2026-08-06. Interim: surface `web_fetch_log` rows in the
+> existing EventsView (near-zero cost trust surface). If later greenlit:
+> VIEWS-registry "Web" nav link — session viewer + audit feed + inline
+> web-action approvals; vitest + a live click-through.
 
 ---
 
-## 10. Open questions for Tony
+## 10. Resolved decisions (2026-08-06 — Tony took all recommendations)
 
-1. **SearXNG hosting:** local Docker on a registered port (my rec), or point at
-   an existing/remote instance? (Affects the 20a prereq + `searxng_url` default.)
-2. **Summarize layer (`web_read`):** keep the optional LLM-summarize-on-fetch
-   for small pins (my rec), or ship fetch raw and let the model summarize
-   itself?
-3. **Browse persistence:** confirm v1 is stateless (no saved logins). A
-   persistent, explicitly-opt-in profile (so OSA can act inside a logged-in site
-   Tony pre-authorized) would be its own later slice — in or out?
-4. **robots.txt:** honor by default for agent fetches (my rec: yes for
-   search-driven bulk, allow single explicit fetch), or ignore?
-5. **GUI (20f):** build the Web view this phase, or backend-only first?
+1. **SearXNG hosting:** local Docker, registered port, **local-only** (no remote
+   instance). `searxng_url` health-probed → clean `search_unavailable` on down.
+   Register as a managed app so the Hub panel start/stops it.
+2. **`web_read` summarize:** **kept but opt-in, default OFF.** `web_fetch` always
+   returns truncated markdown + a `truncated/full_len` flag; `web_read` is
+   lazy-invoked only when the whole page needs condensing.
+3. **Browse persistence:** **stateless v1** (no saved logins). Pre-authorized
+   persistent profile PARKED to IDEA_LEDGER as its own design-locked slice
+   (per-site allowlist; actions gate regardless of mode).
+4. **robots.txt:** **honor by default** on the auto/bulk path; explicit
+   single-URL fetch is exempt.
+5. **GUI (20f):** **backend-first — 20f PARKED.** Interim: web_fetch_log rows
+   surfaced in the existing EventsView.
 
 ---
 
